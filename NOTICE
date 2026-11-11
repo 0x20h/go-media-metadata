@@ -18,3 +18,10 @@ testdata/imageio/b-orientation6.heic
     orientation 6 (irot 270 degrees anticlockwise, and Exif Orientation 6).
     Made for this project by its authors. Dedicated to the public domain
     under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/iphone/grid-gainmap-orientation6.heic
+    A photo taken with an iPhone 12 Pro on iOS 27.2, as the camera wrote
+    it: a grid of tiles, a thumbnail and an HDR gain map sharing one irot
+    property (orientation 6), and an Exif item. No location data.
+    Photographed by the repository owner, dedicated to the public domain
+    under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
