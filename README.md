@@ -14,6 +14,22 @@ Early. The first feature is HEIF/HEIC orientation:
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the EXIF Orientation tag in step where one exists.
 
+### Compared with other tools
+
+- **Minimal writes.** Where an image already has an `irot` property of its
+  own, `SetRotation` changes its one angle byte and nothing else moves. A
+  new `irot` is appended to the property container and associated as an
+  essential property after the descriptive ones (and before any `imir`),
+  the position Apple's ImageIO uses; item offsets are moved only when the
+  `meta` box grows ahead of the image data. No brands, items or properties
+  are added or reordered otherwise.
+- **The Exif Orientation tag is kept in step, deliberately.** Apple's
+  ImageIO leaves a HEIC's Exif Orientation as it was when it rotates the
+  image (so a file can say 6 in Exif and 180° in `irot`), which makes
+  tools that read Exif rather than `irot` show it wrongly. `SetRotation`
+  sets an existing tag to the orientation the file now shows; a file
+  without the tag doesn't get one.
+
 ## Guarantees
 
 - **Lossless:** image data is never decoded or re-encoded; tests check it
