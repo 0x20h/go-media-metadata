@@ -109,7 +109,7 @@ func ParseMeta(b []byte) (*Meta, error) {
 			m.children = append(m.children, child{typ: k.Type})
 			continue
 		}
-		m.children = append(m.children, child{typ: k.Type, raw: raw})
+		m.children = append(m.children, child{typ: k.Type, raw: explicitSize(raw)})
 	}
 	return m, nil
 }
@@ -182,11 +182,11 @@ func (m *Meta) Encode() ([]byte, error) {
 
 // ILoc is an item location box (ISO/IEC 14496-12 8.11.3).
 type ILoc struct {
-	Version                                          uint8
-	Flags                                            uint32
+	Version                                           uint8
+	Flags                                             uint32
 	OffsetSize, LengthSize, BaseOffsetSize, IndexSize uint8
-	Items                                            []LocItem
-	large                                            bool
+	Items                                             []LocItem
+	large                                             bool
 }
 
 // LocItem is one item's location.
@@ -389,7 +389,7 @@ func parseIPrp(b []byte, large bool) (*IPrp, error) {
 				return nil, err
 			}
 			for _, pb := range props {
-				p.Props = append(p.Props, Prop{Type: pb.Type, Raw: kb[pb.Offset:pb.End()]})
+				p.Props = append(p.Props, Prop{Type: pb.Type, Raw: explicitSize(kb[pb.Offset:pb.End()])})
 			}
 		case k.Type == T("ipma"):
 			a, err := parseIPMA(kb, k.Large())
@@ -398,7 +398,7 @@ func parseIPrp(b []byte, large bool) (*IPrp, error) {
 			}
 			p.Assoc = append(p.Assoc, a)
 		default:
-			p.others = append(p.others, b[k.Offset:k.End()])
+			p.others = append(p.others, explicitSize(b[k.Offset:k.End()]))
 		}
 		p.order = append(p.order, k.Type)
 	}
@@ -492,13 +492,14 @@ func (p *IPrp) encode() []byte {
 		ipco = append(ipco, pr.Raw...)
 	}
 	var body []byte
-	assoc, other := 0, 0
+	assoc, other, wroteIpco := 0, 0, false
 	for _, t := range p.order {
 		switch {
-		case t == T("ipco") && ipco != nil:
+		case t == T("ipco") && !wroteIpco:
+			// Even without properties: an empty ipco is still the ipco.
 			body = append(body, AppendHeader(nil, T("ipco"), len(ipco), p.ipcoLarge)...)
 			body = append(body, ipco...)
-			ipco = nil
+			wroteIpco = true
 		case t == T("ipma") && assoc < len(p.Assoc):
 			body = append(body, p.Assoc[assoc].encode()...)
 			assoc++
@@ -535,4 +536,16 @@ func (p *IPrp) UsesOf(i uint16) int {
 		}
 	}
 	return n
+}
+
+// explicitSize returns a box kept as raw bytes with a size-0 header ("to
+// the end of the container") rewritten to its actual size: written back
+// with something after it, it would otherwise swallow that.
+func explicitSize(raw []byte) []byte {
+	if len(raw) < 8 || binary.BigEndian.Uint32(raw) != 0 || len(raw) > 0xFFFFFFFF {
+		return raw
+	}
+	out := bytes.Clone(raw)
+	binary.BigEndian.PutUint32(out, uint32(len(raw)))
+	return out
 }

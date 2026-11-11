@@ -9,8 +9,8 @@ jobs:
       matrix:
         go: ["1.22", "stable"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
       - run: go vet ./...
@@ -18,11 +18,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: stable
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
   fuzz:
     runs-on: ubuntu-latest
     strategy:
@@ -30,8 +30,8 @@ jobs:
       matrix:
         target: [FuzzReadOrientation, FuzzSetRotation]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: stable
       - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m .

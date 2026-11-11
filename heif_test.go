@@ -303,3 +303,57 @@ func TestSetRotationWidensIpma(t *testing.T) {
 		t.Fatalf("orientation %d, want 6", got)
 	}
 }
+
+// An Exif item pointing outside the media data (here at the ftyp) has its
+// "tag" left alone: a patch never writes over structure.
+func TestExifPatchStaysInMediaData(t *testing.T) {
+	o := testbuild.Default()
+	orig, _ := testbuild.Build(o)
+	f, err := parseHEIF(bytes.NewReader(orig), int64(len(orig)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ftyp := bytes.Clone(orig[:f.boxes[0].End()])
+	// Point the Exif item's extent at offset 0 (iloc v1, 4-byte fields).
+	it, _ := f.m.Loc.Item(testbuild.Exif)
+	it.Extents[0].Offset = 0
+	meta, err := f.m.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := append(append(bytes.Clone(orig[:f.meta.Offset]), meta...), orig[f.meta.End():]...)
+	out := setRotation(t, bad, 180)
+	if !bytes.Equal(out[:len(ftyp)], ftyp) {
+		t.Fatal("the ftyp changed")
+	}
+	if got := orientationOfFile(t, out); got != 3 {
+		t.Fatalf("orientation %d, want 3", got)
+	}
+}
+
+// An ipco without properties is written back as an ipco.
+func TestEmptyIpcoRoundTrip(t *testing.T) {
+	m, err := bmff.ParseMeta(buildEmptyIpcoMeta())
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc, err := m.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bmff.ParseMeta(enc); err != nil {
+		t.Fatalf("re-encoded meta doesn't parse: %v", err)
+	}
+}
+
+func buildEmptyIpcoMeta() []byte {
+	box := func(t string, body []byte) []byte {
+		b := []byte{0, 0, 0, 0}
+		n := len(body) + 8
+		b[0], b[1], b[2], b[3] = byte(n>>24), byte(n>>16), byte(n>>8), byte(n)
+		return append(append(b, t...), body...)
+	}
+	ipma := box("ipma", []byte{0, 0, 0, 0, 0, 0, 0, 0})
+	iprp := box("iprp", append(box("ipco", nil), ipma...))
+	return box("meta", append([]byte{0, 0, 0, 0}, iprp...))
+}

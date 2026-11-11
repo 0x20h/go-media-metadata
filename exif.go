@@ -28,21 +28,40 @@ type exifItem struct {
 	idatOff func(i int) int64
 }
 
-// idatBody is where the idat box's payload starts in a meta box held in
-// meta (at file offset base), or -1 without one.
+// idatBody is where the idat box's payload starts in the meta box held
+// in meta, or -1 without one.
 func idatBody(meta []byte) int64 {
+	at, _ := idatPayload(meta)
+	return at
+}
+
+// idatPayload is where the idat box's payload starts in the meta box held
+// in meta and how long it is; -1 without one.
+func idatPayload(meta []byte) (int64, int64) {
 	top, err := bmff.ReadBoxes(bytes.NewReader(meta), 0, int64(len(meta)))
 	if err != nil || len(top) != 1 || top[0].BodyLen() < 4 {
-		return -1
+		return -1, 0
 	}
 	kids, err := bmff.ReadBoxes(bytes.NewReader(meta), top[0].Body()+4, top[0].End())
 	if err != nil {
-		return -1
+		return -1, 0
 	}
 	if b, ok := bmff.Find(kids, bmff.T("idat")); ok {
-		return b.Body()
+		return b.Body(), b.BodyLen()
 	}
-	return -1
+	return -1, 0
+}
+
+// inMediaData reports whether file offset p lies in the payload of a
+// top-level mdat box: only there may a patch change a byte, never in a
+// box header or in boxes the reader needs.
+func (f *heifFile) inMediaData(p int64) bool {
+	for _, b := range f.boxes {
+		if b.Type == bmff.T("mdat") && p >= b.Body() && p < b.End() {
+			return true
+		}
+	}
+	return false
 }
 
 // readExifItem reads the start of item id's data (construction method 0
@@ -176,29 +195,35 @@ func (f *heifFile) exifOrientationPatches(src io.ReaderAt, size int64, newMeta [
 		}
 		b := make([]byte, 2)
 		order.PutUint16(b, uint16(shown))
+		// The tag's bytes are changed only where they are item data: in
+		// an mdat's payload, or in idat's. An Exif item pointing anywhere
+		// else (a box header, the ftyp) keeps its tag as it is.
+		var ps []patch
 		for i := range 2 {
 			var outAt int64
 			if it.inIdat {
-				idat := idatBody(newMeta)
-				if idat < 0 {
-					return nil, fmt.Errorf("%w: idat lost", ErrMalformed)
+				idat, n := idatPayload(newMeta)
+				off := it.idatOff(at + i)
+				if idat < 0 || off < 0 || off >= n {
+					ps = nil
+					break
 				}
-				outAt = f.meta.Offset + idat + it.idatOff(at+i)
+				outAt = f.meta.Offset + idat + off
 			} else {
 				p, ok := it.pos(at + i)
-				if !ok {
-					return nil, fmt.Errorf("%w: Exif item %d", ErrMalformed, id)
+				if !ok || !f.inMediaData(p) {
+					ps = nil
+					break
 				}
-				switch {
-				case p >= f.meta.End():
+				outAt = p
+				if p >= f.meta.End() {
 					outAt = p + delta
-				case p >= f.meta.Offset:
-					return nil, fmt.Errorf("%w: Exif item %d inside the meta box", ErrUnsupported, id)
-				default:
-					outAt = p
 				}
 			}
-			out = append(out, patch{at: outAt, data: b[i : i+1]})
+			ps = append(ps, patch{at: outAt, data: b[i : i+1]})
+		}
+		if len(ps) == 2 {
+			out = append(out, ps...)
 		}
 	}
 	return out, nil

@@ -6,7 +6,6 @@ package testbuild
 
 import (
 	"encoding/binary"
-	"math/rand/v2"
 )
 
 // Options shape a file.
@@ -67,11 +66,15 @@ type item struct {
 
 // Build returns the file and every item's data by id.
 func Build(o Options) ([]byte, map[uint32][]byte) {
-	rng := rand.New(rand.NewPCG(o.Seed, o.Seed^0x9e3779b97f4a7c15))
+	// A small xorshift generator: the bytes only need to differ per seed.
+	state := o.Seed*0x9e3779b97f4a7c15 | 1
 	random := func(n int) []byte {
 		b := make([]byte, n)
 		for i := range b {
-			b[i] = byte(rng.UintN(256))
+			state ^= state << 13
+			state ^= state >> 7
+			state ^= state << 17
+			b[i] = byte(state)
 		}
 		return b
 	}
