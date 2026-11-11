@@ -23,3 +23,15 @@ jobs:
         with:
           go-version: stable
       - uses: golangci/golangci-lint-action@v6
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzReadOrientation, FuzzSetRotation]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m .
