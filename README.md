@@ -1,18 +1,63 @@
 # go-media-metadata
 
-`mediameta` reads and writes metadata of image and video files in pure Go,
-with no cgo and no external tools. Writes are lossless: only the metadata
-asked for changes, and the encoded image data is copied byte for byte.
+go-media-metadata reads and writes metadata of image and video files in
+pure Go, with no cgo and no external tools. Writes are lossless: only the
+metadata asked for changes, and the encoded image data is copied byte for
+byte.
+
+The module is `github.com/0x20h/go-media-metadata`; its package is named
+`mediameta`.
+
+## Install
+
+```sh
+go get github.com/0x20h/go-media-metadata
+```
+
+## Use
+
+```go
+import mediameta "github.com/0x20h/go-media-metadata"
+
+in, err := os.Open("photo.heic")
+// ...
+info, _ := in.Stat()
+
+o, err := mediameta.ReadOrientation(in, info.Size())
+fmt.Println(o) // e.g. "rotated 90° clockwise"
+
+// Rotate losslessly: write to a temporary file, then rename it over the
+// original once SetRotation has succeeded.
+tmp, err := os.CreateTemp(filepath.Dir("photo.heic"), "photo-*.heic")
+// ...
+err = mediameta.SetRotation(in, info.Size(), tmp, 180)
+```
 
 ## Status
 
 Early. The first feature is HEIF/HEIC orientation:
 
-- `ReadOrientation` returns an image's orientation (EXIF numbering 1–8)
+- `ReadOrientation` returns an image's orientation (Exif numbering 1–8)
   from its `irot` and `imir` properties.
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
-  shrinks, and keeping the EXIF Orientation tag in step where one exists.
+  shrinks, and keeping the Exif Orientation tag in step where one exists.
+
+### Compared with other tools
+
+- **Minimal writes.** Where an image already has an `irot` property of its
+  own, `SetRotation` changes its one angle byte and nothing else moves. A
+  new `irot` is appended to the property container and associated as an
+  essential property after the descriptive ones (and before any `imir`),
+  the position Apple's ImageIO uses; item offsets are moved only when the
+  `meta` box grows ahead of the image data. No brands, items or properties
+  are added or reordered otherwise.
+- **The Exif Orientation tag is kept in step, deliberately.** Apple's
+  ImageIO leaves a HEIC's Exif Orientation as it was when it rotates the
+  image (so a file can say 6 in Exif and 180° in `irot`), which makes
+  tools that read Exif rather than `irot` show it wrongly. `SetRotation`
+  sets an existing tag to the orientation the file now shows; a file
+  without the tag doesn't get one.
 
 ## Guarantees
 
@@ -21,9 +66,10 @@ Early. The first feature is HEIF/HEIC orientation:
 - **Safe on hostile input:** every parser is fuzzed. Lengths are checked,
   counts are bounded by the bytes available, nesting is capped. Malformed
   input gives an error, never a panic or an endless loop.
-- **No partial writes from this package:** a write goes to the `io.Writer`
-  you pass; write to a temporary file and rename it to replace the
-  original.
+- **Never in place:** a write reads the source and writes a new file to
+  the `io.Writer` you pass. On an error that writer may hold part of a
+  file, so write to a temporary file and rename it over the original only
+  once the call has succeeded.
 
 ## Specifications
 
