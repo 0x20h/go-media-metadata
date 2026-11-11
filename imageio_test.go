@@ -49,6 +49,7 @@ func TestImageIOFiles(t *testing.T) {
 			if err != nil || has != c.hasTag || (has && tag != want) {
 				t.Errorf("%s %d°: Exif tag %d (present %v, %v), want %d", c.file, deg, tag, has, err, want)
 			}
+			relatedInStep(t, orig, out)
 			after := itemData(t, out)
 			for id, d := range data {
 				if n := differing(after[id], d); n != 0 && (n > 2 || !isExif(t, orig, id)) {

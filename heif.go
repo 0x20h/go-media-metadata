@@ -123,11 +123,16 @@ func imirAxis(p bmff.Prop) (int, error) {
 	return int(p.Raw[8] & 1), nil
 }
 
-// orientation is the primary item's orientation from its transformative
+// orientation is the primary item's orientation.
+func (f *heifFile) orientation() (Orientation, error) {
+	return f.itemOrientation(f.m.Primary)
+}
+
+// itemOrientation is an item's orientation from its transformative
 // properties, applied in the order they're associated (ISO/IEC 23008-12
 // 6.5.10, 6.5.12).
-func (f *heifFile) orientation() (Orientation, error) {
-	_, entry := f.m.Prop.Entry(f.m.Primary)
+func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
+	_, entry := f.m.Prop.Entry(id)
 	if entry == nil {
 		return 1, nil
 	}
@@ -175,6 +180,8 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // primary image rotated degrees clockwise (0, 90, 180 or 270; other
 // multiples of 90 are taken modulo 360): its irot property is set to
 // that, replacing any rotation it had, and a mirroring (imir) is kept.
+// The images that belong to it, its thumbnails and auxiliary images such
+// as an HDR gain map, turn with it wherever they showed its orientation.
 // The image data, and every byte outside the meta box other than item
 // offsets the meta box's new size moves and the Exif Orientation tag, is
 // copied as it is.
@@ -229,27 +236,111 @@ func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error 
 	return f.write(src, size, dst, newMeta, delta, patches)
 }
 
-// setIrot gives the primary item an irot of quarters anticlockwise turns.
-// An irot only it uses is changed in place, so nothing moves; a shared one
-// is replaced by another (an existing one of that angle, or a new one); a
-// rotation of 0 without an irot changes nothing.
-func (f *heifFile) setIrot(quarters int) error {
-	p := f.m.Prop
-	ipma, entry := p.Entry(f.m.Primary)
-	if entry == nil {
-		return fmt.Errorf("%w: the primary item has no properties", ErrUnsupported)
+// related are the images that belong to the primary one: its thumbnails
+// (thmb) and auxiliary images (auxl: an HDR gain map, alpha, depth), which
+// are shown or applied with it.
+func (f *heifFile) related() []uint32 {
+	var out []uint32
+	seen := map[uint32]bool{f.m.Primary: true}
+	for _, r := range f.m.Refs {
+		if r.Type != bmff.T("thmb") && r.Type != bmff.T("auxl") {
+			continue
+		}
+		for _, to := range r.To {
+			if to == f.m.Primary && !seen[r.From] {
+				seen[r.From] = true
+				out = append(out, r.From)
+			}
+		}
 	}
-	at := -1
+	return out
+}
+
+// irotRef is where an item's irot is associated: its index in the item's
+// associations (-1 without one) and the property's index.
+func (f *heifFile) irotRef(id uint32) (at int, idx uint16, err error) {
+	p := f.m.Prop
+	_, entry := p.Entry(id)
+	if entry == nil {
+		return -1, 0, nil
+	}
+	at = -1
 	for i, ref := range entry.Props {
 		if ref.Index != 0 && p.Props[ref.Index-1].Type == bmff.T("irot") {
 			if at >= 0 {
-				return fmt.Errorf("%w: two irot properties on the primary item", ErrUnsupported)
+				return -1, 0, fmt.Errorf("%w: two irot properties on item %d", ErrUnsupported, id)
 			}
-			at = i
+			at, idx = i, ref.Index
 		}
 	}
+	return at, idx, nil
+}
+
+// setIrot rotates the primary image to quarters anticlockwise turns, and
+// with it each related image (thumbnail, gain map) that showed the
+// primary's orientation, so they stay in step. When these images share one
+// irot only they use, that irot is changed in place and nothing moves;
+// otherwise each gets an irot of the new angle.
+func (f *heifFile) setIrot(quarters int) error {
+	if _, entry := f.m.Prop.Entry(f.m.Primary); entry == nil {
+		return fmt.Errorf("%w: the primary item has no properties", ErrUnsupported)
+	}
+	before, err := f.orientation()
+	if err != nil {
+		return err
+	}
+	targets := []uint32{f.m.Primary}
+	for _, id := range f.related() {
+		if _, entry := f.m.Prop.Entry(id); entry == nil {
+			continue
+		}
+		if o, err := f.itemOrientation(id); err == nil && o == before {
+			targets = append(targets, id)
+		}
+	}
+	// One irot shared by exactly these images: change it in place.
+	_, idx, err := f.irotRef(f.m.Primary)
+	if err != nil {
+		return err
+	}
+	if idx != 0 {
+		shared := true
+		for _, id := range targets[1:] {
+			_, i, err := f.irotRef(id)
+			if err != nil {
+				return err
+			}
+			if i != idx {
+				shared = false
+			}
+		}
+		if shared && f.m.Prop.UsesOf(idx) == len(targets) {
+			raw := append([]byte(nil), f.m.Prop.Props[idx-1].Raw...)
+			raw[8] = raw[8]&^3 | byte(quarters)
+			f.m.Prop.Props[idx-1].Raw = raw
+			return nil
+		}
+	}
+	for _, id := range targets {
+		if err := f.setItemIrot(id, quarters); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setItemIrot gives one item an irot of quarters anticlockwise turns. An
+// irot only it uses is changed in place; a shared one is replaced by
+// another (an existing one of that angle, or a new one); a rotation of 0
+// without an irot changes nothing.
+func (f *heifFile) setItemIrot(id uint32, quarters int) error {
+	p := f.m.Prop
+	ipma, entry := p.Entry(id)
+	at, idx, err := f.irotRef(id)
+	if err != nil {
+		return err
+	}
 	if at >= 0 {
-		idx := entry.Props[at].Index
 		cur, err := irotAngle(p.Props[idx-1])
 		if err != nil {
 			return err
@@ -282,7 +373,7 @@ func (f *heifFile) setIrot(quarters int) error {
 		return err
 	}
 	if len(entry.Props) >= 255 {
-		return fmt.Errorf("%w: the primary item has 255 properties", ErrUnsupported)
+		return fmt.Errorf("%w: item %d has 255 properties", ErrUnsupported, id)
 	}
 	// Transformative properties go after the descriptive ones, in the
 	// order clap, irot, imir: before the first imir, else last.

@@ -35,6 +35,32 @@ func itemData(t *testing.T, file []byte) map[uint32][]byte {
 	return out
 }
 
+// relatedInStep checks the invariant for the images that belong to the
+// primary (thumbnails, auxiliary images such as a gain map): each that
+// showed the primary's orientation before shows its new one after.
+func relatedInStep(t *testing.T, before, after []byte) {
+	t.Helper()
+	fb, err := parseHEIF(bytes.NewReader(before), int64(len(before)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fa, err := parseHEIF(bytes.NewReader(after), int64(len(after)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, _ := fb.orientation()
+	pa, _ := fa.orientation()
+	for _, id := range fb.related() {
+		ob, err := fb.itemOrientation(id)
+		if err != nil || ob != pb {
+			continue
+		}
+		if oa, _ := fa.itemOrientation(id); oa != pa {
+			t.Errorf("item %d (thumbnail/auxiliary) shows %d, the primary %d: they were in step", id, oa, pa)
+		}
+	}
+}
+
 func orientationOfFile(t *testing.T, file []byte) Orientation {
 	t.Helper()
 	o, err := ReadOrientation(bytes.NewReader(file), int64(len(file)))
@@ -92,6 +118,8 @@ var layouts = []layout{
 	{"irot 0", func(o *testbuild.Options) { o.Irot = 0 }},
 	{"shared irot", func(o *testbuild.Options) { o.SharedIrot = true }},
 	{"shared irot, no exif", func(o *testbuild.Options) { o.SharedIrot = true; o.ExifOrientation = -1 }},
+	{"iPhone: irot shared with thumbnail and gain map", func(o *testbuild.Options) { o.SharedIrot = true; o.GainMap = true }},
+	{"gain map with its own rotation", func(o *testbuild.Options) { o.GainMap = true }},
 	{"mirrored", func(o *testbuild.Options) { o.Imir = 0 }},
 	{"mirrored without irot", func(o *testbuild.Options) { o.Irot = -1; o.Imir = 1 }},
 	{"ipma v1 wide", func(o *testbuild.Options) { o.IpmaVersion = 1; o.IpmaWide = true }},
@@ -166,6 +194,7 @@ func TestSetRotation(t *testing.T) {
 				if d := differing(out[:f.meta.Offset], orig[:f.meta.Offset]); d > 2 {
 					t.Errorf("%d bytes before the meta box changed", d)
 				}
+				relatedInStep(t, orig, out)
 				if again := setRotation(t, out, deg); !bytes.Equal(again, out) {
 					t.Error("a second identical SetRotation changed the file")
 				}
@@ -356,4 +385,39 @@ func buildEmptyIpcoMeta() []byte {
 	ipma := box("ipma", []byte{0, 0, 0, 0, 0, 0, 0, 0})
 	iprp := box("iprp", append(box("ipco", nil), ipma...))
 	return box("meta", append([]byte{0, 0, 0, 0}, iprp...))
+}
+
+// iPhones share one irot between the image, its thumbnail and its HDR gain
+// map: a rotation changes that irot in place, so all three turn together
+// and nothing else moves; a gain map with a rotation of its own is left as
+// it is.
+func TestRotateRelatedImages(t *testing.T) {
+	o := testbuild.Default()
+	o.SharedIrot, o.GainMap = true, true
+	orig, _ := testbuild.Build(o)
+	for _, deg := range []int{0, 90, 180, 270} {
+		out := setRotation(t, orig, deg)
+		if len(out) != len(orig) {
+			t.Errorf("%d°: %d bytes, was %d: the shared irot should change in place", deg, len(out), len(orig))
+		}
+		f, err := parseHEIF(bytes.NewReader(out), int64(len(out)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, _ := f.orientation()
+		for _, id := range []uint32{testbuild.Thumbnail, testbuild.GainMap} {
+			if got, _ := f.itemOrientation(id); got != p {
+				t.Errorf("%d°: item %d shows %d, the primary %d", deg, id, got, p)
+			}
+		}
+	}
+
+	o = testbuild.Default()
+	o.GainMap = true // the gain map has no irot: it doesn't show the primary's rotation
+	orig, _ = testbuild.Build(o)
+	out := setRotation(t, orig, 180)
+	f, _ := parseHEIF(bytes.NewReader(out), int64(len(out)))
+	if got, _ := f.itemOrientation(testbuild.GainMap); got != 1 {
+		t.Errorf("a gain map with its own rotation turned to %d", got)
+	}
 }
