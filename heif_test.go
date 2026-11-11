@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 	"github.com/0x20h/go-media-metadata/internal/bmff/testbuild"
@@ -284,32 +285,59 @@ func seeds(f *testing.F) {
 	}
 }
 
+// fuzzDeadline is how long one fuzz input may take: a few milliseconds is
+// normal, so this only catches an input that never finishes.
+const fuzzDeadline = 5 * time.Second
+
+// withinDeadline runs fn and fails the input if it takes longer than
+// fuzzDeadline, so a hang is reported as that input instead of stalling
+// the fuzzer.
+func withinDeadline(t *testing.T, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-time.After(fuzzDeadline):
+		t.Fatalf("an input took longer than %v", fuzzDeadline)
+	}
+}
+
 func FuzzReadOrientation(f *testing.F) {
 	seeds(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
-		o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
-		if err == nil && !o.Valid() {
-			t.Fatalf("orientation %d without an error", o)
-		}
+		withinDeadline(t, func() {
+			o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
+			if err == nil && !o.Valid() {
+				t.Errorf("orientation %d without an error", o)
+			}
+		})
 	})
 }
 
 func FuzzSetRotation(f *testing.F) {
 	seeds(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
-		for _, deg := range []int{0, 90} {
-			var out bytes.Buffer
-			if err := SetRotation(bytes.NewReader(data), int64(len(data)), &out, deg); err != nil {
-				continue
+		withinDeadline(t, func() {
+			for _, deg := range []int{0, 90} {
+				var out bytes.Buffer
+				if err := SetRotation(bytes.NewReader(data), int64(len(data)), &out, deg); err != nil {
+					continue
+				}
+				o, err := ReadOrientation(bytes.NewReader(out.Bytes()), int64(out.Len()))
+				if err != nil {
+					t.Errorf("SetRotation(%d) wrote a file that doesn't read back: %v", deg, err)
+					return
+				}
+				if !o.Valid() {
+					t.Errorf("orientation %d", o)
+					return
+				}
 			}
-			o, err := ReadOrientation(bytes.NewReader(out.Bytes()), int64(out.Len()))
-			if err != nil {
-				t.Fatalf("SetRotation(%d) wrote a file that doesn't read back: %v", deg, err)
-			}
-			if !o.Valid() {
-				t.Fatalf("orientation %d", o)
-			}
-		}
+		})
 	})
 }
 
