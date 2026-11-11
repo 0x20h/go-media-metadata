@@ -6,9 +6,11 @@ import (
 	"testing"
 )
 
-// Files Apple's ImageIO encoded (testdata/imageio, see NOTICE): they read
-// as encoded, and every rotation changes the irot angle in place, plus
-// the Exif Orientation tag where there is one, and nothing else.
+// Files Apple's encoders wrote (testdata/imageio, testdata/iphone; see
+// NOTICE): they read as encoded, and every rotation changes the irot angle
+// in place, plus the Exif Orientation tag where there is one, and nothing
+// else. In the iPhone file the thumbnail and the gain map turn with the
+// image.
 func TestImageIOFiles(t *testing.T) {
 	for _, c := range []struct {
 		file   string
@@ -17,6 +19,8 @@ func TestImageIOFiles(t *testing.T) {
 	}{
 		{"testdata/imageio/a-orientation1.heic", 1, false},
 		{"testdata/imageio/b-orientation6.heic", 6, true},
+		// A camera original: grid, thumbnail and gain map share the irot.
+		{"testdata/iphone/grid-gainmap-orientation6.heic", 6, true},
 	} {
 		orig, err := os.ReadFile(c.file)
 		if err != nil {
@@ -49,6 +53,7 @@ func TestImageIOFiles(t *testing.T) {
 			if err != nil || has != c.hasTag || (has && tag != want) {
 				t.Errorf("%s %d°: Exif tag %d (present %v, %v), want %d", c.file, deg, tag, has, err, want)
 			}
+			relatedInStep(t, orig, out)
 			after := itemData(t, out)
 			for id, d := range data {
 				if n := differing(after[id], d); n != 0 && (n > 2 || !isExif(t, orig, id)) {

@@ -28,6 +28,17 @@ type Meta struct {
 
 	Loc  *ILoc
 	Prop *IPrp
+	// Refs are the iref box's references, read only: the box is written
+	// back as it was.
+	Refs []ItemRef
+}
+
+// ItemRef is one reference of an iref box (ISO/IEC 14496-12 8.11.12):
+// From refers to each of To by Type ("thmb", "auxl", "dimg", "cdsc", …).
+type ItemRef struct {
+	Type Type
+	From uint32
+	To   []uint32
 }
 
 type child struct {
@@ -84,6 +95,10 @@ func ParseMeta(b []byte) (*Meta, error) {
 			m.HasPrimary = true
 		case T("iinf"):
 			if err := m.parseIinf(kb); err != nil {
+				return nil, err
+			}
+		case T("iref"):
+			if err := m.parseIref(kb); err != nil {
 				return nil, err
 			}
 		case T("iloc"):
@@ -155,6 +170,46 @@ func (m *Meta) parseIinf(b []byte) error {
 		var t Type
 		copy(t[:], rd.b[rd.off:rd.off+4])
 		m.ItemTypes[id] = t
+	}
+	return nil
+}
+
+// parseIref reads an iref box's references (version 0: 16-bit item ids,
+// 1: 32-bit).
+func (m *Meta) parseIref(b []byte) error {
+	if len(b) < 4 {
+		return fmt.Errorf("%w: short iref", ErrMalformed)
+	}
+	wide := b[0] != 0
+	refs, err := ReadBoxes(bytes.NewReader(b), 4, int64(len(b)))
+	if err != nil {
+		return err
+	}
+	for _, r := range refs {
+		rd := &reader{b: b[r.Body():r.End()]}
+		id := func() uint32 {
+			if wide {
+				return rd.u32()
+			}
+			return uint32(rd.u16())
+		}
+		ref := ItemRef{Type: r.Type, From: id()}
+		n := int(rd.u16())
+		size := 2
+		if wide {
+			size = 4
+		}
+		if rd.err != nil || n > rd.left()/size {
+			return fmt.Errorf("%w: iref %v reference count", ErrMalformed, r.Type)
+		}
+		ref.To = make([]uint32, 0, n)
+		for range n {
+			ref.To = append(ref.To, id())
+		}
+		if rd.err != nil {
+			return rd.err
+		}
+		m.Refs = append(m.Refs, ref)
 	}
 	return nil
 }

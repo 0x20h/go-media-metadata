@@ -58,6 +58,7 @@ func TestRealFiles(t *testing.T) {
 				if has != hadTag || (has && tag != got) {
 					t.Errorf("%d°: Exif tag %d (present %v), properties %d", deg, tag, has, got)
 				}
+				relatedInStep(t, orig, out)
 				after := itemData(t, out)
 				for id, want := range before {
 					if d := differing(after[id], want); d != 0 && (d > 2 || !isExif(t, orig, id)) {

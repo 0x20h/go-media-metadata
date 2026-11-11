@@ -21,10 +21,14 @@ type Options struct {
 	Grid bool
 	// Thumbnail adds a thumbnail item.
 	Thumbnail bool
+	// GainMap adds an auxiliary image (an HDR gain map, auxl to the
+	// primary).
+	GainMap bool
 	// Irot is the primary item's irot in anticlockwise quarter turns, or
 	// -1 for none; Imir its imir axis, or -1 for none.
 	Irot, Imir int
-	// SharedIrot associates the primary's irot with the thumbnail too.
+	// SharedIrot associates the primary's irot with the thumbnail and the
+	// gain map too, as iPhones do.
 	SharedIrot bool
 	// ExifOrientation adds an Exif item whose IFD0 has this Orientation
 	// (0: an Exif item without the tag; -1: no Exif item). ExifBigEndian
@@ -54,6 +58,7 @@ const (
 	Primary   = 1
 	Thumbnail = 10
 	Exif      = 20
+	GainMap   = 30
 )
 
 type item struct {
@@ -90,6 +95,9 @@ func Build(o Options) ([]byte, map[uint32][]byte) {
 	}
 	if o.Thumbnail {
 		items = append(items, item{id: Thumbnail, typ: "hvc1", data: random(200)})
+	}
+	if o.GainMap {
+		items = append(items, item{id: GainMap, typ: "hvc1", data: random(150), hidden: true})
 	}
 	if o.ExifOrientation >= 0 {
 		items = append(items, item{id: Exif, typ: "Exif", data: exifData(o.ExifOrientation, o.ExifBigEndian), idat: o.ExifInIdat})
@@ -180,6 +188,9 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 	if o.Thumbnail {
 		iref = append(iref, box("thmb", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, Thumbnail), 1), Primary))...)
 	}
+	if o.GainMap {
+		iref = append(iref, box("auxl", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, GainMap), 1), Primary))...)
+	}
 	if o.ExifOrientation >= 0 {
 		iref = append(iref, box("cdsc", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, Exif), 1), Primary))...)
 	}
@@ -245,6 +256,7 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 	hvcC := add(box("hvcC", []byte{1, 1, 0x60, 0, 0, 0, 0xb0, 0, 0, 0, 0, 0, 0x5d, 0xf0, 0, 0xfc, 0xfd, 0xf8, 0xf8, 0, 0, 0x0f, 0}))
 	tileSpe := add(fullBox("ispe", 0, 0, be.AppendUint32(be.AppendUint32(nil, 512), 512)))
 	gridSpe := add(fullBox("ispe", 0, 0, be.AppendUint32(be.AppendUint32(nil, 1024), 768)))
+	auxC := add(fullBox("auxC", 0, 0, []byte("urn:com:apple:photo:2020:aux:hdrgainmap\x00")))
 	var irot, imir uint16
 	if o.Irot >= 0 {
 		irot = add(box("irot", []byte{byte(o.Irot & 3)}))
@@ -281,6 +293,13 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 			r = append(r, ref{irot, true})
 		}
 		assoc[Thumbnail] = r
+	}
+	if o.GainMap {
+		r := []ref{{hvcC, true}, {tileSpe, false}, {auxC, false}}
+		if o.SharedIrot && irot != 0 {
+			r = append(r, ref{irot, true})
+		}
+		assoc[GainMap] = r
 	}
 	var ipco []byte
 	for _, p := range props {
