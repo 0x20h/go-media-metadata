@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,6 +33,11 @@ func exiftoolCorpus(t *testing.T) map[string][]byte {
 		"testdata/imageio/b-orientation6.heic",
 	} {
 		files[filepath.Base(p)] = readFile(t, p)
+	}
+	for _, q := range quirks(t) {
+		if q.exiftool {
+			files["quirk-"+q.name+".jpg"] = q.file
+		}
 	}
 	return files
 }
@@ -99,7 +105,7 @@ func TestExifAgreesWithExifTool(t *testing.T) {
 		}
 		if x.OffsetKnown != (e.OffsetTimeOriginal != "") {
 			t.Errorf("%s: offset known %v, ExifTool %q", name, x.OffsetKnown, e.OffsetTimeOriginal)
-		} else if x.OffsetKnown && x.DateTimeOriginal.Location().String() != e.OffsetTimeOriginal {
+		} else if x.OffsetKnown && x.DateTimeOriginal.Location().String() != strings.TrimSpace(e.OffsetTimeOriginal) {
 			t.Errorf("%s: offset %s, ExifTool %s", name, x.DateTimeOriginal.Location(), e.OffsetTimeOriginal)
 		}
 		if (x.GPS != nil) != (e.GPSLatitude != nil && e.GPSLongitude != nil) {

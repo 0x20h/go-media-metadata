@@ -37,6 +37,14 @@ type Options struct {
 	ExifOrientation int
 	ExifBigEndian   bool
 	ExifInIdat      bool
+	// ExifNoCdsc leaves out the Exif item's cdsc reference to the primary.
+	ExifNoCdsc bool
+	// SecondExif adds another Exif item (id SecondExif, below Exif's) with
+	// IFD0 Orientation SecondExifOrientation, describing the thumbnail
+	// (a cdsc reference to it) when SecondExifOfThumbnail.
+	SecondExif            bool
+	SecondExifOrientation int
+	SecondExifOfThumbnail bool
 	// MetaAfterMdat puts the meta box after the media data.
 	MetaAfterMdat bool
 	// ExtraProps adds that many descriptive properties before the others,
@@ -55,10 +63,11 @@ func Default() Options {
 
 // Item ids.
 const (
-	Primary   = 1
-	Thumbnail = 10
-	Exif      = 20
-	GainMap   = 30
+	Primary    = 1
+	Thumbnail  = 10
+	SecondExif = 15
+	Exif       = 20
+	GainMap    = 30
 )
 
 type item struct {
@@ -101,6 +110,9 @@ func Build(o Options) ([]byte, map[uint32][]byte) {
 	}
 	if o.ExifOrientation >= 0 {
 		items = append(items, item{id: Exif, typ: "Exif", data: exifData(o.ExifOrientation, o.ExifBigEndian), idat: o.ExifInIdat})
+	}
+	if o.SecondExif {
+		items = append(items, item{id: SecondExif, typ: "Exif", data: exifData(o.SecondExifOrientation, o.ExifBigEndian)})
 	}
 	data := map[uint32][]byte{}
 	for _, it := range items {
@@ -191,8 +203,11 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 	if o.GainMap {
 		iref = append(iref, box("auxl", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, GainMap), 1), Primary))...)
 	}
-	if o.ExifOrientation >= 0 {
+	if o.ExifOrientation >= 0 && !o.ExifNoCdsc {
 		iref = append(iref, box("cdsc", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, Exif), 1), Primary))...)
+	}
+	if o.SecondExif && o.SecondExifOfThumbnail {
+		iref = append(iref, box("cdsc", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, SecondExif), 1), Thumbnail))...)
 	}
 	body = append(body, fullBox("iref", 0, 0, iref)...)
 
