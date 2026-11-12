@@ -10,7 +10,7 @@ import (
 // ErrMalformed is returned for input that doesn't follow the box
 // structure: a length past its container, a truncated header, too many
 // boxes or too deep a nesting.
-var ErrMalformed = errors.New("malformed ISO BMFF data")
+var ErrMalformed = errors.New("malformed file")
 
 // Limits on untrusted input.
 const (

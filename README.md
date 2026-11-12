@@ -26,6 +26,13 @@ info, _ := in.Stat()
 o, err := mediameta.ReadOrientation(in, info.Size())
 fmt.Println(o) // e.g. "rotated 90° clockwise"
 
+// Exif of a JPEG or HEIF file: orientation, when it was taken, where.
+x, err := mediameta.ReadExif(in, info.Size())
+fmt.Println(x.DateTimeOriginal, x.OffsetKnown) // the offset, when the camera wrote one
+if x.GPS != nil {
+	fmt.Println(x.GPS.Latitude, x.GPS.Longitude)
+}
+
 // Rotate losslessly: write to a temporary file, then rename it over the
 // original once SetRotation has succeeded.
 tmp, err := os.CreateTemp(filepath.Dir("photo.heic"), "photo-*.heic")
@@ -35,10 +42,15 @@ err = mediameta.SetRotation(in, info.Size(), tmp, 180)
 
 ## Status
 
-Early. The first feature is HEIF/HEIC orientation:
+Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 
-- `ReadOrientation` returns an image's orientation (Exif numbering 1–8)
-  from its `irot` and `imir` properties.
+- `ReadOrientation` returns an image's orientation (Exif numbering 1–8):
+  for HEIF from its `irot` and `imir` properties, for JPEG from its Exif
+  Orientation tag.
+- `ReadExif` reads a JPEG's Exif APP1 segment or a HEIF file's Exif item:
+  the Orientation tag, DateTimeOriginal with its fraction of a second and
+  its offset (OffsetTimeOriginal), and the GPS position and altitude.
+  Its results are checked against ExifTool on the test files.
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
@@ -75,7 +87,8 @@ Early. The first feature is HEIF/HEIC orientation:
 
 - ISO/IEC 14496-12, ISO base media file format
 - ISO/IEC 23008-12, High Efficiency Image File Format (HEIF)
-- CIPA DC-008 (Exif) for the Orientation tag
+- ITU-T T.81 (JPEG) for the marker segments
+- CIPA DC-008 (Exif 2.32): the Orientation, date and time, and GPS tags
 
 ## Licence
 
