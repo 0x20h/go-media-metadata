@@ -61,6 +61,13 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   the Orientation tag, DateTimeOriginal with its fraction of a second and
   its offset (OffsetTimeOriginal), and the GPS position and altitude.
   Its results are checked against ExifTool on the test files.
+- `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
+  segment or a HEIF Exif item: orientation, date with fraction and
+  offset, GPS position and altitude, or the position removed. Every other
+  byte keeps its offset, so unknown tags, the thumbnail and maker notes
+  stay valid. A value that fits is written in place; a longer value, or
+  an IFD that needs a new entry, goes at the end. Old values and moved
+  IFDs are zeroed, so a removed GPS position doesn't stay in the data.
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
