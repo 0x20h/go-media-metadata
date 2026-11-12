@@ -382,11 +382,15 @@ func (f *heifFile) shared(id uint32, cm uint8, start, end uint64) bool {
 	return false
 }
 
-// ReadXMP returns the XMP item of the HEIF file in r (size bytes), nil
-// without one.
+// ReadXMP returns the XMP packet of the HEIF or camera RAW file in r
+// (size bytes): a HEIF file's XMP item, a TIFF-based RAW's XMLPacket tag,
+// a CR3's XMP box. Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	f, err := parseHEIF(r, size)
 	if err != nil {
+		if b, ok, rerr := readRAWXMP(r, size); ok {
+			return b, rerr
+		}
 		return nil, err
 	}
 	id, found, err := f.metadataItem(kindXMP)
