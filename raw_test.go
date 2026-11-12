@@ -34,14 +34,6 @@ func subIFD(order byteOrder, off func(map[uint16]field, tiffReader) uint32) []ti
 func exifOf(ifd0 map[uint16]field, t tiffReader) uint32 { v, _ := t.uint(ifd0[tagExifIFD]); return v }
 func gpsOf(ifd0 map[uint16]field, t tiffReader) uint32  { v, _ := t.uint(ifd0[tagGPSIFD]); return v }
 
-func sortEntries(es []tiffEntry) {
-	for i := 1; i < len(es); i++ {
-		for j := i; j > 0 && es[j].tag < es[j-1].tag; j-- {
-			es[j], es[j-1] = es[j-1], es[j]
-		}
-	}
-}
-
 // rawTIFFFile is a TIFF-based RAW with photoTIFF's fields: IFD0 with a
 // Make, the orientation (SHORT or LONG) and the XMP packet; the Exif IFD
 // with a maker note; the GPS IFD; then image data.
