@@ -25,8 +25,6 @@ type Meta struct {
 	HasPrimary bool
 	// ItemTypes maps item ids to their infe item type, where known.
 	ItemTypes map[uint32]Type
-	// ContentTypes maps "mime" items to their infe content type.
-	ContentTypes map[uint32]string
 
 	Loc  *ILoc
 	Prop *IPrp
@@ -67,7 +65,7 @@ func ParseMeta(b []byte) (*Meta, error) {
 		return nil, fmt.Errorf("%w: meta box without its version", ErrMalformed)
 	}
 	m := &Meta{Version: body[0], Flags: binary.BigEndian.Uint32(body[:4]) & 0xFFFFFF, large: mb.Large(),
-		ItemTypes: map[uint32]Type{}, ContentTypes: map[uint32]string{}}
+		ItemTypes: map[uint32]Type{}}
 	kids, err := ReadBoxes(bytes.NewReader(body), 4, int64(len(body)))
 	if err != nil {
 		return nil, err
@@ -172,17 +170,6 @@ func (m *Meta) parseIinf(b []byte) error {
 		var t Type
 		copy(t[:], rd.b[rd.off:rd.off+4])
 		m.ItemTypes[id] = t
-		if t == T("mime") {
-			// item_name, then content_type, each null-terminated.
-			rest := rd.b[rd.off+4:]
-			if i := bytes.IndexByte(rest, 0); i >= 0 {
-				ct := rest[i+1:]
-				if j := bytes.IndexByte(ct, 0); j >= 0 {
-					ct = ct[:j]
-				}
-				m.ContentTypes[id] = string(ct)
-			}
-		}
 	}
 	return nil
 }

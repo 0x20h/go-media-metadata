@@ -57,10 +57,67 @@ func (m *Meta) AddItem(id uint32, typ Type, contentType string) error {
 	body = append(body, e...)
 	m.children[ci].raw = append(AppendHeader(nil, T("iinf"), len(body), boxes[0].Large()), body...)
 	m.ItemTypes[id] = typ
-	if typ == T("mime") {
-		m.ContentTypes[id] = contentType
-	}
 	return nil
+}
+
+// ContentType is the content type of a "mime" item's infe, read from the
+// iinf box when asked (most callers never do); "" for none.
+func (m *Meta) ContentType(id uint32) string {
+	ci := m.childIndex(T("iinf"))
+	if ci < 0 || m.ItemTypes[id] != T("mime") {
+		return ""
+	}
+	raw := m.children[ci].raw
+	boxes, err := ReadBoxes(bytes.NewReader(raw), 0, int64(len(raw)))
+	if err != nil || len(boxes) != 1 || boxes[0].BodyLen() < 4 {
+		return ""
+	}
+	b := raw[boxes[0].Body():]
+	start := int64(6)
+	if b[0] != 0 {
+		start = 8
+	}
+	if int64(len(b)) < start {
+		return ""
+	}
+	entries, err := ReadBoxes(bytes.NewReader(b), start, int64(len(b)))
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.Type != T("infe") {
+			continue
+		}
+		rd := &reader{b: b[e.Body():e.End()]}
+		v := rd.u8()
+		rd.need(3)
+		rd.off += 3
+		var got uint32
+		switch v {
+		case 2:
+			got = uint32(rd.u16())
+		case 3:
+			got = rd.u32()
+		default:
+			continue
+		}
+		rd.u16() // item_protection_index
+		if rd.err != nil || got != id || !rd.need(4) {
+			continue
+		}
+		// The type, then item_name and content_type, each null-terminated.
+		rest := rd.b[rd.off+4:]
+		i := bytes.IndexByte(rest, 0)
+		if i < 0 {
+			return ""
+		}
+		ct := rest[i+1:]
+		if j := bytes.IndexByte(ct, 0); j >= 0 {
+			ct = ct[:j]
+		}
+		return string(ct)
+	}
+	return ""
 }
 
 // AddRef adds a reference of type typ from one item to others, to the

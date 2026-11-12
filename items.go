@@ -174,7 +174,7 @@ func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 	found := false
 	for i, t := range f.m.ItemTypes {
 		is := kind == kindExif && t == bmff.T("Exif") ||
-			kind == kindXMP && t == bmff.T("mime") && f.m.ContentTypes[i] == xmpContentType
+			kind == kindXMP && t == bmff.T("mime") && f.m.ContentType(i) == xmpContentType
 		if !is {
 			continue
 		}
