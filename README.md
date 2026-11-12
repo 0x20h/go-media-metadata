@@ -61,6 +61,10 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   the Orientation tag, DateTimeOriginal with its fraction of a second and
   its offset (OffsetTimeOriginal), and the GPS position and altitude.
   Its results are checked against ExifTool on the test files.
+- `EditHEIFExif` and `PlanExifEdit` apply an `ExifEdit` to a HEIF
+  file's Exif item (or add one). A date or GPS change that fits is a
+  patch in place. The orientation is left to `SetOrientation`, since
+  HEIF readers show `irot` and `imir`, not the Exif tag.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
   segment or a HEIF Exif item: orientation, date with fraction and
   offset, GPS position and altitude, or the position removed. Every other
