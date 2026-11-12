@@ -41,6 +41,7 @@ type Plan struct {
 	f       *heifFile
 	meta    []byte  // the new meta box
 	patches []patch // the Exif patches, at output offsets
+	tail    []byte  // appended after the source's last byte
 }
 
 // patchMergeGap is how many unchanged bytes may separate two runs of
@@ -248,5 +249,10 @@ func (p *Plan) Apply(w io.WriterAt) error {
 // The source must not have changed since the plan was made. On an error
 // nothing useful has been written to dst.
 func (p *Plan) WriteTo(dst io.Writer) (int64, error) {
-	return p.f.write(p.src, p.Size, dst, p.meta, p.NewSize-p.Size, p.patches)
+	n, err := p.f.write(p.src, p.Size, dst, p.meta, p.NewSize-p.Size-int64(len(p.tail)), p.patches)
+	if err != nil || len(p.tail) == 0 {
+		return n, err
+	}
+	m, err := dst.Write(p.tail)
+	return n + int64(m), err
 }
