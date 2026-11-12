@@ -38,6 +38,16 @@ if x.GPS != nil {
 tmp, err := os.CreateTemp(filepath.Dir("photo.heic"), "photo-*.heic")
 // ...
 err = mediameta.SetRotation(in, info.Size(), tmp, 180)
+
+// Or plan the edit, and where it keeps the file's size, patch a copy of
+// the file in place (e.g. a clone of it): a few bytes, whatever its size.
+plan, err := mediameta.PlanRotation(in, info.Size(), 180)
+// ...
+if plan.InPlace {
+	err = plan.Apply(clone) // an io.WriterAt holding the source's bytes
+} else {
+	_, err = plan.WriteTo(tmp)
+}
 ```
 
 ## Status
@@ -54,6 +64,9 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
+- `PlanRotation` computes the same edit without writing it: a `Plan` that
+  streams the new file (`WriteTo`) or, when the file keeps its size, lists
+  the bytes that change as patches to apply to a copy (`Apply`).
 
 ### Compared with other tools
 
@@ -78,10 +91,13 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - **Safe on hostile input:** every parser is fuzzed. Lengths are checked,
   counts are bounded by the bytes available, nesting is capped. Malformed
   input gives an error, never a panic or an endless loop.
-- **Never in place:** a write reads the source and writes a new file to
+- **Never the source:** a write reads the source and writes a new file to
   the `io.Writer` you pass. On an error that writer may hold part of a
   file, so write to a temporary file and rename it over the original only
-  once the call has succeeded.
+  once the call has succeeded. `Plan.Apply` writes only to the copy you
+  pass, and only when the plan is in place: the patches then hold every
+  byte that changes, and applied to a copy they give byte for byte what
+  `WriteTo` writes.
 
 ## Specifications
 
