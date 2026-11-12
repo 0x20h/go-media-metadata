@@ -170,19 +170,12 @@ func orientationTag(data []byte) (at int, order binary.ByteOrder, value uint16, 
 // exifOrientationPatches are the output bytes that set each Exif item's
 // Orientation tag to shown, where the tag exists and differs.
 func (f *heifFile) exifOrientationPatches(src io.ReaderAt, size int64, newMeta []byte, delta int64, shown Orientation) ([]patch, error) {
-	var oldMeta []byte
 	var out []patch
 	for id, t := range f.m.ItemTypes {
 		if t != bmff.T("Exif") {
 			continue
 		}
-		if oldMeta == nil {
-			oldMeta = make([]byte, f.meta.Size)
-			if _, err := src.ReadAt(oldMeta, f.meta.Offset); err != nil {
-				return nil, fmt.Errorf("%w: reading the meta box: %v", ErrMalformed, err)
-			}
-		}
-		it, ok, err := f.readExifItem(src, size, id, oldMeta)
+		it, ok, err := f.readExifItem(src, size, id, f.raw)
 		if err != nil {
 			return nil, err
 		}
@@ -236,15 +229,11 @@ func exifOrientation(r io.ReaderAt, size int64) (Orientation, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	oldMeta := make([]byte, f.meta.Size)
-	if _, err := r.ReadAt(oldMeta, f.meta.Offset); err != nil {
-		return 0, false, err
-	}
 	for id, t := range f.m.ItemTypes {
 		if t != bmff.T("Exif") {
 			continue
 		}
-		it, ok, err := f.readExifItem(r, size, id, oldMeta)
+		it, ok, err := f.readExifItem(r, size, id, f.raw)
 		if err != nil {
 			return 0, false, err
 		}
