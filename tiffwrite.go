@@ -369,14 +369,16 @@ func (w *tiffWriter) next(off uint32, n int) (uint32, bool) {
 
 // pointer is IFD0's pointer to a sub-IFD; has is false without one. A
 // pointer that leads outside the data is refused when the IFD is edited.
+//
+// It's found as ReadExif finds it (the first valid entry of the tag, of
+// any unsigned integer type), so the IFD edited is the one read.
 func (w *tiffWriter) pointer(tag uint16) (uint32, bool) {
-	es, _ := w.entries(w.first)
-	for _, e := range es {
-		if e.tag == tag && (e.typ == typeLong || e.typ == 13) && e.count == 1 {
-			return w.order.Uint32(e.raw[8:]), true
-		}
+	t := tiffReader{data: w.data, order: w.order}
+	f, ok := t.ifd(w.first)[tag]
+	if !ok {
+		return 0, false
 	}
-	return 0, false
+	return t.uint(f)
 }
 
 func (w *tiffWriter) asciiChange(tag uint16, s string) tiffChange {
@@ -433,13 +435,21 @@ func (w *tiffWriter) apply(off uint32, has bool, changes []tiffChange) (uint32, 
 		found := i < len(es) && es[i].tag == c.tag
 		switch {
 		case c.remove:
-			if found {
+			// Every entry of the tag: a reader takes the first valid
+			// one, which may be any of them.
+			for i < len(es) && es[i].tag == c.tag {
 				w.release(es[i])
 				es = append(es[:i], es[i+1:]...)
 			}
 			continue
 		case found && c.keep:
 			continue
+		}
+		// One entry of the tag stays, the one set; duplicates go, so no
+		// reader finds an old value in them.
+		for found && i+1 < len(es) && es[i+1].tag == c.tag {
+			w.release(es[i+1])
+			es = append(es[:i+1], es[i+2:]...)
 		}
 		e := tiffRawEntry{tag: c.tag, typ: c.typ, count: c.count}
 		w.order.PutUint16(e.raw[:], c.tag)
