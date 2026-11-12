@@ -19,11 +19,18 @@ import (
 // irot. imir's axis is read as Apple and libheif read it (see imirAxis).
 //
 // The images that belong to it turn with it, and the Exif Orientation tag
-// follows, as for SetRotation. On an error nothing useful has been written
-// to dst.
+// follows, as for SetRotation. A JPEG file gets the tag, as SetRotation
+// sets it. On an error nothing useful has been written to dst.
 func SetOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) error {
 	r, err := planOrientation(src, size, o)
 	if err != nil {
+		if e, ok, jerr := jpegOrientation(src, size, o); ok {
+			if jerr != nil {
+				return jerr
+			}
+			_, err := e.write(src, size, dst)
+			return err
+		}
 		return err
 	}
 	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)

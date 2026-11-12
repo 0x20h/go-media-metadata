@@ -343,6 +343,7 @@ func FuzzReadOrientation(f *testing.F) {
 
 func FuzzSetRotation(f *testing.F) {
 	seeds(f)
+	jpegSeeds(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			for _, deg := range []int{0, 90} {

@@ -70,6 +70,10 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   `tiff:Orientation` digit of an XMP packet, in place. Nothing else is
   written, so maker notes and image data stay byte for byte. A file
   without the tag is refused rather than restructured.
+- `EditHEIFExif` and `PlanExifEdit` apply an `ExifEdit` to a HEIF
+  file's Exif item (or add one). A date or GPS change that fits is a
+  patch in place. The orientation is left to `SetOrientation`, since
+  HEIF readers show `irot` and `imir`, not the Exif tag.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
   segment or a HEIF Exif item: orientation, date with fraction and
   offset, GPS position and altitude, or the position removed. Every other
@@ -80,6 +84,11 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
+- For JPEG, `SetRotation`, `SetOrientation` and their plans set the Exif
+  Orientation tag: in place where the first Exif segment has it (only its
+  bytes change, the plan is one patch), in a new Exif segment after the
+  JFIF one where the file has no Exif. The scan data is copied byte for
+  byte; ExifTool reads and validates the files written.
 - `SetOrientation` sets any of the eight orientations, mirrored ones
   included, through `irot` and `imir` in the order ISO/IEC 23008-12
   applies them (rotation, then mirror). On a mirrored image `SetRotation`
