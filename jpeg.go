@@ -231,6 +231,12 @@ func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isJPEG(r, size) {
 		return readJPEGExif(r, size)
 	}
+	if isPNG(r, size) {
+		return readPNGExif(r, size)
+	}
+	if isWebP(r, size) {
+		return readWebPExif(r, size)
+	}
 	if !startsWithFtyp(r, size) {
 		return Exif{}, fmt.Errorf("%w: %w", ErrNotJPEG, ErrNotHEIF)
 	}

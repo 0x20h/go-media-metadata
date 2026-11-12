@@ -33,6 +33,19 @@ func EditHEIFExif(src io.ReaderAt, size int64, dst io.Writer, edit ExifEdit) err
 // is in place, a patch of the item's data. Old values are zeroed, in the
 // item and, when it moves, where it was.
 func PlanExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
+	// A PNG or WebP keeps any "Exif\0\0" before its TIFF data; its Exif
+	// Orientation is how it's shown, so it's set here too.
+	p, ok, err := planChunked(src, size, kindExif, func(old []byte) ([]byte, error) {
+		prefix, tiff := tiffPayload(old)
+		out, err := EditExif(tiff, edit)
+		if err != nil {
+			return nil, err
+		}
+		return append(append([]byte(nil), prefix...), out...), nil
+	})
+	if ok {
+		return p, err
+	}
 	if edit.Orientation != 0 {
 		return nil, ErrOrientationInExif
 	}

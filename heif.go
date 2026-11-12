@@ -190,10 +190,17 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	if err != nil {
 		// JPEG is checked only once HEIF fails, so a HEIF read costs no
 		// more than it did before JPEG was supported.
-		if !isJPEG(r, size) {
+		var x Exif
+		switch {
+		case isJPEG(r, size):
+			x, err = readJPEGExif(r, size)
+		case isPNG(r, size):
+			x, err = readPNGExif(r, size)
+		case isWebP(r, size):
+			x, err = readWebPExif(r, size)
+		default:
 			return 0, err
 		}
-		x, err := readJPEGExif(r, size)
 		if err != nil {
 			return 0, err
 		}

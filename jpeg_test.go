@@ -332,7 +332,7 @@ func TestParseJPEGErrors(t *testing.T) {
 		want error
 	}{
 		"empty":                 {nil, ErrNotJPEG},
-		"PNG":                   {[]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR"), ErrNotJPEG},
+		"GIF":                   {[]byte("GIF89a\x01\x00\x01\x00\x00\x00\x00"), ErrNotJPEG},
 		"SOI only":              {[]byte{0xFF, 0xD8, 0xFF}, ErrMalformed},
 		"before the scan":       {good[:sos], ErrMalformed},
 		"EOI before the scan":   {[]byte{0xFF, 0xD8, 0xFF, 0xD9}, ErrMalformed},
@@ -348,9 +348,9 @@ func TestParseJPEGErrors(t *testing.T) {
 	}
 	// Neither format: the error is both, so callers that check for a HEIF
 	// file keep working.
-	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
-	if _, err := ReadExif(bytes.NewReader(png), int64(len(png))); !errors.Is(err, ErrNotHEIF) {
-		t.Errorf("ReadExif(PNG): %v, want ErrNotHEIF too", err)
+	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
+	if _, err := ReadExif(bytes.NewReader(gif), int64(len(gif))); !errors.Is(err, ErrNotHEIF) {
+		t.Errorf("ReadExif(GIF): %v, want ErrNotHEIF too", err)
 	}
 	// Fill bytes before a marker and a restart marker are fine.
 	fill := withSegments(good, []byte{0xFF, 0xFF, 0xFF, markerRST0})

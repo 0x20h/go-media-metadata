@@ -65,6 +65,17 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   file's Exif item (or add one). A date or GPS change that fits is a
   patch in place. The orientation is left to `SetOrientation`, since
   HEIF readers show `irot` and `imir`, not the Exif tag.
+- PNG and WebP: `ReadExif`, `ReadOrientation` and `ReadXMP` read a
+  PNG's `eXIf` chunk and XMP `iTXt` chunk (compressed or not) and a
+  WebP's `EXIF` and `XMP ` chunks; `PlanExif`, `PlanXMP` and
+  `PlanExifEdit` (and the Set functions) write them, the image data
+  untouched. A value that fits its chunk is written there, padded, with
+  the PNG chunk's CRC rewritten: in place. A longer one, or a new one,
+  rewrites the file: a new PNG chunk goes right after `IHDR`, a new WebP
+  chunk after the image, with the `VP8X` flags and RIFF size updated (a
+  simple WebP gets the `VP8X` header metadata needs). Old values never
+  stay in the file. In these formats the Exif Orientation is how the
+  image is shown, so `PlanExifEdit` sets it too.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
   segment or a HEIF Exif item: orientation, date with fraction and
   offset, GPS position and altitude, or the position removed. Every other
