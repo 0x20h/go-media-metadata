@@ -61,6 +61,15 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   the Orientation tag, DateTimeOriginal with its fraction of a second and
   its offset (OffsetTimeOriginal), and the GPS position and altitude.
   Its results are checked against ExifTool on the test files.
+- Camera RAW: `ReadExif`, `ReadOrientation` and `ReadXMP` also read
+  TIFF-based RAW files (DNG, CR2, NEF, ARW, ORF, RW2; an RW2's Exif from
+  its embedded JPEG) and CR3 (its CMT boxes and XMP box), reading the
+  IFDs from the file as needed, never the image data.
+  `SetRAWOrientation` and `PlanRAWOrientation` change only the
+  Orientation value where it sits in IFD0 (CR3: CMT1), and the
+  `tiff:Orientation` digit of an XMP packet, in place. Nothing else is
+  written, so maker notes and image data stay byte for byte. A file
+  without the tag is refused rather than restructured.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
   segment or a HEIF Exif item: orientation, date with fraction and
   offset, GPS position and altitude, or the position removed. Every other
