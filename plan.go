@@ -42,6 +42,7 @@ type Plan struct {
 	meta    []byte  // the new meta box
 	patches []patch // the Exif patches, at output offsets
 	tail    []byte  // appended after the source's last byte
+	jpeg    *jpegEdit
 }
 
 // patchMergeGap is how many unchanged bytes may separate two runs of
@@ -57,10 +58,17 @@ const patchMergeGap = 8
 // case (an irot only the rotated images use, as in iPhone and ImageIO
 // files) one byte of it and the two bytes of the Exif Orientation tag.
 // An appended irot, a widened ipma, or item offsets that move change the
-// size.
+// size. For a JPEG it's in place where the Exif Orientation tag exists:
+// one patch of the tag's bytes.
 func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 	r, err := planRotation(src, size, degrees)
 	if err != nil {
+		if e, ok, jerr := jpegRotation(src, size, degrees); ok {
+			if jerr != nil {
+				return nil, jerr
+			}
+			return e.plan(src, size), nil
+		}
 		return nil, err
 	}
 	return r.plan(src, size), nil
@@ -74,6 +82,12 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
 	r, err := planOrientation(src, size, o)
 	if err != nil {
+		if e, ok, jerr := jpegOrientation(src, size, o); ok {
+			if jerr != nil {
+				return nil, jerr
+			}
+			return e.plan(src, size), nil
+		}
 		return nil, err
 	}
 	return r.plan(src, size), nil
@@ -249,6 +263,9 @@ func (p *Plan) Apply(w io.WriterAt) error {
 // The source must not have changed since the plan was made. On an error
 // nothing useful has been written to dst.
 func (p *Plan) WriteTo(dst io.Writer) (int64, error) {
+	if p.jpeg != nil {
+		return p.jpeg.write(p.src, p.Size, dst)
+	}
 	n, err := p.f.write(p.src, p.Size, dst, p.meta, p.NewSize-p.Size-int64(len(p.tail)), p.patches)
 	if err != nil || len(p.tail) == 0 {
 		return n, err
