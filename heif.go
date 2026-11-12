@@ -181,8 +181,11 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 
 // SetRotation writes to dst the HEIF file in src (size bytes) with its
 // primary image rotated degrees clockwise (0, 90, 180 or 270; other
-// multiples of 90 are taken modulo 360): its irot property is set to
-// that, replacing any rotation it had, and a mirroring (imir) is kept.
+// multiples of 90 are taken modulo 360): its irot property is set so the
+// image shows that, replacing any rotation it had. A mirroring (imir) is
+// kept, and comes first as in the Exif numbering: a mirrored image
+// rotated 90 shows orientation 7, Orientation.Degrees() of what it
+// shows is degrees either way.
 // The images that belong to it, its thumbnails and auxiliary images such
 // as an HDR gain map, turn with it wherever they showed its orientation.
 // The image data, and every byte outside the meta box other than item
@@ -245,28 +248,11 @@ func (f *heifFile) irotRef(id uint32) (at int, idx uint16, err error) {
 	return at, idx, nil
 }
 
-// setIrot rotates the primary image to quarters anticlockwise turns, and
-// with it each related image (thumbnail, gain map) that showed the
-// primary's orientation, so they stay in step. When these images share one
-// irot only they use, that irot is changed in place and nothing moves;
+// setIrot gives the targets (the primary image first, then the related
+// images in step with it) quarters anticlockwise turns. When they share
+// one irot only they use, that irot is changed in place and nothing moves;
 // otherwise each gets an irot of the new angle.
-func (f *heifFile) setIrot(quarters int) error {
-	if _, entry := f.m.Prop.Entry(f.m.Primary); entry == nil {
-		return fmt.Errorf("%w: the primary item has no properties", ErrUnsupported)
-	}
-	before, err := f.orientation()
-	if err != nil {
-		return err
-	}
-	targets := []uint32{f.m.Primary}
-	for _, id := range f.related() {
-		if _, entry := f.m.Prop.Entry(id); entry == nil {
-			continue
-		}
-		if o, err := f.itemOrientation(id); err == nil && o == before {
-			targets = append(targets, id)
-		}
-	}
+func (f *heifFile) setIrot(targets []uint32, quarters int) error {
 	// One irot shared by exactly these images: change it in place.
 	_, idx, err := f.irotRef(f.m.Primary)
 	if err != nil {

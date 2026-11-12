@@ -62,15 +62,33 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	return r.plan(src, size), nil
+}
+
+// PlanOrientation is SetOrientation's edit, computed but not written, as
+// PlanRotation is SetRotation's. It is in place when the meta box keeps
+// its size: a rotation that keeps the mirroring (or its absence) changes
+// the irot byte as PlanRotation does; adding or removing a mirror changes
+// an association, and with it the size.
+func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
+	r, err := planOrientation(src, size, o)
+	if err != nil {
+		return nil, err
+	}
+	return r.plan(src, size), nil
+}
+
+// plan is the Plan of an edit.
+func (r rotation) plan(src io.ReaderAt, size int64) *Plan {
 	p := &Plan{Size: size, NewSize: size + r.delta, src: src, f: r.f, meta: r.meta, patches: r.patches}
 	if r.delta == 0 {
 		p.InPlace = true
 		p.Patches = inPlacePatches(r.f.meta.Offset, r.f.raw, r.meta, r.patches)
 	}
-	return p, nil
+	return p
 }
 
-// rotation is a rotation's edit as WriteTo needs it: the parsed file (raw
+// rotation is an orientation edit as WriteTo needs it: the parsed file (raw
 // still the source's meta box), the new meta box, its change in size, and
 // the Exif patches at output offsets.
 type rotation struct {
@@ -82,16 +100,38 @@ type rotation struct {
 
 // planRotation computes a rotation's edit, shared by PlanRotation and
 // SetRotation; SetRotation streams it without the patches a Plan lists.
+// The mirroring stays as it is: a mirrored image is mirrored, then
+// rotated degrees clockwise (the Exif numbering's order).
 func planRotation(src io.ReaderAt, size int64, degrees int) (rotation, error) {
 	if degrees%90 != 0 {
 		return rotation{}, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
 	}
+	return planEdit(src, size, func(f *heifFile) error {
+		before, err := f.orientation()
+		if err != nil {
+			return err
+		}
+		return f.setOrientation(orientationFor(before.Mirrored(), degrees))
+	})
+}
+
+// planOrientation computes the edit that shows the primary image at o.
+func planOrientation(src io.ReaderAt, size int64, o Orientation) (rotation, error) {
+	if !o.Valid() {
+		return rotation{}, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
+	}
+	return planEdit(src, size, func(f *heifFile) error { return f.setOrientation(o) })
+}
+
+// planEdit parses the file, applies edit to its properties, and places
+// the result: the new meta box, the item offsets it moves and the Exif
+// Orientation patches.
+func planEdit(src io.ReaderAt, size int64, edit func(*heifFile) error) (rotation, error) {
 	f, err := parseHEIF(src, size)
 	if err != nil {
 		return rotation{}, err
 	}
-	quarters := ((-degrees/90)%4 + 4) % 4 // irot counts anticlockwise
-	if err := f.setIrot(quarters); err != nil {
+	if err := edit(f); err != nil {
 		return rotation{}, err
 	}
 	newMeta, err := f.m.Encode()
