@@ -1,7 +1,13 @@
 name: ci
 on:
+  # Branches run once, as a pull request; main and the nightly run fuzz
+  # longer.
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -27,7 +33,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
   fuzz:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -37,4 +43,32 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
-      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m .
+      # 2 minutes per target on a pull request, 10 on main, 30 nightly.
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime ${{ github.event_name == 'pull_request' && '2m' || github.event_name == 'schedule' && '30m' || '10m' }} .
+  bench:
+    # Compares the benchmarks of the pull request against its base, run
+    # interleaved on one runner, and fails on a clear regression (see
+    # .github/benchgate).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Build both test binaries
+        run: |
+          git worktree add -q "$RUNNER_TEMP/base" "${{ github.event.pull_request.base.sha }}"
+          go test -c -o "$RUNNER_TEMP/head.test" .
+          (cd "$RUNNER_TEMP/base" && go test -c -o "$RUNNER_TEMP/base.test" .)
+      - name: Run interleaved
+        run: |
+          bench() { "$1" -test.run '^$' -test.bench . -test.benchmem -test.benchtime 200ms -test.count 1; }
+          for i in $(seq 8); do
+            (cd "$RUNNER_TEMP/base" && bench "$RUNNER_TEMP/base.test") >> "$RUNNER_TEMP/base.txt"
+            bench "$RUNNER_TEMP/head.test" >> "$RUNNER_TEMP/head.txt"
+          done
+      - run: go run ./.github/benchgate "$RUNNER_TEMP/base.txt" "$RUNNER_TEMP/head.txt"
