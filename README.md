@@ -69,6 +69,9 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   applies them (rotation, then mirror). On a mirrored image `SetRotation`
   keeps the mirror first, as the Exif numbering does: orientation 2 turned
   90° clockwise is 7.
+  `imir`'s axis is read and written as Apple's ImageIO and libheif have
+  it: axis 1 mirrors left-right, axis 0 top-bottom. A test decodes every
+  orientation with libheif and compares the pixels, where it's installed.
 - `SetExif` and `SetXMP` replace or add the Exif and XMP items with data
   the caller encoded (TIFF data; an XMP packet), and `ReadXMP` reads the
   XMP item. A value that fits the item's data is patched there, in place;
