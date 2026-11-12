@@ -209,6 +209,14 @@ func FuzzPlanRotation(f *testing.F) {
 				}
 				checkPlan(t, data, p)
 			}
+			// Orientation edits: adding, keeping and taking away a mirror.
+			for _, o := range []Orientation{1, 2, 7} {
+				p, err := PlanOrientation(bytes.NewReader(data), int64(len(data)), o)
+				if err != nil {
+					continue
+				}
+				checkPlan(t, data, p)
+			}
 		})
 	})
 }

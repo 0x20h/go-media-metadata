@@ -64,9 +64,17 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
-- `PlanRotation` computes the same edit without writing it: a `Plan` that
+- `SetOrientation` sets any of the eight orientations, mirrored ones
+  included, through `irot` and `imir` in the order ISO/IEC 23008-12
+  applies them (rotation, then mirror). On a mirrored image `SetRotation`
+  keeps the mirror first, as the Exif numbering does: orientation 2 turned
+  90° clockwise is 7.
+- `PlanRotation` and `PlanOrientation` compute the same edits without
+  writing them: a `Plan` that
   streams the new file (`WriteTo`) or, when the file keeps its size, lists
-  the bytes that change as patches to apply to a copy (`Apply`).
+  the bytes that change as patches to apply to a copy (`Apply`). Keeping
+  the mirroring (or its absence) is in place where the image has an `irot`
+  of its own; adding or removing a mirror changes the file's size.
 
 ### Compared with other tools
 
