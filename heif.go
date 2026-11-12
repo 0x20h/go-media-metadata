@@ -180,7 +180,13 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 //
 // A file that is neither gives an error that is ErrNotHEIF.
 func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
-	if isJPEG(r, size) {
+	f, err := parseHEIF(r, size)
+	if err != nil {
+		// JPEG is checked only once HEIF fails, so a HEIF read costs no
+		// more than it did before JPEG was supported.
+		if !isJPEG(r, size) {
+			return 0, err
+		}
 		x, err := readJPEGExif(r, size)
 		if err != nil {
 			return 0, err
@@ -189,10 +195,6 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			return 1, nil
 		}
 		return x.Orientation, nil
-	}
-	f, err := parseHEIF(r, size)
-	if err != nil {
-		return 0, err
 	}
 	return f.orientation()
 }
