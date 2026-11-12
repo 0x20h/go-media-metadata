@@ -2,6 +2,7 @@ package mediameta
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -204,6 +205,20 @@ func FuzzPlanRotation(f *testing.F) {
 		withinDeadline(t, func() {
 			for _, deg := range []int{0, 90, 180} {
 				p, err := PlanRotation(bytes.NewReader(data), int64(len(data)), deg)
+				if err != nil {
+					continue
+				}
+				checkPlan(t, data, p)
+			}
+			// Metadata items: replaced or added, fitting or not.
+			for _, e := range [][2][]byte{{photoTIFF(binary.LittleEndian), nil}, {nil, xmpPacket("x", 0)}, {nil, xmpPacket("y", 3000)}} {
+				var p *Plan
+				var err error
+				if e[0] != nil {
+					p, err = PlanExif(bytes.NewReader(data), int64(len(data)), e[0])
+				} else {
+					p, err = PlanXMP(bytes.NewReader(data), int64(len(data)), e[1])
+				}
 				if err != nil {
 					continue
 				}

@@ -69,6 +69,14 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   applies them (rotation, then mirror). On a mirrored image `SetRotation`
   keeps the mirror first, as the Exif numbering does: orientation 2 turned
   90° clockwise is 7.
+- `SetExif` and `SetXMP` replace or add the Exif and XMP items with data
+  the caller encoded (TIFF data; an XMP packet), and `ReadXMP` reads the
+  XMP item. A value that fits the item's data is patched there, in place;
+  a longer one goes in a new `mdat` box at the end. A missing item is
+  listed in `iinf` with a `cdsc` reference to the primary image, and the
+  item offsets the `meta` box's growth moves are moved. Image data is
+  copied byte for byte. `PlanExif` and `PlanXMP` are the same edits as
+  plans.
 - `PlanRotation` and `PlanOrientation` compute the same edits without
   writing them: a `Plan` that
   streams the new file (`WriteTo`) or, when the file keeps its size, lists
