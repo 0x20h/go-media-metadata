@@ -2,10 +2,12 @@ package mediameta
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
@@ -118,19 +120,26 @@ func parseJPEG(r io.ReaderAt, size int64) (*jpegFile, error) {
 // without one.
 func (f *jpegFile) exifSegment(r io.ReaderAt) (seg jpegSegment, payload []byte, ok bool, err error) {
 	for _, s := range f.segs {
-		if s.marker != markerAPP1 || s.bodyLen < int64(len(exifHeader)) {
+		if s.marker != markerAPP1 || s.bodyLen < int64(len(exifHeader))+8 {
 			continue
 		}
 		head := make([]byte, len(exifHeader))
 		if _, err := r.ReadAt(head, s.body); err != nil {
 			return s, nil, false, fmt.Errorf("%w: reading APP1: %v", ErrMalformed, err)
 		}
-		if !bytes.Equal(head, exifHeader) {
+		// "Exif" and a NUL, then a pad byte that should be another NUL;
+		// some writers put 0xFF there, and ExifTool reads those too.
+		if !bytes.Equal(head[:5], exifHeader[:5]) {
 			continue
 		}
 		payload := make([]byte, s.bodyLen)
 		if _, err := r.ReadAt(payload, s.body); err != nil {
 			return s, nil, false, fmt.Errorf("%w: reading APP1: %v", ErrMalformed, err)
+		}
+		// One without a TIFF header is passed over for the next, as
+		// ExifTool does.
+		if _, _, ok := newTIFF(payload[len(exifHeader):]); !ok {
+			continue
 		}
 		return s, payload, true, nil
 	}
@@ -150,18 +159,43 @@ func readJPEGExif(r io.ReaderAt, size int64) (Exif, error) {
 	return parseExif(payload[len(exifHeader):]), nil
 }
 
+// exifItems are the HEIF file's Exif items in the order they're tried:
+// those that describe the primary image (a cdsc reference to it) first,
+// then the others, each by item id.
+func (f *heifFile) exifItems() []uint32 {
+	var ids []uint32
+	for id, t := range f.m.ItemTypes {
+		if t == bmff.T("Exif") {
+			ids = append(ids, id)
+		}
+	}
+	primary := map[uint32]bool{}
+	for _, ref := range f.m.Refs {
+		if ref.Type == bmff.T("cdsc") && slices.Contains(ref.To, f.m.Primary) {
+			primary[ref.From] = true
+		}
+	}
+	slices.SortFunc(ids, func(a, b uint32) int {
+		if primary[a] != primary[b] {
+			if primary[a] {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Compare(a, b)
+	})
+	return ids
+}
+
 // readHEIFExif reads the Exif item of the HEIF file in r, as far as its
-// first maxExifHead bytes go.
+// first maxExifHead bytes go: the first of exifItems that holds TIFF data.
 func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 	f, err := parseHEIF(r, size)
 	if err != nil {
 		return Exif{}, err
 	}
 	var oldMeta []byte
-	for id, t := range f.m.ItemTypes {
-		if t != bmff.T("Exif") {
-			continue
-		}
+	for _, id := range f.exifItems() {
 		if oldMeta == nil {
 			oldMeta = make([]byte, f.meta.Size)
 			if _, err := r.ReadAt(oldMeta, f.meta.Offset); err != nil {
@@ -179,6 +213,9 @@ func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 		// 23008-12 A.2.1).
 		skip := 4 + uint64(binary.BigEndian.Uint32(it.head))
 		if skip > uint64(len(it.head)) {
+			continue
+		}
+		if _, _, ok := newTIFF(it.head[skip:]); !ok {
 			continue
 		}
 		return parseExif(it.head[skip:]), nil

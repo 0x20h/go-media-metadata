@@ -271,12 +271,12 @@ func TestReadExifRejectsBadFields(t *testing.T) {
 }
 
 func TestParseOffset(t *testing.T) {
-	for s, want := range map[string]int{"+02:00": 7200, "-03:30": -12600, "+00:00": 0, "+14:00": 50400} {
+	for s, want := range map[string]int{"Z": 0, "+02:00": 7200, "-03:30": -12600, "+00:00": 0, "+14:00": 50400} {
 		if got, ok := parseOffset(s); !ok || got != want {
 			t.Errorf("%q: %d, %v; want %d", s, got, ok, want)
 		}
 	}
-	for _, s := range []string{"", "Z", "+2:00", "+02:0", "02:00+", "+15:00", "+02:60", "++2:00", "+-1:00", "+02:-1", "+0200 "} {
+	for _, s := range []string{"", "z", "+2:00", "+02:0", "02:00+", "+15:00", "+02:60", "++2:00", "+-1:00", "+02:-1", "+0200 "} {
 		if _, ok := parseOffset(s); ok {
 			t.Errorf("%q accepted", s)
 		}
@@ -382,6 +382,9 @@ func jpegSeeds(f *testing.F) {
 	f.Add(plain)
 	f.Add(withSegments(plain, exifSegment(photoTIFF(binary.LittleEndian))))
 	f.Add(withSegments(plain, exifSegment(photoTIFF(binary.BigEndian))))
+	for _, q := range quirks(f) {
+		f.Add(q.file)
+	}
 }
 
 func FuzzReadExif(f *testing.F) {

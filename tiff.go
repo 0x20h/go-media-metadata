@@ -22,10 +22,13 @@ type Exif struct {
 	// tag, with SubSecTimeOriginal's fraction of a second. It's the zero
 	// time without one.
 	//
-	// With an OffsetTimeOriginal tag, OffsetKnown is true and the time is
-	// in a fixed zone of that offset. Without one the camera's clock
-	// time is all the file says: it's returned as that clock time in
-	// time.UTC, with OffsetKnown false, and is not a UTC time.
+	// With an OffsetTimeOriginal tag ("+HH:MM", "-HH:MM" or "Z"), or
+	// without one an offset written after the time itself, OffsetKnown is
+	// true and the time is in a fixed zone of that offset. Without either
+	// the camera's clock time is all the file says: it's returned as that
+	// clock time in time.UTC, with OffsetKnown false, and is not a UTC
+	// time. Layouts writers use besides the standard's are read too (see
+	// parseExifDate); a blank or impossible date is no date.
 	DateTimeOriginal time.Time
 	OffsetKnown      bool
 
@@ -62,12 +65,16 @@ const (
 
 // TIFF field types read here, and the size of one value of each.
 const (
-	typeByte     = 1
-	typeASCII    = 2
-	typeShort    = 3
-	typeLong     = 4
-	typeRational = 5
-	typeUndef    = 7
+	typeByte      = 1
+	typeASCII     = 2
+	typeShort     = 3
+	typeLong      = 4
+	typeRational  = 5
+	typeUndef     = 7
+	typeSRational = 10
+	// typeIFD is a LONG that points to an IFD (TIFF Technical Note 1),
+	// which some writers use for the Exif and GPS IFD pointers.
+	typeIFD = 13
 )
 
 func typeSize(t uint16) int {
@@ -76,9 +83,9 @@ func typeSize(t uint16) int {
 		return 1
 	case typeShort:
 		return 2
-	case typeLong:
+	case typeLong, typeIFD:
 		return 4
-	case typeRational:
+	case typeRational, typeSRational:
 		return 8
 	}
 	return 0
@@ -156,22 +163,17 @@ func (t tiffReader) ifd(off uint32) map[uint16]field {
 	return out
 }
 
-// short is a SHORT field's first value.
-func (t tiffReader) short(f field) (uint16, bool) {
-	if f.typ != typeShort {
-		return 0, false
-	}
-	return t.order.Uint16(f.value), true
-}
-
-// long is a LONG field's first value (or a SHORT's, which some writers
-// use for IFD pointers).
-func (t tiffReader) long(f field) (uint32, bool) {
+// uint is an unsigned integer field's first value, whichever of BYTE,
+// SHORT, LONG or IFD the writer chose: ExifTool reads them all alike, and
+// writers differ (an Orientation as LONG, an IFD pointer as IFD).
+func (t tiffReader) uint(f field) (uint32, bool) {
 	switch f.typ {
-	case typeLong:
-		return t.order.Uint32(f.value), true
+	case typeByte:
+		return uint32(f.value[0]), true
 	case typeShort:
 		return uint32(t.order.Uint16(f.value)), true
+	case typeLong, typeIFD:
+		return t.order.Uint32(f.value), true
 	}
 	return 0, false
 }
@@ -188,19 +190,23 @@ func ascii(f field) (string, bool) {
 	return strings.TrimSpace(s), true
 }
 
-// rationals are a RATIONAL field's values; ok is false for a zero
-// denominator.
-func (t tiffReader) rationals(f field) ([]float64, bool) {
-	if f.typ != typeRational {
+// rationals are the first max values of a RATIONAL or SRATIONAL field;
+// ok is false for a zero denominator among them.
+func (t tiffReader) rationals(f field, max int) ([]float64, bool) {
+	if f.typ != typeRational && f.typ != typeSRational {
 		return nil, false
 	}
-	out := make([]float64, f.count)
+	out := make([]float64, min(f.count, max))
 	for i := range out {
 		num, den := t.order.Uint32(f.value[8*i:]), t.order.Uint32(f.value[8*i+4:])
 		if den == 0 {
 			return nil, false
 		}
-		out[i] = float64(num) / float64(den)
+		if f.typ == typeSRational {
+			out[i] = float64(int32(num)) / float64(int32(den))
+		} else {
+			out[i] = float64(num) / float64(den)
+		}
 	}
 	return out, true
 }
@@ -215,17 +221,17 @@ func parseExif(data []byte) Exif {
 	}
 	ifd0 := t.ifd(first)
 	if f, ok := ifd0[tagOrientation]; ok {
-		if v, ok := t.short(f); ok && Orientation(v).Valid() {
+		if v, ok := t.uint(f); ok && v <= 8 && Orientation(v).Valid() {
 			x.Orientation = Orientation(v)
 		}
 	}
 	if f, ok := ifd0[tagExifIFD]; ok {
-		if off, ok := t.long(f); ok && off != first {
+		if off, ok := t.uint(f); ok && off != first {
 			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(t.ifd(off))
 		}
 	}
 	if f, ok := ifd0[tagGPSIFD]; ok {
-		if off, ok := t.long(f); ok && off != first {
+		if off, ok := t.uint(f); ok && off != first {
 			x.GPS = t.gps(t.ifd(off))
 		}
 	}
@@ -239,11 +245,11 @@ const exifDateLayout = "2006:01:02 15:04:05"
 // OffsetTimeOriginal from the Exif IFD.
 func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
 	s, ok := ascii(exif[tagDateTimeOriginal])
-	if !ok || len(s) < len(exifDateLayout) {
+	if !ok {
 		return time.Time{}, false
 	}
-	at, err := time.ParseInLocation(exifDateLayout, s[:len(exifDateLayout)], time.UTC)
-	if err != nil {
+	at, inline, ok := parseExifDate(s)
+	if !ok {
 		return time.Time{}, false
 	}
 	if sub, ok := ascii(exif[tagSubSecTimeOriginal]); ok && sub != "" && len(sub) <= 9 {
@@ -251,9 +257,10 @@ func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
 			at = at.Add(time.Duration(n) * time.Duration(math.Pow10(9-len(sub))))
 		}
 	}
+	// OffsetTimeOriginal, else an offset some writers put after the time.
 	off, ok := ascii(exif[tagOffsetTimeOriginal])
-	if !ok {
-		return at, false
+	if !ok || off == "" {
+		off = inline
 	}
 	secs, ok := parseOffset(off)
 	if !ok {
@@ -263,9 +270,62 @@ func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
 		time.FixedZone(off, secs)), true
 }
 
+// parseExifDate reads an Exif date and time, "YYYY:MM:DD HH:MM:SS", as a
+// clock time in UTC. Writers stray from that layout, and these are taken
+// too: "-" between the date's parts, "T" before the time, a time without
+// seconds. inline is what follows the time, where some put an offset. A
+// blank date ("    :  :     :  :  ", the standard's "unknown") or an
+// impossible one (24:00, 30 February) gives ok false.
+func parseExifDate(s string) (at time.Time, inline string, ok bool) {
+	num := func(s string) (int, bool) {
+		n := 0
+		for _, c := range []byte(s) {
+			if c < '0' || c > '9' {
+				return 0, false
+			}
+			n = n*10 + int(c-'0')
+		}
+		return n, s != ""
+	}
+	if len(s) < len("YYYY:MM:DD HH:MM") {
+		return time.Time{}, "", false
+	}
+	sep := s[4]
+	if (sep != ':' && sep != '-') || s[7] != sep || (s[10] != ' ' && s[10] != 'T') || s[13] != ':' {
+		return time.Time{}, "", false
+	}
+	y, ok1 := num(s[0:4])
+	mo, ok2 := num(s[5:7])
+	d, ok3 := num(s[8:10])
+	h, ok4 := num(s[11:13])
+	mi, ok5 := num(s[14:16])
+	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
+		return time.Time{}, "", false
+	}
+	sec, rest := 0, s[16:]
+	if len(rest) >= 3 && rest[0] == ':' {
+		n, ok := num(rest[1:3])
+		if !ok {
+			return time.Time{}, "", false
+		}
+		sec, rest = n, rest[3:]
+	}
+	at = time.Date(y, time.Month(mo), d, h, mi, sec, 0, time.UTC)
+	// time.Date carries 24:00 or 30 February into another day: those
+	// aren't times the camera meant.
+	if y == 0 || at.Year() != y || int(at.Month()) != mo || at.Day() != d ||
+		at.Hour() != h || at.Minute() != mi || at.Second() != sec {
+		return time.Time{}, "", false
+	}
+	return at, strings.TrimSpace(rest), true
+}
+
 // parseOffset reads an Exif time offset, "+HH:MM" or "-HH:MM", as seconds
-// east of UTC.
+// east of UTC; "Z" is UTC.
 func parseOffset(s string) (int, bool) {
+	if s == "Z" {
+		return 0, true
+	}
 	if len(s) != 6 || (s[0] != '+' && s[0] != '-') || s[3] != ':' {
 		return 0, false
 	}
@@ -282,39 +342,55 @@ func parseOffset(s string) (int, bool) {
 }
 
 // gps reads a position from the GPS IFD: latitude and longitude as
-// degrees, minutes and seconds with their N/S and E/W references, and the
-// altitude with its above/below sea level reference.
+// degrees, minutes and seconds (or fewer: degrees alone, or degrees and
+// minutes, as some writers give them) with their references, and the
+// altitude with its reference.
+//
+// As ExifTool reads them, a coordinate needs its reference, and one that
+// starts with S (latitude) or W (longitude), in either case, makes it
+// negative; any other leaves it positive. Unlike ExifTool, a latitude past
+// 90° or a longitude past 180° is no position.
 func (t tiffReader) gps(g map[uint16]field) *GPS {
-	coord := func(refTag, valTag uint16, pos, neg string, limit float64) (float64, bool) {
+	coord := func(refTag, valTag uint16, neg byte, limit float64) (float64, bool) {
 		ref, ok := ascii(g[refTag])
-		if !ok || (ref != pos && ref != neg) {
+		if !ok {
 			return 0, false
 		}
-		v, ok := t.rationals(g[valTag])
-		if !ok || len(v) != 3 {
+		v, ok := t.rationals(g[valTag], 3)
+		if !ok || len(v) == 0 {
 			return 0, false
 		}
-		d := v[0] + v[1]/60 + v[2]/3600
-		if d > limit {
+		d := v[0]
+		if len(v) > 1 {
+			d += v[1] / 60
+		}
+		if len(v) > 2 {
+			d += v[2] / 3600
+		}
+		if math.IsNaN(d) || math.Abs(d) > limit {
 			return 0, false
 		}
-		if ref == neg {
+		if ref != "" && (ref[0] == neg || ref[0] == neg+'a'-'A') {
 			d = -d
 		}
 		return d, true
 	}
-	lat, ok := coord(tagGPSLatitudeRef, tagGPSLatitude, "N", "S", 90)
+	lat, ok := coord(tagGPSLatitudeRef, tagGPSLatitude, 'S', 90)
 	if !ok {
 		return nil
 	}
-	lon, ok := coord(tagGPSLongitudeRef, tagGPSLongitude, "E", "W", 180)
+	lon, ok := coord(tagGPSLongitudeRef, tagGPSLongitude, 'W', 180)
 	if !ok {
 		return nil
 	}
 	p := &GPS{Latitude: lat, Longitude: lon}
-	if v, ok := t.rationals(g[tagGPSAltitude]); ok && len(v) == 1 {
-		p.Altitude, p.HasAltitude = v[0], true
-		if f, ok := g[tagGPSAltitudeRef]; ok && f.typ == typeByte && f.value[0] == 1 {
+	// GPSAltitudeRef: 0 above, 1 below the ellipsoid; Exif 3.0 adds 2
+	// above and 3 below sea level. Without one it's 0, the standard's
+	// default. (ExifTool leaves the altitude out without a reference, and
+	// reads 2 as below.)
+	if v, ok := t.rationals(g[tagGPSAltitude], 1); ok && len(v) == 1 && !math.IsNaN(v[0]) && !math.IsInf(v[0], 0) {
+		p.Altitude, p.HasAltitude = math.Abs(v[0]), true
+		if ref, ok := t.uint(g[tagGPSAltitudeRef]); ok && (ref == 1 || ref == 3) {
 			p.Altitude = -p.Altitude
 		}
 	}
