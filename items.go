@@ -69,9 +69,11 @@ func SetXMP(src io.ReaderAt, size int64, dst io.Writer, packet []byte) error {
 // PlanExif is SetExif's edit, computed but not written. It is in place
 // when the new data fits where the item's data is (one extent in a media
 // data box or in idat, as long as the new data or longer): the data and
-// the item's length are patched, and what's left of the old data stays
-// as unreferenced bytes. Otherwise the data goes in a new media data box
-// at the end of the file.
+// the item's length are patched. Otherwise the data goes in a new media
+// data box at the end of the file. Either way the old data is overwritten
+// with zeros, so a value removed from the metadata (a GPS position, say)
+// isn't left in the file to be found; the patch of an in-place edit
+// covers the whole old extent.
 func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 	if _, _, ok := newTIFF(tiff); !ok {
 		return nil, fmt.Errorf("mediameta: Exif data that doesn't start with a TIFF header")
@@ -82,7 +84,7 @@ func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 }
 
 // PlanXMP is SetXMP's edit, computed but not written, in place as
-// PlanExif's is.
+// PlanExif's is, and like it overwriting the old data with zeros.
 func PlanXMP(src io.ReaderAt, size int64, packet []byte) (*Plan, error) {
 	if !utf8.Valid(packet) || !bytes.Contains(packet, []byte("xmpmeta")) && !bytes.Contains(packet, []byte("rdf:RDF")) {
 		return nil, fmt.Errorf("mediameta: XMP data that isn't UTF-8 XMP")
@@ -105,10 +107,16 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 		return nil, err
 	}
 	var patches []patch
+	var old []oldData
 	placed := false
 	if found {
 		if patches, placed, err = f.patchItem(id, payload); err != nil {
 			return nil, err
+		}
+		if !placed {
+			if old, err = f.oldExtents(id, size); err != nil {
+				return nil, err
+			}
 		}
 	} else if id, err = f.addMetadataItem(kind); err != nil {
 		return nil, err
@@ -159,6 +167,7 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if int64(len(newMeta))-f.meta.Size != delta {
 		return nil, fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
 	}
+	patches = append(patches, f.zeroPatches(old, newMeta, delta)...)
 	p := &Plan{Size: size, NewSize: size + delta + int64(len(tail)), src: src, f: f, meta: newMeta, patches: patches, tail: tail}
 	if p.NewSize == size {
 		p.InPlace = true
@@ -262,8 +271,87 @@ func (f *heifFile) patchItem(id uint32, payload []byte) ([]patch, bool, error) {
 	if f.shared(id, loc.ConstructionMethod, start, start+e.Length) {
 		return nil, false, nil
 	}
+	// The rest of the old data is zeroed: it isn't left to be found.
+	data := append(bytes.Clone(payload), make([]byte, e.Length-uint64(n))...)
 	e.Length = uint64(n)
-	return []patch{{at: at, data: bytes.Clone(payload)}}, true, nil
+	return []patch{{at: at, data: data}}, true, nil
+}
+
+// oldData is a range of an item's old data to zero: a file offset for
+// construction method 0, an offset in idat's payload for 1.
+type oldData struct {
+	idat     bool
+	at, n    int64
+	afterEnd bool // past the meta box: it moves with the boxes after it
+}
+
+// oldExtents are the ranges of an item's data that are zeroed when the
+// data moves: those in an mdat's or idat's payload that no other item
+// uses. Data anywhere else (a box header, another file) is left alone; a
+// metadata item never lies there in a file this package reads.
+func (f *heifFile) oldExtents(id uint32, size int64) ([]oldData, error) {
+	loc, _ := f.m.Loc.Item(id)
+	if loc.DataRefIndex != 0 {
+		return nil, nil
+	}
+	idat, idatLen := idatPayload(f.raw)
+	var out []oldData
+	for _, e := range loc.Extents {
+		start := loc.BaseOffset + e.Offset
+		if start < loc.BaseOffset {
+			continue
+		}
+		n := e.Length
+		switch loc.ConstructionMethod {
+		case 0:
+			if n == 0 && start <= uint64(size) {
+				n = uint64(size) - start
+			}
+			if start+n < start || !f.inOneMediaData(int64(start), int64(start+n)) {
+				continue
+			}
+		case 1:
+			if n == 0 && idat >= 0 && start <= uint64(idatLen) {
+				n = uint64(idatLen) - start
+			}
+			if idat < 0 || start+n < start || start+n > uint64(idatLen) || n == 0 {
+				continue
+			}
+		default:
+			continue
+		}
+		if f.shared(id, loc.ConstructionMethod, start, start+n) {
+			continue
+		}
+		if n > maxMetadataItem {
+			return nil, fmt.Errorf("%w: an old metadata extent of %d bytes", ErrUnsupported, n)
+		}
+		out = append(out, oldData{idat: loc.ConstructionMethod == 1, at: int64(start), n: int64(n),
+			afterEnd: loc.ConstructionMethod == 0 && int64(start) >= f.meta.End()})
+	}
+	return out, nil
+}
+
+// zeroPatches are the output patches that zero old data, placed in the
+// edited file: past the meta box shifted by delta, in idat where the new
+// meta box has it.
+func (f *heifFile) zeroPatches(old []oldData, newMeta []byte, delta int64) []patch {
+	var out []patch
+	idat, _ := idatPayload(newMeta)
+	for _, o := range old {
+		at := o.at
+		switch {
+		case o.idat:
+			if idat < 0 {
+				continue
+			}
+			at = f.meta.Offset + idat + o.at
+		case o.afterEnd:
+			at += delta
+		}
+		out = append(out, patch{at: at, data: make([]byte, o.n)})
+	}
+	return out
 }
 
 // inOneMediaData reports whether [start, end) lies in one top-level mdat

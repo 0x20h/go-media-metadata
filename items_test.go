@@ -139,8 +139,9 @@ func TestSetMetadataInPlace(t *testing.T) {
 	for _, pt := range short.Patches {
 		n += len(pt.Data)
 	}
-	if n > len(photoTIFF(binary.BigEndian))+4+8 {
-		t.Errorf("%d bytes patched for a %d-byte value", n, len(photoTIFF(binary.BigEndian))+4)
+	// The whole old extent: the new value, then zeros over the rest.
+	if want := 4 + len(paddedTIFF(4000)); n < want || n > want+patchMergeGap {
+		t.Errorf("%d bytes patched, want the old extent's %d", n, want)
 	}
 	// Adding an XMP item grows the meta box: offsets move, not in place.
 	add := planMetadata(t, file, nil, xmpPacket("x", 0))
@@ -233,5 +234,40 @@ func TestAddMetadataItemCreatesIref(t *testing.T) {
 	}
 	if len(g.m.Refs) != 1 || g.m.Refs[0].Type != [4]byte{'c', 'd', 's', 'c'} || g.m.Refs[0].From != id || g.m.Refs[0].To[0] != g.m.Primary {
 		t.Errorf("references %+v", g.m.Refs)
+	}
+}
+
+// secret marks old metadata that must not survive an edit.
+const secret = "GPS-51.5007N-0.1246W-SECRET"
+
+// Old metadata isn't left in the file: whether the new value is shorter
+// (in place) or longer (moved to the end), no copy of the old value's
+// distinctive bytes remains anywhere, on every layout, in mdat or idat.
+func TestOldMetadataIsZeroed(t *testing.T) {
+	oldExif := append(paddedTIFF(200), secret...)
+	oldXMP := xmpPacket(secret, 600)
+	for _, f := range planFiles(t) {
+		for _, c := range []struct {
+			name     string
+			old, new [2][]byte // exif, xmp
+		}{
+			{"exif shorter", [2][]byte{oldExif, nil}, [2][]byte{photoTIFF(binary.LittleEndian), nil}},
+			{"exif longer", [2][]byte{oldExif, nil}, [2][]byte{paddedTIFF(5000), nil}},
+			{"xmp shorter", [2][]byte{nil, oldXMP}, [2][]byte{nil, xmpPacket("x", 0)}},
+			{"xmp longer", [2][]byte{nil, oldXMP}, [2][]byte{nil, xmpPacket("x", 6000)}},
+		} {
+			t.Run(f.name+"/"+c.name, func(t *testing.T) {
+				with := written(t, planMetadata(t, f.data, c.old[0], c.old[1]))
+				if !bytes.Contains(with, []byte(secret)) {
+					t.Fatal("the old value isn't in the file to begin with")
+				}
+				p := planMetadata(t, with, c.new[0], c.new[1])
+				checkPlan(t, with, p)
+				out := written(t, p)
+				if bytes.Contains(out, []byte(secret)) {
+					t.Errorf("the old value is still in the file (InPlace %v)", p.InPlace)
+				}
+			})
+		}
 	}
 }

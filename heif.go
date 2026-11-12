@@ -474,17 +474,16 @@ type patchWriter struct {
 func (p *patchWriter) Write(b []byte) (int, error) {
 	start := p.written
 	var buf []byte
+	end := start + int64(len(b))
 	for _, pt := range p.patches {
-		for i, c := range pt.data {
-			at := pt.at + int64(i) - start
-			if at < 0 || at >= int64(len(b)) {
-				continue
-			}
-			if buf == nil {
-				buf = bytes.Clone(b)
-			}
-			buf[at] = c
+		lo, hi := max(pt.at, start), min(pt.at+int64(len(pt.data)), end)
+		if lo >= hi {
+			continue
 		}
+		if buf == nil {
+			buf = bytes.Clone(b)
+		}
+		copy(buf[lo-start:hi-start], pt.data[lo-pt.at:hi-pt.at])
 	}
 	if buf == nil {
 		buf = b
