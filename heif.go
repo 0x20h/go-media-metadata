@@ -33,6 +33,7 @@ type heifFile struct {
 	boxes []bmff.Box
 	meta  bmff.Box
 	m     *bmff.Meta
+	raw   []byte // the meta box as read, header included
 }
 
 func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
@@ -71,6 +72,7 @@ func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 	if _, err := r.ReadAt(raw, f.meta.Offset); err != nil {
 		return nil, fmt.Errorf("%w: reading the meta box: %v", ErrMalformed, err)
 	}
+	f.raw = raw
 	if f.m, err = bmff.ParseMeta(raw); err != nil {
 		return nil, err
 	}
@@ -193,47 +195,78 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // On an error nothing useful has been written to dst: write to a
 // temporary file and rename it over the original only on success.
 func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
+	e, err := rotate(src, size, degrees)
+	if err != nil {
+		return err
+	}
+	_, err = e.f.write(src, size, dst, e.meta, e.delta, e.out)
+	return err
+}
+
+// PlanRotation computes SetRotation's edit of the HEIF file in src (size
+// bytes) without writing it. Where the edit keeps the file's size, which is
+// the case when the rotated images have an irot only they use, the plan is
+// in place: a few bytes to patch (see Plan.Apply).
+func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
+	e, err := rotate(src, size, degrees)
+	if err != nil {
+		return nil, err
+	}
+	return e.f.plan(src, size, e.meta, e.delta, e.out), nil
+}
+
+// edit is a computed change to a HEIF file: its new meta box, the
+// change in size, and the patches at output offsets.
+type edit struct {
+	f     *heifFile
+	meta  []byte
+	delta int64
+	out   []patch
+}
+
+// rotate computes the rotation shared by SetRotation and PlanRotation.
+func rotate(src io.ReaderAt, size int64, degrees int) (edit, error) {
 	if degrees%90 != 0 {
-		return fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
+		return edit{}, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
 	}
 	f, err := parseHEIF(src, size)
 	if err != nil {
-		return err
+		return edit{}, err
 	}
 	quarters := ((-degrees/90)%4 + 4) % 4 // irot counts anticlockwise
 	if err := f.setIrot(quarters); err != nil {
-		return err
+		return edit{}, err
 	}
 	newMeta, err := f.m.Encode()
 	if err != nil {
-		return err
+		return edit{}, err
 	}
 	delta := int64(len(newMeta)) - f.meta.Size
 	shown, err := f.orientation()
 	if err != nil {
-		return err
+		return edit{}, err
 	}
 	// Before the offsets move: the patches are placed from the old ones.
 	// idat's place in the new meta box doesn't depend on offset values.
 	patches, err := f.exifOrientationPatches(src, size, newMeta, delta, shown)
 	if err != nil {
-		return err
+		return edit{}, err
 	}
 	if delta != 0 {
 		if err := f.shiftOffsets(delta); err != nil {
-			return err
+			return edit{}, err
 		}
 		if newMeta, err = f.m.Encode(); err != nil {
 			if bmff.ErrFieldTooSmall(err) {
-				return fmt.Errorf("%w: an item offset outgrows its field", ErrUnsupported)
+				return edit{}, fmt.Errorf("%w: an item offset outgrows its field", ErrUnsupported)
 			}
-			return err
+			return edit{}, err
 		}
 		if int64(len(newMeta))-f.meta.Size != delta {
-			return fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
+			return edit{}, fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
 		}
 	}
-	return f.write(src, size, dst, newMeta, delta, patches)
+	return edit{f: f, meta: newMeta, delta: delta, out: patches}, nil
 }
 
 // related are the images that belong to the primary one: its thumbnails
@@ -471,21 +504,21 @@ type patch struct {
 
 // write copies src to dst with the meta box replaced and the patches
 // applied.
-func (f *heifFile) write(src io.ReaderAt, size int64, dst io.Writer, meta []byte, delta int64, patches []patch) error {
+func (f *heifFile) write(src io.ReaderAt, size int64, dst io.Writer, meta []byte, delta int64, patches []patch) (int64, error) {
 	w := &patchWriter{w: dst, patches: patches}
 	if _, err := io.Copy(w, io.NewSectionReader(src, 0, f.meta.Offset)); err != nil {
-		return err
+		return w.written, err
 	}
 	if _, err := w.Write(meta); err != nil {
-		return err
+		return w.written, err
 	}
 	if _, err := io.Copy(w, io.NewSectionReader(src, f.meta.End(), size-f.meta.End())); err != nil {
-		return err
+		return w.written, err
 	}
 	if w.written != size+delta {
-		return fmt.Errorf("mediameta: wrote %d bytes, want %d", w.written, size+delta)
+		return w.written, fmt.Errorf("mediameta: wrote %d bytes, want %d", w.written, size+delta)
 	}
-	return nil
+	return w.written, nil
 }
 
 // patchWriter writes through, replacing the bytes at the patches' output

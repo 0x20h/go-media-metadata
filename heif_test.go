@@ -134,6 +134,7 @@ var layouts = []layout{
 	{"base offsets, no extent offsets", func(o *testbuild.Options) { o.Irot = -1; o.BaseOffsetSize = 8; o.OffsetSize = 0 }},
 	{"exif big-endian", func(o *testbuild.Options) { o.ExifBigEndian = true }},
 	{"exif in idat", func(o *testbuild.Options) { o.Irot = -1; o.ExifInIdat = true }},
+	{"exif in idat, own irot", func(o *testbuild.Options) { o.ExifInIdat = true }},
 	{"exif without orientation", func(o *testbuild.Options) { o.ExifOrientation = 0 }},
 	{"no exif", func(o *testbuild.Options) { o.ExifOrientation = -1 }},
 	{"meta after mdat", func(o *testbuild.Options) { o.Irot = -1; o.MetaAfterMdat = true }},

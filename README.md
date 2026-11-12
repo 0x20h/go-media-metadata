@@ -33,6 +33,28 @@ tmp, err := os.CreateTemp(filepath.Dir("photo.heic"), "photo-*.heic")
 err = mediameta.SetRotation(in, info.Size(), tmp, 180)
 ```
 
+### Editing in place
+
+`PlanRotation` computes the same edit without writing it. When the file
+keeps its size (an image with an `irot` of its own, as camera originals
+and ImageIO files have), the plan is `InPlace`: a few bytes to patch, in
+`Plan.Patches`. Apply them to a copy of the file, e.g. a copy-on-write
+clone, instead of writing a whole new one:
+
+```go
+p, err := mediameta.PlanRotation(in, info.Size(), 90)
+// ...
+if p.InPlace {
+	err = p.Apply(clone) // clone: an *os.File holding the same bytes
+} else {
+	_, err = p.WriteTo(tmp) // the edit changes the size: stream it
+}
+```
+
+`Plan.Patches` are also the only ranges where the result differs from the
+source, so a caller can check the result there instead of hashing the
+whole file.
+
 ## Status
 
 Early. The first feature is HEIF/HEIC orientation:
