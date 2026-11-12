@@ -216,12 +216,26 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // the tag is set to the orientation the file now shows, so readers that
 // use it agree with those that apply irot. A missing tag stays missing.
 //
+// A JPEG file's orientation is its Exif Orientation tag, which is set
+// (the mirroring kept, as above): changed in place where the first Exif
+// segment has one, so the file keeps its size and only the tag's bytes
+// change; in a new Exif segment after SOI and any JFIF segment where the
+// file has none. A JPEG whose Exif segment lacks the tag gives
+// ErrUnsupported (adding it would rewrite IFD0), unless nothing changes.
+//
 // On an error nothing useful has been written to dst: write to a
 // temporary file and rename it over the original only on success.
 // PlanRotation computes the same edit and can apply it in place.
 func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
 	r, err := planRotation(src, size, degrees)
 	if err != nil {
+		if e, ok, jerr := jpegRotation(src, size, degrees); ok {
+			if jerr != nil {
+				return jerr
+			}
+			_, err := e.write(src, size, dst)
+			return err
+		}
 		return err
 	}
 	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
