@@ -11,10 +11,12 @@ import (
 // primary image shown at o, any of the eight Exif orientations: its irot
 // and imir properties are set to show it. An imir it already has is kept
 // for a mirrored o (the rotation is chosen for its axis) and dropped for
-// one that isn't; a mirror it needs uses an imir the file has, else a
-// new one (axis 0, left-right). The properties apply in the order ISO/IEC
-// 23008-12 associates them, irot before imir (6.5.10, 6.5.12): a new
-// irot goes before the item's imir, a new imir after its irot.
+// one that isn't. A mirror it needs has the axis Apple's ImageIO writes
+// for o (1, left-right, for 2 and 7; 0, top-bottom, for 4 and 5): an imir
+// of that axis the file has, else a new one. The properties apply in the
+// order ISO/IEC 23008-12 associates them, irot before imir (6.5.10,
+// 6.5.12): a new irot goes before the item's imir, a new imir after its
+// irot. imir's axis is read as Apple and libheif read it (see imirAxis).
 //
 // The images that belong to it turn with it, and the Exif Orientation tag
 // follows, as for SetRotation. On an error nothing useful has been written
@@ -60,7 +62,7 @@ func (f *heifFile) setOrientation(o Orientation) error {
 			targets = append(targets, id)
 		}
 	}
-	if err := f.setMirror(targets, o.Mirrored()); err != nil {
+	if err := f.setMirror(targets, o); err != nil {
 		return err
 	}
 	// The rotation that, with each one's mirror where it stands, shows o.
@@ -126,7 +128,8 @@ func (f *heifFile) imirRef(id uint32) (at int, idx uint16, err error) {
 // has stays when it's to be mirrored; one it needs is the primary's, else
 // one the file has, else a new one. A removed association leaves the
 // property in ipco, where another item may use it.
-func (f *heifFile) setMirror(targets []uint32, mirrored bool) error {
+func (f *heifFile) setMirror(targets []uint32, o Orientation) error {
+	mirrored := o.Mirrored()
 	p := f.m.Prop
 	var use uint16
 	for _, id := range targets {
@@ -145,7 +148,7 @@ func (f *heifFile) setMirror(targets []uint32, mirrored bool) error {
 			}
 		case mirrored:
 			if use == 0 {
-				if use, err = f.imirIndex(); err != nil {
+				if use, err = f.imirIndex(appleAxis(o)); err != nil {
 					return err
 				}
 			}
@@ -172,14 +175,23 @@ func (f *heifFile) imirAxisOf(idx uint16) (int, error) {
 	return imirAxis(f.m.Prop.Props[idx-1])
 }
 
-// imirIndex is the 1-based index of an imir to associate: one the file
-// has, else a new one about the vertical axis (left-right) appended to
-// ipco.
-func (f *heifFile) imirIndex() (uint16, error) {
+// appleAxis is the imir axis Apple's ImageIO writes for a mirrored
+// orientation: 1 (left-right) for 2 and 7, 0 (top-bottom) for 4 and 5,
+// each with an irot before it (0 or 90° anticlockwise).
+func appleAxis(o Orientation) int {
+	if o == 2 || o == 7 {
+		return 1
+	}
+	return 0
+}
+
+// imirIndex is the 1-based index of an imir of axis to associate: one the
+// file has, else a new one appended to ipco.
+func (f *heifFile) imirIndex(axis int) (uint16, error) {
 	p := f.m.Prop
 	for i, pr := range p.Props {
 		if pr.Type == bmff.T("imir") {
-			if _, err := imirAxis(pr); err == nil {
+			if a, err := imirAxis(pr); err == nil && a == axis && pr.Raw[8]&^1 == 0 {
 				return uint16(i + 1), nil
 			}
 		}
@@ -187,7 +199,7 @@ func (f *heifFile) imirIndex() (uint16, error) {
 	if len(p.Props) >= 0x7FFF {
 		return 0, fmt.Errorf("%w: too many properties", ErrUnsupported)
 	}
-	p.Props = append(p.Props, bmff.Prop{Type: bmff.T("imir"), Raw: []byte{0, 0, 0, 9, 'i', 'm', 'i', 'r', 0}})
+	p.Props = append(p.Props, bmff.Prop{Type: bmff.T("imir"), Raw: []byte{0, 0, 0, 9, 'i', 'm', 'i', 'r', byte(axis)}})
 	return uint16(len(p.Props)), nil
 }
 
@@ -222,11 +234,7 @@ func (f *heifFile) quartersFor(id uint32, o Orientation) (int, error) {
 				if err != nil {
 					return 0, err
 				}
-				if axis == 0 {
-					t = t.then(mirrorLeftRight)
-				} else {
-					t = t.then(mirrorTopBottom)
-				}
+				t = t.then(imirTransform(axis))
 			}
 		}
 		if !placed {

@@ -82,15 +82,16 @@ func setRotation(t *testing.T, file []byte, degrees int) []byte {
 }
 
 // The properties' orientation, by hand from ISO/IEC 23008-12 (irot turns
-// anticlockwise and comes first; imir axis 0 mirrors left-right, 1
-// top-bottom) and the Exif numbering.
+// anticlockwise and comes first; imir axis 0 mirrors top-bottom, 1
+// left-right, as Apple's ImageIO and libheif have it) and the Exif
+// numbering.
 func TestReadOrientation(t *testing.T) {
 	for _, c := range []struct {
 		irot, imir int
 		want       Orientation
 	}{
 		{-1, -1, 1}, {0, -1, 1}, {1, -1, 8}, {2, -1, 3}, {3, -1, 6},
-		{-1, 0, 2}, {1, 0, 7}, {2, 0, 4}, {3, 0, 5}, {-1, 1, 4}, {1, 1, 5}, {2, 1, 2}, {3, 1, 7},
+		{-1, 0, 4}, {1, 0, 5}, {2, 0, 2}, {3, 0, 7}, {-1, 1, 2}, {1, 1, 7}, {2, 1, 4}, {3, 1, 5},
 	} {
 		o := testbuild.Default()
 		o.Irot, o.Imir = c.irot, c.imir

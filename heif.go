@@ -118,13 +118,23 @@ func irotAngle(p bmff.Prop) (int, error) {
 	return int(p.Raw[8] & 3), nil
 }
 
-// imirAxis reads an imir property: 0 mirrors about the vertical axis
-// (left-right), 1 about the horizontal one (top-bottom).
+// imirAxis reads an imir property's axis: 0 mirrors top-bottom (flips
+// the image vertically), 1 left-right (flips it horizontally). That's how
+// Apple's ImageIO writes and shows it and how libheif reads it: Apple
+// writes orientation 2 as irot 0 and imir 1, 4 as irot 0 and imir 0.
 func imirAxis(p bmff.Prop) (int, error) {
 	if len(p.Raw) != 9 {
 		return 0, fmt.Errorf("%w: imir of %d bytes", ErrMalformed, len(p.Raw))
 	}
 	return int(p.Raw[8] & 1), nil
+}
+
+// imirTransform is what an imir of axis does (see imirAxis).
+func imirTransform(axis int) transform {
+	if axis == 0 {
+		return mirrorTopBottom
+	}
+	return mirrorLeftRight
 }
 
 // orientation is the primary item's orientation.
@@ -158,11 +168,7 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 			if err != nil {
 				return 0, err
 			}
-			if axis == 0 {
-				t = t.then(mirrorLeftRight)
-			} else {
-				t = t.then(mirrorTopBottom)
-			}
+			t = t.then(imirTransform(axis))
 		}
 	}
 	return orientationOf(t), nil

@@ -90,7 +90,7 @@ func TestSetRotationKeepsTheMirrorFirst(t *testing.T) {
 	}
 	// From 2, a quarter turn right (Degrees 0 → 90) is 7.
 	o := testbuild.Default()
-	o.Irot, o.Imir = 0, 0
+	o.Irot, o.Imir = 0, 1 // Apple's orientation 2
 	two, _ := testbuild.Build(o)
 	if got := orientationOfFile(t, two); got != 2 {
 		t.Fatalf("the fixture shows %d, want 2", got)
@@ -137,6 +137,69 @@ func TestSetOrientationErrors(t *testing.T) {
 	for _, o := range []Orientation{0, 9} {
 		if _, err := PlanOrientation(bytes.NewReader(file), int64(len(file)), o); err == nil {
 			t.Errorf("orientation %d accepted", o)
+		}
+	}
+}
+
+// appleLayouts are the irot (anticlockwise quarter turns) and imir axis
+// Apple's ImageIO (macOS 26.6) writes for each orientation: always an
+// irot, before the imir in ipma, both essential, with an Exif Orientation
+// tag that matches.
+var appleLayouts = map[Orientation][2]int{
+	1: {0, -1}, 2: {0, 1}, 3: {2, -1}, 4: {0, 0},
+	5: {1, 0}, 6: {3, -1}, 7: {1, 1}, 8: {1, -1},
+}
+
+// Apple's files read as Apple shows them, from the properties alone: the
+// matching Exif tag isn't applied on top of them.
+func TestAppleLayoutsRead(t *testing.T) {
+	for want, l := range appleLayouts {
+		o := testbuild.Default()
+		o.Irot, o.Imir, o.ExifOrientation = l[0], l[1], int(want)
+		file, _ := testbuild.Build(o)
+		if got := orientationOfFile(t, file); got != want {
+			t.Errorf("irot %d imir %d (Exif %d): %d, want %d", l[0], l[1], want, got, want)
+		}
+	}
+}
+
+// From an Apple file showing 1 (irot 0), SetOrientation writes what Apple
+// writes for each orientation: the same irot angle and imir axis, irot
+// first.
+func TestSetOrientationWritesApplesLayout(t *testing.T) {
+	o := testbuild.Default()
+	o.Irot, o.Imir, o.ExifOrientation = 0, -1, 1
+	one, _ := testbuild.Build(o)
+	for want, l := range appleLayouts {
+		out := setOrientation(t, one, want)
+		f, err := parseHEIF(bytes.NewReader(out), int64(len(out)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, entry := f.m.Prop.Entry(f.m.Primary)
+		irot, imir, irotAt, imirAt := -1, -1, -1, -1
+		for i, ref := range entry.Props {
+			if ref.Index == 0 {
+				continue
+			}
+			p := f.m.Prop.Props[ref.Index-1]
+			switch p.Type {
+			case [4]byte{'i', 'r', 'o', 't'}:
+				irot, _ = irotAngle(p)
+				irotAt = i
+			case [4]byte{'i', 'm', 'i', 'r'}:
+				imir, _ = imirAxis(p)
+				imirAt = i
+			}
+		}
+		if irot != l[0] || imir != l[1] {
+			t.Errorf("orientation %d: irot %d imir %d, Apple writes irot %d imir %d", want, irot, imir, l[0], l[1])
+		}
+		if imirAt >= 0 && irotAt > imirAt {
+			t.Errorf("orientation %d: imir before irot", want)
+		}
+		if tag, has, _ := exifOrientation(bytes.NewReader(out), int64(len(out))); has && tag != want {
+			t.Errorf("orientation %d: Exif %d", want, tag)
 		}
 	}
 }
