@@ -310,7 +310,11 @@ func parseILoc(b []byte, large bool) (*ILoc, error) {
 		if rd.err != nil {
 			return nil, rd.err
 		}
-		if extentSize > 0 && int(n) > rd.left()/extentSize {
+		// Bound the extent count by the bytes left. Extents that take no
+		// bytes (all field sizes 0) each say "offset 0, to the end", so
+		// more than one is meaningless, and unbounded they'd let a few
+		// bytes declare millions.
+		if extentSize == 0 && n > 1 || extentSize > 0 && int(n) > rd.left()/extentSize {
 			return nil, fmt.Errorf("%w: iloc extent count %d", ErrMalformed, n)
 		}
 		it.Extents = make([]Extent, 0, n)

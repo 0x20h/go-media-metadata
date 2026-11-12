@@ -2,6 +2,7 @@ package mediameta
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"testing"
@@ -283,6 +284,26 @@ func seeds(f *testing.F) {
 		file, _ := testbuild.Build(o)
 		f.Add(file)
 	}
+	f.Add(zeroWidthExtentsFile())
+}
+
+// zeroWidthExtentsFile is a HEIF file whose iloc has every field size 0,
+// so extents take no bytes, and whose items each declare 65535 of them.
+func zeroWidthExtentsFile() []byte {
+	box := func(typ string, body []byte) []byte {
+		b := binary.BigEndian.AppendUint32(nil, uint32(8+len(body)))
+		return append(append(b, typ...), body...)
+	}
+	iloc := []byte{0, 0, 0, 0, 0, 0}
+	iloc = binary.BigEndian.AppendUint16(iloc, 100)
+	for i := range 100 {
+		iloc = binary.BigEndian.AppendUint16(iloc, uint16(i+1))
+		iloc = append(iloc, 0, 0, 0xFF, 0xFF)
+	}
+	ftyp := box("ftyp", []byte("heic\x00\x00\x00\x00mif1heic"))
+	hdlr := box("hdlr", append(append(make([]byte, 8), "pict"...), make([]byte, 13)...))
+	meta := append(append([]byte{0, 0, 0, 0}, hdlr...), box("iloc", iloc)...)
+	return append(ftyp, box("meta", meta)...)
 }
 
 // fuzzDeadline is how long one fuzz input may take: a few milliseconds is
