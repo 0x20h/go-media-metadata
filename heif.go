@@ -195,13 +195,13 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 //
 // On an error nothing useful has been written to dst: write to a
 // temporary file and rename it over the original only on success.
-// PlanRotation makes the same edit and can apply it in place.
+// PlanRotation computes the same edit and can apply it in place.
 func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
-	p, err := PlanRotation(src, size, degrees)
+	r, err := planRotation(src, size, degrees)
 	if err != nil {
 		return err
 	}
-	_, err = p.WriteTo(dst)
+	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 	return err
 }
 

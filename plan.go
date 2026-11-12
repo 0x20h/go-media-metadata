@@ -58,53 +58,72 @@ const patchMergeGap = 8
 // An appended irot, a widened ipma, or item offsets that move change the
 // size.
 func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
+	r, err := planRotation(src, size, degrees)
+	if err != nil {
+		return nil, err
+	}
+	p := &Plan{Size: size, NewSize: size + r.delta, src: src, f: r.f, meta: r.meta, patches: r.patches}
+	if r.delta == 0 {
+		p.InPlace = true
+		p.Patches = inPlacePatches(r.f.meta.Offset, r.f.raw, r.meta, r.patches)
+	}
+	return p, nil
+}
+
+// rotation is a rotation's edit as WriteTo needs it: the parsed file (raw
+// still the source's meta box), the new meta box, its change in size, and
+// the Exif patches at output offsets.
+type rotation struct {
+	f       *heifFile
+	meta    []byte
+	delta   int64
+	patches []patch
+}
+
+// planRotation computes a rotation's edit, shared by PlanRotation and
+// SetRotation; SetRotation streams it without the patches a Plan lists.
+func planRotation(src io.ReaderAt, size int64, degrees int) (rotation, error) {
 	if degrees%90 != 0 {
-		return nil, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
+		return rotation{}, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
 	}
 	f, err := parseHEIF(src, size)
 	if err != nil {
-		return nil, err
+		return rotation{}, err
 	}
-	oldMeta := bytes.Clone(f.raw)
 	quarters := ((-degrees/90)%4 + 4) % 4 // irot counts anticlockwise
 	if err := f.setIrot(quarters); err != nil {
-		return nil, err
+		return rotation{}, err
 	}
 	newMeta, err := f.m.Encode()
 	if err != nil {
-		return nil, err
+		return rotation{}, err
 	}
 	delta := int64(len(newMeta)) - f.meta.Size
 	shown, err := f.orientation()
 	if err != nil {
-		return nil, err
+		return rotation{}, err
 	}
 	// Before the offsets move: the patches are placed from the old ones.
 	// idat's place in the new meta box doesn't depend on offset values.
 	patches, err := f.exifOrientationPatches(src, size, newMeta, delta, shown)
 	if err != nil {
-		return nil, err
+		return rotation{}, err
 	}
 	if delta != 0 {
 		if err := f.shiftOffsets(delta); err != nil {
-			return nil, err
+			return rotation{}, err
 		}
 		if newMeta, err = f.m.Encode(); err != nil {
 			if bmff.ErrFieldTooSmall(err) {
-				return nil, fmt.Errorf("%w: an item offset outgrows its field", ErrUnsupported)
+				return rotation{}, fmt.Errorf("%w: an item offset outgrows its field", ErrUnsupported)
 			}
-			return nil, err
+			return rotation{}, err
 		}
 		if int64(len(newMeta))-f.meta.Size != delta {
-			return nil, fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
+			return rotation{}, fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
 		}
 	}
-	p := &Plan{Size: size, NewSize: size + delta, src: src, f: f, meta: newMeta, patches: patches}
-	if delta == 0 {
-		p.InPlace = true
-		p.Patches = inPlacePatches(f.meta.Offset, oldMeta, newMeta, patches)
-	}
-	return p, nil
+	return rotation{f: f, meta: newMeta, delta: delta, patches: patches}, nil
 }
 
 // inPlacePatches are the changes of a same-size edit as source patches:
