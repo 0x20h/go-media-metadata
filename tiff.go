@@ -1,11 +1,13 @@
 package mediameta
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // Exif is what this package reads from an image's Exif metadata (CIPA
@@ -34,6 +36,13 @@ type Exif struct {
 
 	// GPS is where the photo was taken, nil without a valid position.
 	GPS *GPS
+
+	// ImageDescription is IFD0's ImageDescription tag, as its bytes are
+	// (writers put UTF-8 there, ExifTool among them), up to its NUL.
+	ImageDescription string
+	// XPTitle is IFD0's XPTitle tag (Windows' title, UTF-16 little-endian
+	// in BYTE data), up to its NUL.
+	XPTitle string
 }
 
 // GPS is a position from the Exif GPS IFD.
@@ -49,6 +58,9 @@ type GPS struct {
 
 // Exif and TIFF tags read here.
 const (
+	tagImageDescription = 0x010E
+	tagXPTitle          = 0x9C9B
+
 	tagExifIFD            = 0x8769
 	tagGPSIFD             = 0x8825
 	tagDateTimeOriginal   = 0x9003
@@ -194,6 +206,28 @@ func ascii(f field) (string, bool) {
 	return strings.TrimSpace(s), true
 }
 
+// nulTerminated is b up to its first NUL.
+func nulTerminated(b []byte) string {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	return string(b)
+}
+
+// utf16LE decodes UTF-16 little-endian text up to a 0x0000 unit; an odd
+// last byte is dropped.
+func utf16LE(b []byte) string {
+	units := make([]uint16, 0, len(b)/2)
+	for i := 0; i+1 < len(b); i += 2 {
+		u := binary.LittleEndian.Uint16(b[i:])
+		if u == 0 {
+			break
+		}
+		units = append(units, u)
+	}
+	return string(utf16.Decode(units))
+}
+
 // rationals are the first max values of a RATIONAL or SRATIONAL field;
 // ok is false for a zero denominator among them.
 func (t tiffReader) rationals(f field, max int) ([]float64, bool) {
@@ -235,6 +269,12 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 		if v, ok := t.uint(f); ok && v <= 8 && Orientation(v).Valid() {
 			x.Orientation = Orientation(v)
 		}
+	}
+	if f, ok := ifd0[tagImageDescription]; ok && f.typ == typeASCII {
+		x.ImageDescription = nulTerminated(f.value)
+	}
+	if f, ok := ifd0[tagXPTitle]; ok && (f.typ == typeByte || f.typ == typeUndef) {
+		x.XPTitle = utf16LE(f.value)
 	}
 	if f, ok := ifd0[tagExifIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {

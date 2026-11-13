@@ -27,11 +27,12 @@ formats existed.
 There are two ways to write an edit:
 
 - **`Set…` functions** (`SetRotation`, `SetOrientation`, `SetExif`,
-  `SetXMP`, `EditHEIFExif`, `EditFileXMP`, `SetRAWOrientation`) stream
-  the edited file to an `io.Writer`.
+  `SetXMP`, `EditHEIFExif`, `EditFileXMP`, `SetMetadata`,
+  `SetRAWOrientation`) stream the edited file to an `io.Writer`.
 - **`Plan…` functions** (`PlanRotation`, `PlanOrientation`, `PlanExif`,
-  `PlanXMP`, `PlanExifEdit`, `PlanXMPEdit`, `PlanRAWOrientation`)
-  compute the same edit without writing it, as a `Plan`.
+  `PlanXMP`, `PlanExifEdit`, `PlanXMPEdit`, `PlanMetadata`,
+  `PlanRAWOrientation`) compute the same edit without writing it, as a
+  `Plan`.
 
 Neither ever writes to the source. On an error the writer may hold part
 of a file, so write to a temporary file and rename it over the original
@@ -62,6 +63,36 @@ func (p *Plan) Apply(w io.WriterAt) error
   nothing.
 
 An edit that changes nothing gives an in-place plan with no patches.
+
+### Several standards at once: PlanMetadata
+
+```go
+type MetadataEdit struct {
+	Exif *ExifEdit
+	XMP  *XMPEdit
+	IPTC *IPTCEdit // JPEG only
+}
+func PlanMetadata(src io.ReaderAt, size int64, edit MetadataEdit) (*Plan, error)
+func SetMetadata(src io.ReaderAt, size int64, dst io.Writer, edit MetadataEdit) error
+```
+
+`PlanMetadata` plans one edit of a file in every standard it names, so a
+caller writes the file once, all or nothing:
+
+- **Parts run in order:** the Exif part as `PlanExifEdit`, then the IPTC
+  part (the file's IPTC-IIM data through `EditIPTC`), then the XMP part as
+  `PlanXMPEdit`. Each part is planned on the file the parts before it
+  make, and the result is byte for byte what writing them one after
+  another gives.
+- **Parts are optional:** a nil part, or one with every field left at its
+  zero value, leaves its standard as it is. An edit with no part changes
+  nothing: an in-place plan without patches.
+- **In place:** the plan is in place when every part is. Its patches then
+  hold every byte any part changes, as the last part leaves it.
+- **Memory:** a part that changes the file's size is held in memory, the
+  file as it makes it, for the parts after it and for `WriteTo`. A part
+  in place is read through its patches, with no copy.
+- **IPTC outside JPEG:** refused with `ErrUnsupported`.
 
 ### Old values don't stay
 

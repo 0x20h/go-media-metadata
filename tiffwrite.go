@@ -6,7 +6,10 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // ExifEdit is a change to Exif data. A field left at its zero value
@@ -34,6 +37,16 @@ type ExifEdit struct {
 	// instead; the GPS IFD's other tags stay.
 	GPS       *GPS
 	RemoveGPS bool
+
+	// ImageDescription sets IFD0's ImageDescription tag to the string's
+	// UTF-8 bytes, NUL-terminated, as ExifTool writes it (the tag is
+	// ASCII by the standard; readers take UTF-8 there). XPTitle sets IFD0's
+	// XPTitle tag (Windows' title): UTF-16 little-endian in BYTE data,
+	// NUL-terminated, a character past U+FFFF as a surrogate pair, as
+	// Windows reads it (ExifTool reads and writes UCS-2: it keeps such a
+	// character's low 16 bits). "" removes the tag. Text with a NUL, or that isn't
+	// UTF-8, is refused.
+	ImageDescription, XPTitle *string
 }
 
 // Exif and GPS tags written here, besides those read.
@@ -79,6 +92,11 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 	for _, d := range []*time.Time{edit.DateTimeOriginal, edit.DateTimeDigitized} {
 		if d != nil && (d.Year() < 0 || d.Year() > 9999) {
 			return nil, fmt.Errorf("mediameta: date %v out of range", d)
+		}
+	}
+	for _, s := range []*string{edit.ImageDescription, edit.XPTitle} {
+		if s != nil && (!utf8.ValidString(*s) || strings.IndexByte(*s, 0) >= 0) {
+			return nil, fmt.Errorf("mediameta: text that isn't UTF-8 without NUL")
 		}
 	}
 	created := len(tiff) == 0
@@ -148,6 +166,25 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 	}
 	if edit.Orientation != 0 {
 		ifd0 = append(ifd0, tiffChange{tag: tagOrientation, typ: typeShort, count: 1, value: w.order.AppendUint16(nil, uint16(edit.Orientation))})
+	}
+	if s := edit.ImageDescription; s != nil {
+		if *s == "" {
+			ifd0 = append(ifd0, tiffChange{tag: tagImageDescription, remove: true})
+		} else {
+			ifd0 = append(ifd0, w.asciiChange(tagImageDescription, *s))
+		}
+	}
+	if s := edit.XPTitle; s != nil {
+		if *s == "" {
+			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, remove: true})
+		} else {
+			var b []byte
+			for _, u := range utf16.Encode([]rune(*s)) {
+				b = binary.LittleEndian.AppendUint16(b, u)
+			}
+			b = append(b, 0, 0)
+			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, typ: typeByte, count: uint32(len(b)), value: b})
+		}
 	}
 	// The sub-IFDs' pointers are checked against the data as it is,
 	// before anything is appended: one that leads past its end would
@@ -271,6 +308,10 @@ type tiffWriter struct {
 	// point at: bytes are overwritten or zeroed only where they belong to
 	// one thing, never where a value overlaps an IFD or another value.
 	spans []tiffSpan
+	// dangling are the out-of-line values and IFDs that pointers place past
+	// the end of the data: data appended there would become them, and the
+	// next edit would find it claimed twice.
+	dangling []tiffSpan
 }
 
 type tiffSpan struct {
@@ -353,12 +394,32 @@ func newTIFFWriter(tiff []byte) (*tiffWriter, error) {
 		seen[off] = true
 		es, err := w.entries(off)
 		if err != nil {
+			// An IFD pointed at but not read (its entry count runs past the
+			// data): its count field still counts as structure. Bytes an
+			// edit zeroes there could make it read as an IFD, one that
+			// overlaps what this edit wrote, and the next edit would refuse
+			// the data. So nothing overlapping it is zeroed or rewritten.
+			switch {
+			case off >= 8 && uint64(off)+2 <= uint64(len(w.data)):
+				w.spans = append(w.spans, tiffSpan{start: uint64(off), end: uint64(off) + 2, ifd: true})
+				// Its entries run past the end: data appended there would
+				// complete it.
+				if n := uint64(w.order.Uint16(w.data[off:])); n <= maxIFDEntries {
+					w.dangling = append(w.dangling, tiffSpan{start: uint64(off) + 2, end: uint64(off) + 2 + 12*n + 4, ifd: true})
+				}
+			case off >= 8:
+				// Past the end: data appended there would become this IFD,
+				// of any count its first bytes would give it.
+				w.dangling = append(w.dangling, tiffSpan{start: uint64(off), end: uint64(off) + 2 + 12*0xFFFF + 4, ifd: true})
+			}
 			return
 		}
 		w.spans = append(w.spans, tiffSpan{start: uint64(off), end: uint64(off) + 2 + 12*uint64(len(es)) + 4, ifd: true})
 		for _, e := range es {
 			if start, end, ok := w.valueSpan(e); ok && end <= uint64(len(w.data)) {
 				w.spans = append(w.spans, tiffSpan{start: start, end: end})
+			} else if ok {
+				w.dangling = append(w.dangling, tiffSpan{start: start, end: end})
 			}
 			if e.tag == tagExifIFD || e.tag == tagGPSIFD || e.tag == 0xA005 {
 				walk(w.order.Uint32(e.raw[8:]), depth+1)
@@ -438,12 +499,18 @@ func (w *tiffWriter) rationalChange(tag uint16, vs [][2]uint32) tiffChange {
 // appendValue puts b at the end of the data, on a word boundary, and
 // returns its offset.
 func (w *tiffWriter) appendValue(b []byte) (uint32, error) {
+	from := uint64(len(w.data)) // the padding byte counts too
 	if len(w.data)%2 == 1 {
 		w.data = append(w.data, 0)
 	}
 	at := len(w.data)
 	if uint64(at)+uint64(len(b)) > math.MaxUint32 {
 		return 0, fmt.Errorf("%w: Exif data past 4 GB", ErrUnsupported)
+	}
+	for _, d := range w.dangling {
+		if d.start < uint64(at)+uint64(len(b)) && d.end > from {
+			return 0, fmt.Errorf("%w: a value or an IFD points past the end of the data, where this edit would append", ErrUnsupported)
+		}
 	}
 	w.data = append(w.data, b...)
 	return uint32(at), nil

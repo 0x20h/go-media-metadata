@@ -90,6 +90,11 @@ var editAll = ExifEdit{
 	DateTimeDigitized: ptr(time.Date(2024, 2, 29, 8, 7, 6, 0, time.FixedZone("", 5*3600+1800))),
 	OffsetKnown:       true,
 	GPS:               &GPS{Latitude: -33.8568, Longitude: 151.2153, Altitude: -12.5, HasAltitude: true},
+	ImageDescription:  ptr("Boats & nets at Café 東京"),
+	// Within the BMP: ExifTool reads XP tags as UCS-2 (a surrogate pair
+	// comes out as two code points), and agrees here. TestEditExifText
+	// checks the pair's bytes.
+	XPTitle: ptr("Café 東京"),
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -97,6 +102,12 @@ func ptr[T any](v T) *T { return &v }
 func checkEdited(t *testing.T, data []byte, e ExifEdit) {
 	t.Helper()
 	x := parseExif(data)
+	if s := e.ImageDescription; s != nil && x.ImageDescription != *s {
+		t.Errorf("ImageDescription %q, want %q", x.ImageDescription, *s)
+	}
+	if s := e.XPTitle; s != nil && x.XPTitle != *s {
+		t.Errorf("XPTitle %q, want %q", x.XPTitle, *s)
+	}
 	if e.Orientation != 0 && x.Orientation != e.Orientation {
 		t.Errorf("orientation %d, want %d", x.Orientation, e.Orientation)
 	}
@@ -320,13 +331,15 @@ func TestEditExifAgreesWithExifTool(t *testing.T) {
 			}
 			got, err := exec.Command(tool, "-validate", "-warning", "-error", "-a", "-s", "-n",
 				"-EXIF:Orientation", "-EXIF:DateTimeOriginal", "-EXIF:OffsetTimeOriginal", "-EXIF:SubSecTimeOriginal",
-				"-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude", p).CombinedOutput()
+				"-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude",
+				"-IFD0:ImageDescription", "-IFD0:XPTitle", p).CombinedOutput()
 			if err != nil {
 				t.Fatalf("exiftool: %v\n%s", err, got)
 			}
 			s := string(got)
 			for _, want := range []string{"Orientation                     : 8", "2024:02:29 08:07:06", "+05:30",
-				"SubSecTimeOriginal              : 5", "GPSLatitude                     : -33.8568", "GPSLongitude                    : 151.2153"} {
+				"SubSecTimeOriginal              : 5", "GPSLatitude                     : -33.8568", "GPSLongitude                    : 151.2153",
+				"ImageDescription                : " + *editAll.ImageDescription, "XPTitle                         : " + *editAll.XPTitle} {
 				if !strings.Contains(s, want) {
 					t.Errorf("%v: ExifTool lacks %q:\n%s", order, want, s)
 				}
@@ -359,6 +372,15 @@ func FuzzEditExif(f *testing.F) {
 					continue
 				}
 				checkEdited(t, out, e)
+				// Idempotent: the same edit of its own output succeeds and
+				// changes nothing.
+				again, err := EditExif(out, e)
+				if err != nil {
+					t.Fatalf("%+v: EditExif of its own output: %v", e, err)
+				}
+				if !bytes.Equal(again, out) {
+					t.Fatalf("%+v: a second identical edit changed the data", e)
+				}
 			}
 		})
 	})
@@ -418,6 +440,55 @@ func sortEntries(es []tiffEntry) {
 	for i := 1; i < len(es); i++ {
 		for j := i; j > 0 && es[j].tag < es[j-1].tag; j-- {
 			es[j], es[j-1] = es[j-1], es[j]
+		}
+	}
+}
+
+// ImageDescription and XPTitle are set, replaced in place by a value that
+// fits, and removed; the bytes are ExifTool's (UTF-8 and a NUL; UTF-16LE
+// and two).
+func TestEditExifText(t *testing.T) {
+	for _, order := range []byteOrder{binary.LittleEndian, binary.BigEndian} {
+		data, err := EditExif(photoTIFF(order), ExifEdit{ImageDescription: ptr("Café"), XPTitle: ptr("Café 😀")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, first, _ := newTIFF(data)
+		ifd0 := r.ifd(first)
+		if d := ifd0[tagImageDescription]; d.typ != typeASCII || string(d.value) != "Caf\xc3\xa9\x00" {
+			t.Errorf("%v: ImageDescription %d %q", order, d.typ, d.value)
+		}
+		want := []byte{'C', 0, 'a', 0, 'f', 0, 0xe9, 0, ' ', 0, 0x3d, 0xd8, 0x00, 0xde, 0, 0}
+		if x := ifd0[tagXPTitle]; x.typ != typeByte || !bytes.Equal(x.value, want) {
+			t.Errorf("%v: XPTitle %d % x", order, x.typ, x.value)
+		}
+		shorter, err := EditExif(data, ExifEdit{ImageDescription: ptr("Cafe"), XPTitle: ptr("Café")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(shorter) != len(data) {
+			t.Errorf("%v: a shorter value grew the data %d → %d", order, len(data), len(shorter))
+		}
+		checkEdited(t, shorter, ExifEdit{ImageDescription: ptr("Cafe"), XPTitle: ptr("Café")})
+		removed, err := EditExif(shorter, ExifEdit{ImageDescription: ptr(""), XPTitle: ptr("")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, first, _ = newTIFF(removed)
+		ifd0 = r.ifd(first)
+		if _, ok := ifd0[tagImageDescription]; ok {
+			t.Errorf("%v: ImageDescription not removed", order)
+		}
+		if _, ok := ifd0[tagXPTitle]; ok {
+			t.Errorf("%v: XPTitle not removed", order)
+		}
+		if bytes.Contains(removed, []byte("Cafe")) {
+			t.Errorf("%v: the old description is still in the data", order)
+		}
+	}
+	for _, bad := range []string{"a\x00b", "\xff"} {
+		if _, err := EditExif(nil, ExifEdit{XPTitle: ptr(bad)}); err == nil {
+			t.Errorf("%q was written", bad)
 		}
 	}
 }

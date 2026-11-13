@@ -18,6 +18,10 @@ pages).
   not a UTC time.
 - **`GPS`:** latitude and longitude in signed decimal degrees, and the
   altitude when there is one. Nil without a valid position.
+- **`ImageDescription`:** IFD0's ImageDescription, its bytes as they are
+  up to the NUL. Writers put UTF-8 there, ExifTool among them.
+- **`XPTitle`:** IFD0's XPTitle, Windows' title: UTF-16 little-endian,
+  up to its NUL.
 
 A field the file lacks, or has in a form this package doesn't accept,
 stays at its zero value.
@@ -69,9 +73,24 @@ samples. It runs where `exiftool` is installed.
 ## Writing: EditExif
 
 `EditExif(tiff, ExifEdit)` returns TIFF data with the edit applied. It
-can set the orientation, the date taken and the date digitized (ExifTool's
-CreateDate), each with fraction and offset, and the GPS position and
-altitude, or remove the position.
+can set:
+
+- the orientation;
+- the date taken and the date digitized (ExifTool's CreateDate), each with
+  fraction and offset;
+- the GPS position and altitude, or remove the position;
+- `ImageDescription` and `XPTitle`, or remove them (`""`).
+
+The text tags are written as ExifTool writes them:
+
+- **`ImageDescription`:** UTF-8 bytes and a NUL, type ASCII.
+- **`XPTitle`:** UTF-16 little-endian and two NULs, type BYTE. A
+  character past U+FFFF is a surrogate pair, as Windows reads it.
+  ExifTool reads and writes XP tags as UCS-2, so it keeps only such a
+  character's low 16 bits; the library's tests compare text within the
+  BMP with it.
+
+Text with a NUL in it, or that isn't UTF-8, is refused.
 
 - **Every other byte keeps its offset**, so unknown tags, the thumbnail
   and maker notes, whose own offsets point into the data, stay valid.
@@ -91,3 +110,13 @@ altitude, or remove the position.
   these tags aren't changed.
 - **Data that isn't TIFF**, or whose IFDs lie outside it, is refused with
   `ErrMalformed` rather than rewritten.
+- **Idempotent:** `EditExif` of its own output with the same edit
+  succeeds and returns the data unchanged, byte for byte; a fuzz target
+  checks it. To keep that true on malformed data:
+  - An IFD a pointer leads to but that doesn't read (its entries run past
+    the end) still counts as structure. Nothing that overlaps its count
+    field is zeroed or rewritten, which could make it read as an IFD.
+  - Values and IFDs that pointers place past the end of the data are
+    remembered. An edit that would have to append where one of them lies
+    is refused (`ErrUnsupported`), because the appended bytes would
+    become that value or IFD.
