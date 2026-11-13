@@ -30,6 +30,10 @@ type Options struct {
 	Timescale, Duration uint32
 	// Matrix is the video track's a, b, c, d in 16.16 fixed point.
 	Matrix [4]int32
+	// MovieMatrix is the movie header's; all zero is the identity.
+	MovieMatrix [4]int32
+	// VideoTracks is how many video tracks there are (0 is one).
+	VideoTracks int
 	// Width and Height are the video track's, in pixels.
 	Width, Height int
 	// NoVideo leaves the video track out; AudioFirst puts an audio track
@@ -99,6 +103,10 @@ func cat(bs ...[]byte) []byte {
 }
 
 func mvhd(o Options) []byte {
+	movie := o.MovieMatrix
+	if movie == ([4]int32{}) {
+		movie = [4]int32{1 << 16, 0, 0, 1 << 16}
+	}
 	var times []byte
 	if o.MvhdVersion == 1 {
 		times = cat(u64(o.Created), u64(o.Created), u32(o.Timescale), u64(uint64(o.Duration)))
@@ -107,7 +115,7 @@ func mvhd(o Options) []byte {
 	}
 	return box("mvhd", []byte{o.MvhdVersion, 0, 0, 0}, times,
 		u32(1<<16), u16(1<<8), make([]byte, 10), // rate, volume, reserved
-		matrix([4]int32{1 << 16, 0, 0, 1 << 16}),
+		matrix(movie),
 		make([]byte, 24), u32(3)) // pre_defined, next track ID
 }
 
@@ -187,7 +195,9 @@ func Build(o Options) (file []byte, mediaStart, mediaEnd int64) {
 			traks = append(traks, trak(o, 2, "soun", chunk)...)
 		}
 		if !o.NoVideo {
-			traks = append(traks, trak(o, 1, "vide", chunk)...)
+			for i := range max(o.VideoTracks, 1) {
+				traks = append(traks, trak(o, uint32(10+i), "vide", chunk)...)
+			}
 		}
 		meta := keysMeta(o)
 		var u []byte

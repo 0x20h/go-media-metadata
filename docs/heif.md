@@ -68,6 +68,21 @@ the JPEG path, which reads the Exif tag.
     primary image, and the item offsets that the `meta` box's growth
     moves are moved.
   - Items are capped at 16 MiB.
+  - A last box whose header says "to the end of the file" (size 0) gets
+    its real size before data is appended after it.
+  - Refused rather than written (`ErrUnsupported`):
+    - a file where an image's data overlaps the `meta` box, which an
+      edit rewrites;
+    - a file where another item's data runs to or past the end of the
+      file, because appended data would join it;
+    - a file where a new item wouldn't read back from the rewritten
+      `meta` box.
+  - A fuzz target writes Exif and XMP items into mutated files: added,
+    replaced in place, and moved. Every write that succeeds reads back
+    with the new value and the same orientation, leaves the other items'
+    data byte for byte, and is in place when written again. ExifTool's
+    `-validate` finds no warning in the written files that the source
+    didn't already have.
 - **`EditHEIFExif` doesn't set the orientation.** It applies an
   `ExifEdit` to the item, but refuses one that sets the orientation
   (`ErrOrientationInExif`), because the tag alone would disagree with

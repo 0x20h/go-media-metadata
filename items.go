@@ -2,6 +2,7 @@ package mediameta
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -126,11 +127,17 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if err != nil {
 		return nil, err
 	}
+	// The meta box changes; no image's data may lie in it.
+	if err := f.noDataInMeta(); err != nil {
+		return nil, err
+	}
 	var patches []patch
 	var old []oldData
+	var inPlace oldData // where the new data goes when it fits
+	var inPlaceData []byte
 	placed := false
 	if found {
-		if patches, placed, err = f.patchItem(id, payload); err != nil {
+		if inPlace, inPlaceData, placed, err = f.patchItem(id, payload); err != nil {
 			return nil, err
 		}
 		if !placed {
@@ -140,6 +147,12 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 		}
 	} else if id, err = f.addMetadataItem(kind); err != nil {
 		return nil, err
+	}
+	if !placed {
+		// Nothing may take in the data appended at the end.
+		if err := f.endsBefore(id, size); err != nil {
+			return nil, err
+		}
 	}
 	loc, _ := f.m.Loc.Item(id)
 	if !placed {
@@ -158,6 +171,13 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	}
 	var tail []byte
 	if !placed {
+		// A last box that runs to the end of the file would take in the
+		// data appended after it: it gets its size.
+		closing, err := f.closeLastBox(src, delta)
+		if err != nil {
+			return nil, err
+		}
+		patches = append(patches, closing...)
 		// A media data box at the end holds the data.
 		tail = bmff.AppendHeader(nil, bmff.T("mdat"), len(payload), false)
 		at := uint64(size + delta + int64(len(tail)))
@@ -187,6 +207,20 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if int64(len(newMeta))-f.meta.Size != delta {
 		return nil, fmt.Errorf("%w: the meta box changed size twice", ErrUnsupported)
 	}
+	if !found {
+		if err := readsBack(newMeta, kind, id, f.m.Primary); err != nil {
+			return nil, err
+		}
+	}
+	if placed {
+		// Placed in the new file only now: a meta box that changed size
+		// moves the data after it, and idat with it.
+		if at, ok := f.outAt(inPlace, newMeta, delta); ok {
+			patches = append(patches, patch{at: at, data: inPlaceData})
+		} else {
+			return nil, fmt.Errorf("%w: the item's data has no place in the new file", ErrUnsupported)
+		}
+	}
 	patches = append(patches, f.zeroPatches(old, newMeta, delta)...)
 	p := &Plan{Size: size, NewSize: size + delta + int64(len(tail)), src: src, f: f, meta: newMeta, patches: patches, tail: tail}
 	if p.NewSize == size {
@@ -194,6 +228,87 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 		p.Patches = inPlacePatches(f.meta.Offset, f.raw, newMeta, patches)
 	}
 	return p, nil
+}
+
+// readsBack checks that an item added to the meta box is there when it's
+// read again: its type (and content type), its cdsc reference to the
+// primary image, its location. A box the edit appended to can hold
+// entries that hide what follows them (one that runs to its parent's end,
+// say), and the file is refused rather than written with an item no
+// reader finds.
+func readsBack(meta []byte, kind metadataKind, id, primary uint32) error {
+	m, err := bmff.ParseMeta(meta)
+	if err != nil {
+		return fmt.Errorf("%w: the new meta box doesn't read back: %v", ErrUnsupported, err)
+	}
+	want, ct := bmff.T("Exif"), ""
+	if kind == kindXMP {
+		want, ct = bmff.T("mime"), xmpContentType
+	}
+	refers := false
+	for _, r := range m.Refs {
+		if r.Type == bmff.T("cdsc") && r.From == id {
+			for _, to := range r.To {
+				refers = refers || to == primary
+			}
+		}
+	}
+	located := false
+	if m.Loc != nil {
+		_, located = m.Loc.Item(id)
+	}
+	if m.ItemTypes[id] != want || m.ContentType(id) != ct || !refers || !located {
+		return fmt.Errorf("%w: the new %v item doesn't read back from the meta box", ErrUnsupported, kind)
+	}
+	return nil
+}
+
+// endsBefore checks that no item but id has data that would take in what
+// is appended to the file: an extent that runs to the end of the file
+// (length 0), or past it.
+func (f *heifFile) endsBefore(id uint32, size int64) error {
+	for _, it := range f.m.Loc.Items {
+		if it.ID == id || it.ConstructionMethod != 0 || it.DataRefIndex != 0 {
+			continue
+		}
+		for _, e := range it.Extents {
+			start := it.BaseOffset + e.Offset
+			switch {
+			case e.Length == 0:
+				return fmt.Errorf("%w: item %d runs to the end of the file, where the new data would go", ErrUnsupported, it.ID)
+			case start < it.BaseOffset || start+e.Length < start || start+e.Length > uint64(size):
+				return fmt.Errorf("%w: item %d's data runs past the end of the file", ErrMalformed, it.ID)
+			}
+		}
+	}
+	return nil
+}
+
+// closeLastBox is the patch that writes the size of the file's last box
+// into its header when the header says 0, "to the end of the file" (ISO/IEC
+// 14496-12 4.2): a box appended after it would otherwise be read as part of
+// it. The meta box is encoded with its size, so it needs none. A box past 4
+// GB can't take its size in the 32-bit field and is refused.
+func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64) ([]patch, error) {
+	last := f.boxes[len(f.boxes)-1]
+	if last.Offset == f.meta.Offset {
+		return nil, nil
+	}
+	var h [4]byte
+	if _, err := src.ReadAt(h[:], last.Offset); err != nil {
+		return nil, fmt.Errorf("%w: reading the last box: %v", ErrMalformed, err)
+	}
+	if binary.BigEndian.Uint32(h[:]) != 0 {
+		return nil, nil
+	}
+	if last.Size > 0xFFFFFFFF {
+		return nil, fmt.Errorf("%w: a last box of %d bytes that runs to the end of the file", ErrUnsupported, last.Size)
+	}
+	at := last.Offset
+	if at >= f.meta.End() {
+		at += delta
+	}
+	return []patch{{at: at, data: binary.BigEndian.AppendUint32(nil, uint32(last.Size))}}, nil
 }
 
 // metadataItem finds the file's Exif or XMP item; two of a kind are
@@ -255,46 +370,46 @@ func noRoom(err error) error {
 	return err
 }
 
-// patchItem writes payload over the item's data where it fits: one
+// patchItem places payload over the item's data where it fits: one
 // extent, in an mdat's payload or idat's, that no other item uses, at
-// least as long as payload. The extent's length becomes payload's. ok is
-// false where it doesn't fit.
-func (f *heifFile) patchItem(id uint32, payload []byte) ([]patch, bool, error) {
+// least as long as payload. It returns where that is, in the source, and
+// what goes there: payload, then zeros to the old extent's end. The
+// extent's length becomes payload's. ok is false where it doesn't fit.
+func (f *heifFile) patchItem(id uint32, payload []byte) (where oldData, data []byte, ok bool, err error) {
 	l := f.m.Loc
 	loc, _ := l.Item(id)
 	if loc.DataRefIndex != 0 || len(loc.Extents) != 1 || l.LengthSize == 0 {
-		return nil, false, nil
+		return oldData{}, nil, false, nil
 	}
 	e := &loc.Extents[0]
 	start := loc.BaseOffset + e.Offset
 	if start < loc.BaseOffset || e.Length < uint64(len(payload)) || e.Length == 0 || start+e.Length < start {
-		return nil, false, nil
+		return oldData{}, nil, false, nil
 	}
 	n := int64(len(payload))
-	var at int64
 	switch loc.ConstructionMethod {
 	case 0:
 		s, end := int64(start), int64(start+e.Length)
 		if !f.inOneMediaData(s, end) {
-			return nil, false, nil
+			return oldData{}, nil, false, nil
 		}
-		at = s
+		where = oldData{at: s, n: int64(e.Length), afterEnd: s >= f.meta.End()}
 	case 1:
 		idat, idatLen := idatPayload(f.raw)
 		if idat < 0 || start+e.Length > uint64(idatLen) {
-			return nil, false, nil
+			return oldData{}, nil, false, nil
 		}
-		at = f.meta.Offset + idat + int64(start)
+		where = oldData{idat: true, at: int64(start), n: int64(e.Length)}
 	default:
-		return nil, false, nil
+		return oldData{}, nil, false, nil
 	}
 	if f.shared(id, loc.ConstructionMethod, start, start+e.Length) {
-		return nil, false, nil
+		return oldData{}, nil, false, nil
 	}
 	// The rest of the old data is zeroed: it isn't left to be found.
-	data := append(bytes.Clone(payload), make([]byte, e.Length-uint64(n))...)
+	data = append(bytes.Clone(payload), make([]byte, e.Length-uint64(n))...)
 	e.Length = uint64(n)
-	return []patch{{at: at, data: data}}, true, nil
+	return where, data, true, nil
 }
 
 // oldData is a range of an item's old data to zero: a file offset for
@@ -353,25 +468,32 @@ func (f *heifFile) oldExtents(id uint32, size int64) ([]oldData, error) {
 }
 
 // zeroPatches are the output patches that zero old data, placed in the
-// edited file: past the meta box shifted by delta, in idat where the new
-// meta box has it.
+// edited file (outAt).
 func (f *heifFile) zeroPatches(old []oldData, newMeta []byte, delta int64) []patch {
 	var out []patch
-	idat, _ := idatPayload(newMeta)
 	for _, o := range old {
-		at := o.at
-		switch {
-		case o.idat:
-			if idat < 0 {
-				continue
-			}
-			at = f.meta.Offset + idat + o.at
-		case o.afterEnd:
-			at += delta
+		if at, ok := f.outAt(o, newMeta, delta); ok {
+			out = append(out, patch{at: at, data: make([]byte, o.n)})
 		}
-		out = append(out, patch{at: at, data: make([]byte, o.n)})
 	}
 	return out
+}
+
+// outAt is where a range of the source is in the edited file: past the
+// meta box shifted by delta, in idat where the new meta box has it. ok is
+// false for idat data when the new meta box has no idat.
+func (f *heifFile) outAt(o oldData, newMeta []byte, delta int64) (int64, bool) {
+	switch {
+	case o.idat:
+		idat, _ := idatPayload(newMeta)
+		if idat < 0 {
+			return 0, false
+		}
+		return f.meta.Offset + idat + o.at, true
+	case o.afterEnd:
+		return o.at + delta, true
+	}
+	return o.at, true
 }
 
 // inOneMediaData reports whether [start, end) lies in one top-level mdat

@@ -56,10 +56,11 @@ Early, and growing format by format.
 | JPEG | read, write (Exif tag) | read, write, edit | read, write, extended XMP |
 | PNG, WebP | read, write (Exif tag) | read, write, edit | read, write |
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
-| QuickTime (MOV), MP4 | read (track matrix) | | |
+| QuickTime (MOV), MP4 | read, write (track matrix) | | |
 
 `ReadVideo` reads a movie's recording date, duration, GPS position,
-orientation and size, make and model, and Live Photo content identifier.
+orientation and size, make and model, and Live Photo content identifier;
+`SetVideoRotation` and `SetVideoOrientation` set its orientation in place.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords and rating, whatever file holds the packet.

@@ -34,7 +34,21 @@ are in, wherever `moov` sits, and never the sample tables or the media
 data. For a 1 MB test movie that is 870 bytes. Its results are checked
 against ExifTool on the test movies.
 
-## Writing
+## Writing the orientation
 
-Writing comes next: first the rotation (a same-size patch of the track
-matrix), then the date and place.
+`SetVideoRotation`, `SetVideoOrientation` and their plans set a movie's
+orientation through each video track's matrix: 36 bytes at a fixed place
+in its track header (`tkhd`).
+
+- **The translation** that keeps the turned picture in view is written
+  with the matrix, as cameras write it.
+- **The plan is always in place.** It patches nothing else, so the media
+  data and the chunk offsets stay valid.
+- **A track already shown that way** isn't touched.
+- **A rotation keeps a mirroring,** as `SetRotation` does for images.
+- **A movie whose header (`mvhd`) has a matrix of its own** is refused
+  (`ErrUnsupported`): the two would combine.
+
+ExifTool and FFmpeg read the rotations written.
+
+Writing the date and place comes next.
