@@ -6,7 +6,10 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // ExifEdit is a change to Exif data. A field left at its zero value
@@ -34,6 +37,16 @@ type ExifEdit struct {
 	// instead; the GPS IFD's other tags stay.
 	GPS       *GPS
 	RemoveGPS bool
+
+	// ImageDescription sets IFD0's ImageDescription tag to the string's
+	// UTF-8 bytes, NUL-terminated, as ExifTool writes it (the tag is
+	// ASCII by the standard; readers take UTF-8 there). XPTitle sets IFD0's
+	// XPTitle tag (Windows' title): UTF-16 little-endian in BYTE data,
+	// NUL-terminated, a character past U+FFFF as a surrogate pair, as
+	// Windows reads it (ExifTool reads and writes UCS-2: it keeps such a
+	// character's low 16 bits). "" removes the tag. Text with a NUL, or that isn't
+	// UTF-8, is refused.
+	ImageDescription, XPTitle *string
 }
 
 // Exif and GPS tags written here, besides those read.
@@ -74,6 +87,11 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 	for _, d := range []*time.Time{edit.DateTimeOriginal, edit.DateTimeDigitized} {
 		if d != nil && (d.Year() < 0 || d.Year() > 9999) {
 			return nil, fmt.Errorf("mediameta: date %v out of range", d)
+		}
+	}
+	for _, s := range []*string{edit.ImageDescription, edit.XPTitle} {
+		if s != nil && (!utf8.ValidString(*s) || strings.IndexByte(*s, 0) >= 0) {
+			return nil, fmt.Errorf("mediameta: text that isn't UTF-8 without NUL")
 		}
 	}
 	if len(tiff) == 0 {
@@ -136,6 +154,25 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 	var ifd0 []tiffChange
 	if edit.Orientation != 0 {
 		ifd0 = append(ifd0, tiffChange{tag: tagOrientation, typ: typeShort, count: 1, value: w.order.AppendUint16(nil, uint16(edit.Orientation))})
+	}
+	if s := edit.ImageDescription; s != nil {
+		if *s == "" {
+			ifd0 = append(ifd0, tiffChange{tag: tagImageDescription, remove: true})
+		} else {
+			ifd0 = append(ifd0, w.asciiChange(tagImageDescription, *s))
+		}
+	}
+	if s := edit.XPTitle; s != nil {
+		if *s == "" {
+			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, remove: true})
+		} else {
+			var b []byte
+			for _, u := range utf16.Encode([]rune(*s)) {
+				b = binary.LittleEndian.AppendUint16(b, u)
+			}
+			b = append(b, 0, 0)
+			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, typ: typeByte, count: uint32(len(b)), value: b})
+		}
 	}
 	// The sub-IFDs' pointers are checked against the data as it is,
 	// before anything is appended: one that leads past its end would
