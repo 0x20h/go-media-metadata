@@ -52,9 +52,9 @@ Early, and growing format by format.
 
 | Format | Orientation | Exif | XMP |
 |---|---|---|---|
-| HEIF / HEIC / AVIF | read, write (`irot`, `imir`) | read, write, edit | read, write |
-| JPEG | read, write (Exif tag) | read, write, edit | read, write, extended XMP |
-| PNG, WebP | read, write (Exif tag) | read, write, edit | read, write |
+| HEIF / HEIC / AVIF | read, write (`irot`, `imir`) | read, write, edit | read, write, edit |
+| JPEG | read, write (Exif tag) | read, write, edit | read, write, edit, extended XMP |
+| PNG, WebP | read, write (Exif tag) | read, write, edit | read, write, edit |
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 

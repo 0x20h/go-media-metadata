@@ -27,11 +27,11 @@ formats existed.
 There are two ways to write an edit:
 
 - **`Set…` functions** (`SetRotation`, `SetOrientation`, `SetExif`,
-  `SetXMP`, `EditHEIFExif`, `SetRAWOrientation`) stream the edited file
-  to an `io.Writer`.
+  `SetXMP`, `EditHEIFExif`, `EditFileXMP`, `SetRAWOrientation`) stream
+  the edited file to an `io.Writer`.
 - **`Plan…` functions** (`PlanRotation`, `PlanOrientation`, `PlanExif`,
-  `PlanXMP`, `PlanExifEdit`, `PlanRAWOrientation`) compute the same edit
-  without writing it, as a `Plan`.
+  `PlanXMP`, `PlanExifEdit`, `PlanXMPEdit`, `PlanRAWOrientation`)
+  compute the same edit without writing it, as a `Plan`.
 
 Neither ever writes to the source. On an error the writer may hold part
 of a file, so write to a temporary file and rename it over the original
