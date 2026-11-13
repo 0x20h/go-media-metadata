@@ -92,3 +92,15 @@ length, its chunk's offset and the chunk.
 - **Old extended segments** are always removed.
 
 ExifTool reads a 180 KB split packet as one, with no warning.
+
+## Test corpus
+
+`testdata/exiftool` holds synthetic JPEGs whose Exif, XMP and IPTC
+ExifTool wrote, with the values it wrote. Their layouts are ones this
+package didn't produce. `TestExifToolCorpusReads` checks that every value
+reads as written; this runs in CI. `TestExifToolCorpusWriteBack` applies
+each writer (orientation, date, XMP title, IPTC keywords) to each file and
+checks that the change reads back, the rest stays and the image data is
+untouched. Where exiftool is installed, it also checks that ExifTool's
+validation adds no warning and the IPTC digest stays current. The files
+are also seeds for the JPEG fuzz targets.
