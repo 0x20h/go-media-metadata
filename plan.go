@@ -43,6 +43,7 @@ type Plan struct {
 	patches []patch // the Exif patches, at output offsets
 	tail    []byte  // appended after the source's last byte
 	jpeg    *jpegEdit
+	splice  *spliceEdit // a PNG's or WebP's edit
 }
 
 // patchMergeGap is how many unchanged bytes may separate two runs of
@@ -263,8 +264,20 @@ func (p *Plan) Apply(w io.WriterAt) error {
 // The source must not have changed since the plan was made. On an error
 // nothing useful has been written to dst.
 func (p *Plan) WriteTo(dst io.Writer) (int64, error) {
+	if p.splice != nil {
+		return p.splice.write(p.src, p.Size, dst)
+	}
 	if p.jpeg != nil {
 		return p.jpeg.write(p.src, p.Size, dst)
+	}
+	if p.f == nil {
+		// A plan of patches alone (a RAW file's): the source, patched.
+		w := &patchWriter{w: dst, patches: p.patches}
+		n, err := io.Copy(w, io.NewSectionReader(p.src, 0, p.Size))
+		if err == nil && n != p.Size {
+			err = fmt.Errorf("mediameta: wrote %d bytes, want %d", n, p.Size)
+		}
+		return n, err
 	}
 	n, err := p.f.write(p.src, p.Size, dst, p.meta, p.NewSize-p.Size-int64(len(p.tail)), p.patches)
 	if err != nil || len(p.tail) == 0 {

@@ -55,6 +55,10 @@ const (
 	tagOffsetTimeOriginal = 0x9011
 	tagSubSecTimeOriginal = 0x9291
 
+	tagDateTimeDigitized   = 0x9004
+	tagOffsetTimeDigitized = 0x9012
+	tagSubSecTimeDigitized = 0x9292
+
 	tagGPSLatitudeRef  = 1
 	tagGPSLatitude     = 2
 	tagGPSLongitudeRef = 3
@@ -219,7 +223,14 @@ func parseExif(data []byte) Exif {
 	if !ok {
 		return x
 	}
-	ifd0 := t.ifd(first)
+	return t.exif(t.ifd, first)
+}
+
+// exif reads the fields of Exif from IFD0 at first and the IFDs it points
+// to, each read by ifd: from data in memory, or from a file as needed.
+func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
+	var x Exif
+	ifd0 := ifd(first)
 	if f, ok := ifd0[tagOrientation]; ok {
 		if v, ok := t.uint(f); ok && v <= 8 && Orientation(v).Valid() {
 			x.Orientation = Orientation(v)
@@ -227,12 +238,12 @@ func parseExif(data []byte) Exif {
 	}
 	if f, ok := ifd0[tagExifIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
-			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(t.ifd(off))
+			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(ifd(off))
 		}
 	}
 	if f, ok := ifd0[tagGPSIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
-			x.GPS = t.gps(t.ifd(off))
+			x.GPS = t.gps(ifd(off))
 		}
 	}
 	return x

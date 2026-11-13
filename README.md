@@ -61,17 +61,43 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   the Orientation tag, DateTimeOriginal with its fraction of a second and
   its offset (OffsetTimeOriginal), and the GPS position and altitude.
   Its results are checked against ExifTool on the test files.
+- Camera RAW: `ReadExif`, `ReadOrientation` and `ReadXMP` also read
+  TIFF-based RAW files (DNG, CR2, NEF, ARW, ORF, RW2; an RW2's Exif from
+  its embedded JPEG) and CR3 (its CMT boxes and XMP box), reading the
+  IFDs from the file as needed, never the image data.
+  `SetRAWOrientation` and `PlanRAWOrientation` change only the
+  Orientation value where it sits in IFD0 (CR3: CMT1), and the
+  `tiff:Orientation` digit of an XMP packet, in place. Nothing else is
+  written, so maker notes and image data stay byte for byte. A file
+  without the tag is refused rather than restructured.
 - `EditHEIFExif` and `PlanExifEdit` apply an `ExifEdit` to a HEIF
   file's Exif item (or add one). A date or GPS change that fits is a
   patch in place. The orientation is left to `SetOrientation`, since
   HEIF readers show `irot` and `imir`, not the Exif tag.
+- PNG and WebP: `ReadExif`, `ReadOrientation` and `ReadXMP` read a
+  PNG's `eXIf` chunk and XMP `iTXt` chunk (compressed or not) and a
+  WebP's `EXIF` and `XMP ` chunks; `PlanExif`, `PlanXMP` and
+  `PlanExifEdit` (and the Set functions) write them, the image data
+  untouched. A value that fits its chunk is written there, padded, with
+  the PNG chunk's CRC rewritten: in place. A longer one, or a new one,
+  rewrites the file: a new PNG chunk goes right after `IHDR`, a new WebP
+  chunk after the image, with the `VP8X` flags and RIFF size updated (a
+  simple WebP gets the `VP8X` header metadata needs). Old values never
+  stay in the file. In these formats the Exif Orientation is how the
+  image is shown, so `PlanExifEdit` sets it too.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
-  segment or a HEIF Exif item: orientation, date with fraction and
-  offset, GPS position and altitude, or the position removed. Every other
+  segment or a HEIF Exif item: orientation, the date taken and the date
+  digitized (ExifTool's CreateDate), each with fraction and offset, GPS
+  position and altitude, or the position removed. Every other
   byte keeps its offset, so unknown tags, the thumbnail and maker notes
   stay valid. A value that fits is written in place; a longer value, or
   an IFD that needs a new entry, goes at the end. Old values and moved
   IFDs are zeroed, so a removed GPS position doesn't stay in the data.
+- For JPEG, `PlanExifEdit`, `PlanExif` and `SetExif` write the first Exif
+  segment: in place when the new data fits in it (padded with zeros), a
+  replacement segment otherwise (the old one isn't copied), a new segment
+  after the JFIF one where the file has none. Exif past a segment's 64 KB
+  is refused with `ErrUnsupported`. The scan data is copied byte for byte.
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.

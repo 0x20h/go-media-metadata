@@ -85,10 +85,11 @@ func tiffTags(t *testing.T, data []byte) map[[2]uint16]tiffTag {
 }
 
 var editAll = ExifEdit{
-	Orientation:      8,
-	DateTimeOriginal: ptr(time.Date(2024, 2, 29, 8, 7, 6, 500_000_000, time.FixedZone("", 5*3600+1800))),
-	OffsetKnown:      true,
-	GPS:              &GPS{Latitude: -33.8568, Longitude: 151.2153, Altitude: -12.5, HasAltitude: true},
+	Orientation:       8,
+	DateTimeOriginal:  ptr(time.Date(2024, 2, 29, 8, 7, 6, 500_000_000, time.FixedZone("", 5*3600+1800))),
+	DateTimeDigitized: ptr(time.Date(2024, 2, 29, 8, 7, 6, 0, time.FixedZone("", 5*3600+1800))),
+	OffsetKnown:       true,
+	GPS:               &GPS{Latitude: -33.8568, Longitude: 151.2153, Altitude: -12.5, HasAltitude: true},
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -111,6 +112,23 @@ func checkEdited(t *testing.T, data []byte, e ExifEdit) {
 			if got != want {
 				t.Errorf("offset %d, want %d", got, want)
 			}
+		}
+	}
+	if d := e.DateTimeDigitized; d != nil {
+		// Read as the reader reads, so a fuzzed input's odd IFDs are
+		// followed (or not) the same way.
+		r, first, _ := newTIFF(data)
+		off, _ := r.uint(r.ifd(first)[tagExifIFD])
+		exif := r.ifd(off)
+		if got, _ := ascii(exif[tagDateTimeDigitized]); got != d.Format(exifDateLayout) {
+			t.Errorf("digitized %q, want %v", got, d)
+		}
+		if sub, ok := ascii(exif[tagSubSecTimeDigitized]); d.Nanosecond() == 0 && ok {
+			t.Errorf("SubSecTimeDigitized %q for a whole second", sub)
+		}
+		zone, ok := ascii(exif[tagOffsetTimeDigitized])
+		if ok != e.OffsetKnown || e.OffsetKnown && zone != d.Format("-07:00") {
+			t.Errorf("OffsetTimeDigitized %q (%v), want %v", zone, ok, e.OffsetKnown)
 		}
 	}
 	if g := e.GPS; g != nil {
@@ -344,4 +362,62 @@ func FuzzEditExif(f *testing.F) {
 			}
 		})
 	})
+}
+
+// The edit reaches what a reader reads: a GPS IFD pointer stored as SHORT
+// (which ReadExif accepts) and a GPS tag repeated in its IFD.
+func TestEditExifMatchesTheReader(t *testing.T) {
+	order := binary.LittleEndian
+	ph := photoTIFF(order)
+	r, first, _ := newTIFF(ph)
+	gpsOff, _ := r.uint(r.ifd(first)[tagGPSIFD])
+	var gps []tiffEntry
+	for tag, f := range r.ifd(gpsOff) {
+		gps = append(gps, tiffEntry{tag, f.typ, uint32(f.count), f.value})
+	}
+	sortEntries(gps)
+	// The latitude twice: the first copy invalid (no value), the second
+	// the one a reader takes.
+	lat := gps[1]
+	gps = append([]tiffEntry{gps[0], {lat.tag, typeRational, 0, nil}}, gps[1:]...)
+	b := &tiffBuilder{order: order, gp: gps,
+		ifd0: []tiffEntry{{tagOrientation, typeShort, 1, binary.LittleEndian.AppendUint16(nil, 1)}}}
+	data := b.build()
+	// The builder writes the GPS pointer as LONG; make it SHORT.
+	_, f0, _ := newTIFF(data)
+	n := int(order.Uint16(data[f0:]))
+	for i := range n {
+		e := data[int(f0)+2+12*i:]
+		if order.Uint16(e) == tagGPSIFD {
+			off := order.Uint32(e[8:])
+			order.PutUint16(e[2:], typeShort)
+			order.PutUint32(e[8:], 0)
+			order.PutUint16(e[8:], uint16(off))
+		}
+	}
+	if parseExif(data).GPS == nil {
+		t.Fatal("the fixture's GPS doesn't read")
+	}
+	out, err := EditExif(data, ExifEdit{RemoveGPS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := parseExif(out).GPS; g != nil {
+		t.Errorf("GPS %+v after removing it", g)
+	}
+	out, err = EditExif(data, ExifEdit{GPS: &GPS{Latitude: -12.5, Longitude: 33.25}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := parseExif(out).GPS; g == nil || g.Latitude != -12.5 || g.Longitude != 33.25 {
+		t.Errorf("GPS %+v after setting it", g)
+	}
+}
+
+func sortEntries(es []tiffEntry) {
+	for i := 1; i < len(es); i++ {
+		for j := i; j > 0 && es[j].tag < es[j-1].tag; j-- {
+			es[j], es[j-1] = es[j-1], es[j]
+		}
+	}
 }

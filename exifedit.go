@@ -16,6 +16,7 @@ var ErrOrientationInExif = errors.New("mediameta: a HEIF image's orientation is 
 // EditHEIFExif writes to dst the HEIF file in src (size bytes) with edit
 // applied to its Exif item (see EditExif), or with a new Exif item holding
 // the edit when it has none. Everything else is as SetExif writes it.
+// A JPEG, PNG or WebP file is edited as PlanExifEdit says.
 func EditHEIFExif(src io.ReaderAt, size int64, dst io.Writer, edit ExifEdit) error {
 	p, err := PlanExifEdit(src, size, edit)
 	if err != nil {
@@ -32,7 +33,30 @@ func EditHEIFExif(src io.ReaderAt, size int64, dst io.Writer, edit ExifEdit) err
 // date, a GPS position replaced or removed) keeps the item's length and
 // is in place, a patch of the item's data. Old values are zeroed, in the
 // item and, when it moves, where it was.
+//
+// A JPEG's first Exif APP1 segment is edited the same way: data that fits
+// in the segment is written in place, padded with zeros; longer data
+// replaces the segment, which isn't copied; a JPEG without Exif gets a
+// segment after its JFIF header. Exif past the segment's 64 KB is refused
+// with ErrUnsupported. A JPEG's, PNG's or WebP's Exif Orientation is how
+// it's shown, so an edit may set it there.
 func PlanExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
+	if isJPEG(src, size) {
+		return planJPEGExif(src, size, func(old []byte) ([]byte, error) { return EditExif(old, edit) })
+	}
+	// A PNG or WebP keeps any "Exif\0\0" before its TIFF data; its Exif
+	// Orientation is how it's shown, so it's set here too.
+	p, ok, err := planChunked(src, size, kindExif, func(old []byte) ([]byte, error) {
+		prefix, tiff := tiffPayload(old)
+		out, err := EditExif(tiff, edit)
+		if err != nil {
+			return nil, err
+		}
+		return append(append([]byte(nil), prefix...), out...), nil
+	})
+	if ok {
+		return p, err
+	}
 	if edit.Orientation != 0 {
 		return nil, ErrOrientationInExif
 	}
