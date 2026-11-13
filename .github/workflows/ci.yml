@@ -44,7 +44,9 @@ jobs:
         with:
           go-version: stable
       # 2 minutes per target on a pull request, 10 on main, 30 nightly.
-      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime ${{ github.event_name == 'pull_request' && '2m' || github.event_name == 'schedule' && '30m' || '10m' }} .
+      # A failing input is minimized for at most 10 s: left unbounded, the
+      # minimizing can take the rest of the run, which then looks stalled.
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime ${{ github.event_name == 'pull_request' && '2m' || github.event_name == 'schedule' && '30m' || '10m' }} -fuzzminimizetime 10s .
   bench:
     # Compares the benchmarks of the pull request against its base, run
     # interleaved on one runner, and fails on a clear regression (see
