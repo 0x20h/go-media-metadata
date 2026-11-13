@@ -141,8 +141,16 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   headers and the few small boxes these fields are in are read, never
   the sample tables or the media data, wherever `moov` sits: 870 bytes
   of a 1 MB test movie. Results are checked against ExifTool on the
-  test movies. Writing is next: the rotation (a same-size patch of the
-  track matrix), then date and place.
+  test movies.
+- `SetVideoRotation`, `SetVideoOrientation` and their plans set a
+  movie's orientation: each video track's matrix, 36 bytes at a fixed
+  place in its track header, with the translation that keeps the turned
+  picture in view (as cameras write it). The plan is always in place and
+  patches nothing else, so the media data and the chunk offsets stay
+  valid; a track already shown that way isn't touched. A rotation keeps
+  a mirroring, as `SetRotation` does for images. A movie whose header
+  has a matrix of its own is refused. ExifTool and FFmpeg read the
+  rotations written. Date and place are next.
 
 ### Compared with other tools
 
