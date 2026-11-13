@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/0x20h/go-media-metadata/internal/bmff"
 	"github.com/0x20h/go-media-metadata/internal/bmff/testbuild"
 )
 
@@ -275,17 +276,15 @@ func TestOldMetadataIsZeroed(t *testing.T) {
 }
 
 // imageItems is the data of a HEIF file's items other than its Exif and
-// XMP items, by id; nil for a file that isn't HEIF.
+// mime (XMP and the like) items, by id; nil for a file that isn't HEIF.
 func imageItems(data []byte) map[uint32][]byte {
 	f, err := parseHEIF(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil
 	}
-	exif, _, _ := f.metadataItem(kindExif)
-	xmp, _, _ := f.metadataItem(kindXMP)
 	out := map[uint32][]byte{}
 	for _, it := range f.m.Loc.Items {
-		if it.ID == exif || it.ID == xmp {
+		if t := f.m.ItemTypes[it.ID]; t == bmff.T("Exif") || t == bmff.T("mime") {
 			continue
 		}
 		if b, err := f.itemBytes(bytes.NewReader(data), int64(len(data)), it.ID); err == nil {
@@ -340,12 +339,14 @@ func FuzzPlanItems(f *testing.F) {
 				back func(t *testing.T, out []byte)
 			}{
 				{"exif", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanExif(r, n, exif) }, func(t *testing.T, out []byte) {
-					if x, err := ReadExif(bytes.NewReader(out), int64(len(out))); err != nil || x.DateTimeOriginal.IsZero() || x.GPS == nil {
+					// The HEIF item, as read: ReadExif tries the other
+					// formats first, and a mutated file may pass for one.
+					if x, err := readHEIFExif(bytes.NewReader(out), int64(len(out))); err != nil || x.DateTimeOriginal.IsZero() || x.GPS == nil {
 						t.Errorf("the Exif written reads back as %+v, %v", x, err)
 					}
 				}},
 				{"exif edit", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanExifEdit(r, n, ExifEdit{RemoveGPS: true}) }, func(t *testing.T, out []byte) {
-					if x, err := ReadExif(bytes.NewReader(out), int64(len(out))); err != nil || x.GPS != nil {
+					if x, err := readHEIFExif(bytes.NewReader(out), int64(len(out))); err != nil || x.GPS != nil {
 						t.Errorf("the GPS position removed reads back as %+v, %v", x, err)
 					}
 				}},
@@ -442,5 +443,84 @@ func TestMetadataItemsValidateWithExifTool(t *testing.T) {
 		if w.name != "" && s != said[writeOf{w.source, ""}] {
 			t.Errorf("%s/%s: ExifTool says %q, of the source %q", w.source, w.name, s, said[writeOf{w.source, ""}])
 		}
+	}
+}
+
+// A file whose last box runs to the end of the file (size 0 in its header)
+// gets that box's size written when an item's data is appended after it:
+// the new mdat is a box of its own, the item reads back, and writing the
+// same value again is in place.
+func TestItemAfterOpenEndedBox(t *testing.T) {
+	for _, f := range planFiles(t) {
+		boxes, err := bmff.ReadBoxes(bytes.NewReader(f.data), 0, int64(len(f.data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := boxes[len(boxes)-1]
+		if last.Type == bmff.T("meta") || last.HeaderLen != 8 {
+			continue
+		}
+		file := bytes.Clone(f.data)
+		binary.BigEndian.PutUint32(file[last.Offset:], 0)
+		t.Run(f.name, func(t *testing.T) {
+			packet := xmpPacket("Harbour at dawn", 6000)
+			p := planMetadata(t, file, nil, packet)
+			checkPlan(t, file, p)
+			out := written(t, p)
+			got, err := bmff.ReadBoxes(bytes.NewReader(out), 0, int64(len(out)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := len(got); n != len(boxes)+1 || got[n-1].Type != bmff.T("mdat") || got[n-2].Size != last.Size {
+				t.Fatalf("boxes after the write: %+v", got)
+			}
+			if x, err := ReadXMP(bytes.NewReader(out), int64(len(out))); err != nil || !bytes.Equal(x, packet) {
+				t.Errorf("the XMP reads back as %d bytes, %v", len(x), err)
+			}
+			if again := planMetadata(t, out, nil, packet); !again.InPlace {
+				t.Error("writing the same value again isn't in place")
+			}
+		})
+	}
+}
+
+// An item write that appends data is refused where another item's data
+// would take it in: an extent that runs to the end of the file, or past
+// it.
+func TestItemAppendRefusedPastOpenEndedItem(t *testing.T) {
+	o := testbuild.Default()
+	src, _ := testbuild.Build(o)
+	for _, c := range []struct {
+		name   string
+		length func(size uint64, e bmff.Extent) uint64
+		want   error
+	}{
+		{"to the end", func(uint64, bmff.Extent) uint64 { return 0 }, ErrUnsupported},
+		{"past the end", func(size uint64, e bmff.Extent) uint64 { return size }, ErrMalformed},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := parseHEIF(bytes.NewReader(src), int64(len(src)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			exif, _, _ := f.metadataItem(kindExif)
+			changed := false
+			for i := range f.m.Loc.Items {
+				it := &f.m.Loc.Items[i]
+				if it.ID != exif && it.ConstructionMethod == 0 && len(it.Extents) == 1 && !changed {
+					it.Extents[0].Length = c.length(uint64(len(src)), it.Extents[0])
+					changed = true
+				}
+			}
+			meta, err := f.m.Encode()
+			if err != nil || int64(len(meta)) != f.meta.Size {
+				t.Fatalf("re-encoding the meta box: %d bytes, %v", len(meta), err)
+			}
+			file := append(append(bytes.Clone(src[:f.meta.Offset]), meta...), src[f.meta.End():]...)
+			long := xmpPacket("Harbour at dawn", 6000)
+			if _, err := PlanXMP(bytes.NewReader(file), int64(len(file)), long); !errors.Is(err, c.want) {
+				t.Errorf("an appending write: %v, want %v", err, c.want)
+			}
+		})
 	}
 }

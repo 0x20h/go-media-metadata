@@ -128,8 +128,13 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   listed in `iinf` with a `cdsc` reference to the primary image, and the
   item offsets the `meta` box's growth moves are moved. Image data is
   copied byte for byte. `PlanExif` and `PlanXMP` are the same edits as
-  plans. A fuzz target writes Exif and XMP items, added, replaced in
-  place and moved, into mutated files: every write that succeeds reads
+  plans. A last box whose header says "to the end of the file" gets its
+  size before data is appended after it. Refused rather than written:
+  a file where an image's data overlaps the `meta` box (an edit rewrites
+  it), where another item's data runs to or past the end of the file
+  (appended data would join it), or where a new item wouldn't read back
+  from the rewritten `meta` box. A fuzz target writes Exif and XMP
+  items, added, replaced in place and moved, into mutated files: every write that succeeds reads
   back with the new value and the same orientation, leaves the other
   items' data byte for byte, and is in place when written again.
   ExifTool's `-validate` finds no warning in the written files that the
