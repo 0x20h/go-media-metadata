@@ -115,17 +115,20 @@ func checkEdited(t *testing.T, data []byte, e ExifEdit) {
 		}
 	}
 	if d := e.DateTimeDigitized; d != nil {
-		tags := tiffTags(t, data)
-		if got := tags[[2]uint16{tagExifIFD, tagDateTimeDigitized}].value; got != d.Format(exifDateLayout)+"\x00" {
+		// Read as the reader reads, so a fuzzed input's odd IFDs are
+		// followed (or not) the same way.
+		r, first, _ := newTIFF(data)
+		off, _ := r.uint(r.ifd(first)[tagExifIFD])
+		exif := r.ifd(off)
+		if got, _ := ascii(exif[tagDateTimeDigitized]); got != d.Format(exifDateLayout) {
 			t.Errorf("digitized %q, want %v", got, d)
 		}
-		sub, hasSub := tags[[2]uint16{tagExifIFD, tagSubSecTimeDigitized}]
-		if d.Nanosecond() == 0 && hasSub {
-			t.Errorf("SubSecTimeDigitized %q for a whole second", sub.value)
+		if sub, ok := ascii(exif[tagSubSecTimeDigitized]); d.Nanosecond() == 0 && ok {
+			t.Errorf("SubSecTimeDigitized %q for a whole second", sub)
 		}
-		off, hasOff := tags[[2]uint16{tagExifIFD, tagOffsetTimeDigitized}]
-		if hasOff != e.OffsetKnown || e.OffsetKnown && off.value != d.Format("-07:00")+"\x00" {
-			t.Errorf("OffsetTimeDigitized %q (%v), want %v", off.value, hasOff, e.OffsetKnown)
+		zone, ok := ascii(exif[tagOffsetTimeDigitized])
+		if ok != e.OffsetKnown || e.OffsetKnown && zone != d.Format("-07:00") {
+			t.Errorf("OffsetTimeDigitized %q (%v), want %v", zone, ok, e.OffsetKnown)
 		}
 	}
 	if g := e.GPS; g != nil {
