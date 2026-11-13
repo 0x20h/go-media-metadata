@@ -273,3 +273,174 @@ func TestOldMetadataIsZeroed(t *testing.T) {
 		}
 	}
 }
+
+// imageItems is the data of a HEIF file's items other than its Exif and
+// XMP items, by id; nil for a file that isn't HEIF.
+func imageItems(data []byte) map[uint32][]byte {
+	f, err := parseHEIF(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil
+	}
+	exif, _, _ := f.metadataItem(kindExif)
+	xmp, _, _ := f.metadataItem(kindXMP)
+	out := map[uint32][]byte{}
+	for _, it := range f.m.Loc.Items {
+		if it.ID == exif || it.ID == xmp {
+			continue
+		}
+		if b, err := f.itemBytes(bytes.NewReader(data), int64(len(data)), it.ID); err == nil {
+			out[it.ID] = b
+		}
+	}
+	return out
+}
+
+// itemSeeds adds the sample layouts with Exif and XMP items already in
+// them, fitting and not, so the fuzzer starts from files to replace in.
+func itemSeeds(f *testing.F) {
+	for _, file := range planFiles(f) {
+		for _, e := range metadataEdits {
+			var p *Plan
+			var err error
+			if e.exif != nil {
+				p, err = PlanExif(bytes.NewReader(file.data), int64(len(file.data)), e.exif)
+			} else {
+				p, err = PlanXMP(bytes.NewReader(file.data), int64(len(file.data)), e.xmp)
+			}
+			if err != nil {
+				f.Fatal(err)
+			}
+			var out bytes.Buffer
+			if _, err := p.WriteTo(&out); err != nil {
+				f.Fatal(err)
+			}
+			f.Add(out.Bytes())
+		}
+	}
+}
+
+// Every Exif and XMP item write that succeeds keeps the plan's invariants,
+// writes a file that reads back with the new value and the same
+// orientation, leaves the other items' data as it was, and is in place
+// when written again.
+func FuzzPlanItems(f *testing.F) {
+	seeds(f)
+	itemSeeds(f)
+	exif, xmp, long := photoTIFF(binary.LittleEndian), xmpPacket("Harbour at dusk", 0), xmpPacket("Harbour at dawn", 3000)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		withinDeadline(t, func() {
+			if _, err := parseHEIF(bytes.NewReader(data), int64(len(data))); err != nil {
+				return // the JPEG, PNG and WebP writes have fuzz targets of their own
+			}
+			before := imageItems(data)
+			o, oerr := ReadOrientation(bytes.NewReader(data), int64(len(data)))
+			for _, c := range []struct {
+				name string
+				plan func(r *bytes.Reader, n int64) (*Plan, error)
+				back func(t *testing.T, out []byte)
+			}{
+				{"exif", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanExif(r, n, exif) }, func(t *testing.T, out []byte) {
+					if x, err := ReadExif(bytes.NewReader(out), int64(len(out))); err != nil || x.DateTimeOriginal.IsZero() || x.GPS == nil {
+						t.Errorf("the Exif written reads back as %+v, %v", x, err)
+					}
+				}},
+				{"exif edit", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanExifEdit(r, n, ExifEdit{RemoveGPS: true}) }, func(t *testing.T, out []byte) {
+					if x, err := ReadExif(bytes.NewReader(out), int64(len(out))); err != nil || x.GPS != nil {
+						t.Errorf("the GPS position removed reads back as %+v, %v", x, err)
+					}
+				}},
+				{"xmp", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanXMP(r, n, xmp) }, xmpBack(xmp)},
+				{"xmp long", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanXMP(r, n, long) }, xmpBack(long)},
+			} {
+				p, err := c.plan(bytes.NewReader(data), int64(len(data)))
+				if err != nil {
+					continue
+				}
+				checkPlan(t, data, p)
+				var buf bytes.Buffer
+				if _, err := p.WriteTo(&buf); err != nil {
+					t.Fatalf("%s: %v", c.name, err)
+				}
+				out := buf.Bytes()
+				c.back(t, out)
+				after := imageItems(out)
+				for id, b := range before {
+					if !bytes.Equal(after[id], b) {
+						t.Errorf("%s: item %d's data changed", c.name, id)
+					}
+				}
+				if oerr == nil {
+					if got, err := ReadOrientation(bytes.NewReader(out), int64(len(out))); err != nil || got != o {
+						t.Errorf("%s: orientation %d, %v; was %d", c.name, got, err, o)
+					}
+				}
+				again, err := c.plan(bytes.NewReader(out), int64(len(out)))
+				if err != nil {
+					t.Errorf("%s: the written file can't be written again: %v", c.name, err)
+				} else if !again.InPlace {
+					t.Errorf("%s: writing the same value again isn't in place", c.name)
+				}
+			}
+		})
+	})
+}
+
+func xmpBack(want []byte) func(t *testing.T, out []byte) {
+	return func(t *testing.T, out []byte) {
+		if got, err := ReadXMP(bytes.NewReader(out), int64(len(out))); err != nil || !bytes.Equal(got, want) {
+			t.Errorf("the XMP written reads back as %d bytes, %v", len(got), err)
+		}
+	}
+}
+
+// ExifTool validates every file the item writes make with no warning its
+// source didn't have: an item added to a file without one, replaced in
+// place, and moved to the end, Exif and XMP, on every layout and sample
+// file. (Two synthetic layouts list their items out of order; that
+// warning comes with them.)
+func TestMetadataItemsValidateWithExifTool(t *testing.T) {
+	tool, err := exec.LookPath("exiftool")
+	if err != nil {
+		t.Skip("exiftool not installed")
+	}
+	dir := t.TempDir()
+	type writeOf struct{ source, name string }
+	files := map[string]writeOf{}
+	add := func(source, name string, b []byte) {
+		file := fmt.Sprintf("%03d.heic", len(files))
+		files[file] = writeOf{source, name}
+		if err := os.WriteFile(filepath.Join(dir, file), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range planFiles(t) {
+		add(f.name, "", f.data)
+		added := written(t, planMetadata(t, f.data, photoTIFF(binary.LittleEndian), nil))
+		added = written(t, planMetadata(t, added, nil, xmpPacket("Harbour at dusk", 0)))
+		add(f.name, "added", added)
+		add(f.name, "in place", written(t, planMetadata(t, written(t, planMetadata(t, added, photoTIFF(binary.BigEndian), nil)), nil, xmpPacket("Harbour", 0))))
+		add(f.name, "moved", written(t, planMetadata(t, written(t, planMetadata(t, added, paddedTIFF(4000), nil)), nil, xmpPacket("Harbour at dawn", 6000))))
+	}
+	got, err := exec.Command(tool, "-j", "-q", "-validate", "-warning", "-error", "-a", dir).Output()
+	if err != nil {
+		t.Fatalf("exiftool: %v", err)
+	}
+	var results []map[string]any
+	if err := json.Unmarshal(got, &results); err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != len(files) {
+		t.Fatalf("exiftool read %d files, want %d", len(results), len(files))
+	}
+	// What ExifTool says, by source and write ("" the source itself).
+	said := map[writeOf]string{}
+	for _, r := range results {
+		w := files[filepath.Base(fmt.Sprint(r["SourceFile"]))]
+		said[w] = fmt.Sprint(r["Validate"], r["Warning"], r["Error"])
+	}
+	for w, s := range said {
+		if w.name != "" && s != said[writeOf{w.source, ""}] {
+			t.Errorf("%s/%s: ExifTool says %q, of the source %q", w.source, w.name, s, said[writeOf{w.source, ""}])
+		}
+	}
+}

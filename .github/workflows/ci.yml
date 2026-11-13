@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzReadOrientation, FuzzSetRotation, FuzzPlanRotation, FuzzReadExif, FuzzEditExif, FuzzReadRAW, FuzzChunked, FuzzJPEGExif, FuzzEditXMP, FuzzJPEGXMP, FuzzReadVideo]
+        target: [FuzzReadOrientation, FuzzSetRotation, FuzzPlanRotation, FuzzReadExif, FuzzEditExif, FuzzReadRAW, FuzzChunked, FuzzJPEGExif, FuzzEditXMP, FuzzJPEGXMP, FuzzReadVideo, FuzzPlanItems]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

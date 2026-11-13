@@ -128,7 +128,12 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   listed in `iinf` with a `cdsc` reference to the primary image, and the
   item offsets the `meta` box's growth moves are moved. Image data is
   copied byte for byte. `PlanExif` and `PlanXMP` are the same edits as
-  plans.
+  plans. A fuzz target writes Exif and XMP items, added, replaced in
+  place and moved, into mutated files: every write that succeeds reads
+  back with the new value and the same orientation, leaves the other
+  items' data byte for byte, and is in place when written again.
+  ExifTool's `-validate` finds no warning in the written files that the
+  source didn't have.
 - `PlanRotation` and `PlanOrientation` compute the same edits without
   writing them: a `Plan` that
   streams the new file (`WriteTo`) or, when the file keeps its size, lists
