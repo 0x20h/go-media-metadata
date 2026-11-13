@@ -77,6 +77,17 @@ the JPEG path, which reads the Exif tag.
       file, because appended data would join it;
     - a file where a new item wouldn't read back from the rewritten
       `meta` box.
+    - a file where another item's data covers the header of a last box
+      that runs to the end of the file, whose size the write fills in;
+    - a file where an item's idat data runs past the end of idat, where
+      it would be read from other boxes (`ErrMalformed`).
+  - Another item's data is checked for overlap where it lies in the file,
+    whatever its construction method: an idat extent that a malformed file
+    places over an mdat's data counts as sharing it, and that data isn't
+    zeroed or overwritten.
+  - An item whose extent runs to the end of the file (length 0, as in an
+    iloc without length fields) is written over in place when the new data
+    is exactly that long, so writing the same value again stays in place.
   - A fuzz target writes Exif and XMP items into mutated files: added,
     replaced in place, and moved. Every write that succeeds reads back
     with the new value and the same orientation, leaves the other items'
