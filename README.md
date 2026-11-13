@@ -105,7 +105,9 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   rating, and `EditXMP` changes them in the packet, keeping everything
   else in it (other properties, other languages, namespaces, comments)
   and its length where the change fits in its padding. They work on the
-  packet's bytes, whatever file holds it.
+  packet's bytes, whatever file holds it. In a JPEG, `ReadXMP` and
+  `SetXMP` handle the XMP segment, extended XMP included: a packet past
+  64 KB is split, and read back as one.
 - For JPEG, `SetRotation`, `SetOrientation` and their plans set the Exif
   Orientation tag: in place where the first Exif segment has it (only its
   bytes change, the plan is one patch), in a new Exif segment after the

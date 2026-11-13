@@ -163,9 +163,11 @@ func TestSetMetadataErrors(t *testing.T) {
 	if _, err := PlanXMP(r, int64(len(file)), []byte("rdf:RDF \xff")); err == nil {
 		t.Error("invalid UTF-8 accepted")
 	}
+	// A JPEG takes XMP too (jpeg_xmp_test.go), but not XMP that doesn't
+	// parse.
 	jpeg := plainJPEG(t)
-	if _, err := PlanXMP(bytes.NewReader(jpeg), int64(len(jpeg)), xmpPacket("x", 0)); !errors.Is(err, ErrNotHEIF) && !errors.Is(err, ErrMalformed) {
-		t.Errorf("a JPEG: %v", err)
+	if _, err := PlanXMP(bytes.NewReader(jpeg), int64(len(jpeg)), []byte("<x:xmpmeta>")); !errors.Is(err, ErrMalformed) {
+		t.Errorf("a JPEG with broken XMP: %v", err)
 	}
 }
 
