@@ -204,19 +204,66 @@ func TestSetOrientationJPEGWithoutExif(t *testing.T) {
 	}
 }
 
-// An Exif segment without the tag would need IFD0 rewritten: refused,
-// unless nothing needs writing.
-func TestSetOrientationJPEGWithoutTag(t *testing.T) {
-	b := &tiffBuilder{order: binary.LittleEndian, ifd0: []tiffEntry{}}
+// noTagJPEG is a JPEG whose Exif has a date and a GPS position but no
+// Orientation tag, as some editors write it.
+func noTagJPEG(t testing.TB, order byteOrder) []byte {
+	b := &tiffBuilder{order: order, ifd0: []tiffEntry{}}
 	n, date := asciiValue("2025:05:04 13:14:15")
 	b.exif = []tiffEntry{{tagDateTimeOriginal, typeASCII, n, date}}
-	src := withSegments(plainJPEG(t), exifSegment(b.build()))
-	var out bytes.Buffer
-	if err := SetOrientation(bytes.NewReader(src), int64(len(src)), &out, 6); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("got %v, want ErrUnsupported", err)
+	b.gp = []tiffEntry{
+		{tagGPSLatitudeRef, typeASCII, 2, []byte("N\x00")},
+		{tagGPSLatitude, typeRational, 3, b.rationals([2]uint32{51, 1}, [2]uint32{30, 1}, [2]uint32{0, 1})},
+		{tagGPSLongitudeRef, typeASCII, 2, []byte("E\x00")},
+		{tagGPSLongitude, typeRational, 3, b.rationals([2]uint32{7, 1}, [2]uint32{0, 1}, [2]uint32{0, 1})},
 	}
-	if same := setOrientationJPEG(t, src, 1); !bytes.Equal(same, src) {
-		t.Error("orientation 1 changed the file")
+	return withSegments(plainJPEG(t), exifSegment(b.build()))
+}
+
+// An Exif segment without the tag gets it through EditExif: every
+// orientation reads back, the date and position stay, the image data is
+// untouched, and from then on a change is a patch of the tag in place.
+func TestSetOrientationJPEGWithoutTag(t *testing.T) {
+	for _, order := range []byteOrder{binary.LittleEndian, binary.BigEndian} {
+		src := noTagJPEG(t, order)
+		before := readExif(t, src)
+		for want := Orientation(2); want <= 8; want++ {
+			out := setOrientationJPEG(t, src, want)
+			if got := orientationOfFile(t, out); got != want {
+				t.Fatalf("%v: orientation %d, want %d", order, got, want)
+			}
+			checkJPEGEdit(t, src, out)
+			after := readExif(t, out)
+			if after.GPS == nil || after.GPS.Latitude != before.GPS.Latitude || after.GPS.Longitude != before.GPS.Longitude {
+				t.Errorf("%v: the position changed: %+v", order, after.GPS)
+			}
+			plan, err := PlanOrientation(bytes.NewReader(src), int64(len(src)), want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkPlan(t, src, plan)
+			var streamed bytes.Buffer
+			if _, err := plan.WriteTo(&streamed); err != nil || !bytes.Equal(streamed.Bytes(), out) {
+				t.Fatalf("%v: WriteTo differs from SetOrientation (%v)", order, err)
+			}
+			// The tag is there now: the next change is in place.
+			next := Orientation(1 + want%8)
+			p2, err := PlanOrientation(bytes.NewReader(out), int64(len(out)), next)
+			if err != nil || !p2.InPlace || len(p2.Patches) != 1 {
+				t.Fatalf("%v: second edit: in place %v, %d patches, %v", order, p2 != nil && p2.InPlace, len(p2.Patches), err)
+			}
+		}
+		// Orientation 1, which such a file shows already, changes nothing.
+		if same := setOrientationJPEG(t, src, 1); !bytes.Equal(same, src) {
+			t.Errorf("%v: orientation 1 changed the file", order)
+		}
+		// SetRotation from none: rotated, not mirrored.
+		var out bytes.Buffer
+		if err := SetRotation(bytes.NewReader(src), int64(len(src)), &out, 90); err != nil {
+			t.Fatal(err)
+		}
+		if got := orientationOfFile(t, out.Bytes()); got != 6 {
+			t.Errorf("%v: rotated 90: orientation %d, want 6", order, got)
+		}
 	}
 }
 
