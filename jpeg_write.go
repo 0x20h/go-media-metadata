@@ -16,6 +16,9 @@ type jpegEdit struct {
 	patches  []Patch
 	insertAt int64
 	insert   []byte
+	// exif, when set, is the whole edit instead: the Exif segment
+	// rewritten through EditExif (planJPEGExif), for Exif without the tag.
+	exif *Plan
 }
 
 // delta is how much the edit grows the file.
@@ -23,6 +26,9 @@ func (e *jpegEdit) delta() int64 { return int64(len(e.insert)) }
 
 // write streams the edited file to dst.
 func (e *jpegEdit) write(src io.ReaderAt, size int64, dst io.Writer) (int64, error) {
+	if e.exif != nil {
+		return e.exif.WriteTo(dst)
+	}
 	if e.insert != nil {
 		n, err := io.Copy(dst, io.NewSectionReader(src, 0, e.insertAt))
 		if err != nil {
@@ -54,6 +60,9 @@ func (e *jpegEdit) write(src io.ReaderAt, size int64, dst io.Writer) (int64, err
 
 // plan is the edit as a Plan: in place unless it inserts a segment.
 func (e *jpegEdit) plan(src io.ReaderAt, size int64) *Plan {
+	if e.exif != nil {
+		return e.exif
+	}
 	p := &Plan{Size: size, NewSize: size + e.delta(), src: src, jpeg: e}
 	if e.insert == nil {
 		p.InPlace = true
@@ -70,8 +79,11 @@ func (e *jpegEdit) plan(src io.ReaderAt, size int64) *Plan {
 // place, in the width its type gives it (BYTE, SHORT or LONG): the file
 // keeps its size. A file without an Exif segment gets one holding only
 // the tag, after SOI and any JFIF segments, unless the target is 1, which
-// such a file shows already. An Exif segment without the tag would need
-// its IFD0 rewritten: ErrUnsupported, unless the target is 1.
+// such a file shows already. An Exif segment without the tag (or with one
+// whose value isn't in its entry) gets it through EditExif, which adds the
+// entry to IFD0 and keeps every other byte's offset (see planJPEGExif):
+// in place when the new TIFF data fits the segment, unless the target is 1,
+// which such a file shows already.
 func planJPEGOrientation(src io.ReaderAt, size int64, target func(Orientation) Orientation) (*jpegEdit, error) {
 	f, err := parseJPEG(src, size)
 	if err != nil {
@@ -99,7 +111,13 @@ func planJPEGOrientation(src io.ReaderAt, size int64, target func(Orientation) O
 		if o == 1 {
 			return &jpegEdit{}, nil
 		}
-		return nil, fmt.Errorf("%w: the Exif segment has no Orientation tag to set", ErrUnsupported)
+		p, err := planJPEGExif(src, size, func(old []byte) ([]byte, error) {
+			return EditExif(old, ExifEdit{Orientation: o})
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &jpegEdit{exif: p}, nil
 	}
 	if value == uint32(o) {
 		return &jpegEdit{}, nil

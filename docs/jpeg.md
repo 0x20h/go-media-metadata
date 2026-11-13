@@ -49,10 +49,13 @@ mirror as for HEIF:
   Orientation and the YCbCrPositioning tag Exif requires of a JPEG (1,
   centred, as JFIF specifies), so ExifTool's validation passes the file.
   Orientation 1 adds nothing.
-- **Exif without the tag:** `ErrUnsupported`, unless nothing changes,
-  because adding the tag means rewriting IFD0. `PlanExifEdit` with an
-  `ExifEdit` that sets the orientation does that rewrite through
-  `EditExif` (see [exif](exif.md)).
+- **Exif without the tag** (or with one whose value isn't in its entry):
+  the tag is added through `EditExif`, which gives IFD0 the new entry and
+  keeps every other byte's offset, so the date, the GPS position, maker
+  notes and the thumbnail stay valid. The Exif segment is rewritten in
+  place when the new TIFF data fits, else replaced (see Exif above). From
+  then on a change is the single in-place patch of the tag. Orientation 1,
+  which such a file already shows, changes nothing.
 
 ExifTool reads the orientation written, and its `-validate` reports no
 warning that the source didn't already have.
