@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 )
 
 // A small XML tree that keeps what an XMP packet says, so that a packet
@@ -166,11 +167,48 @@ func (s scope) ns(n xml.Name, attr bool) (string, bool) {
 
 const xmlNS = "http://www.w3.org/XML/1998/namespace"
 
-// checkPrefixes reports a prefix used without a declaration.
+// isNCName reports whether s is an XML name without a colon (Namespaces
+// in XML 1.0, NCName): a letter or "_" first, then letters, digits, ".",
+// "-", "_" and combining marks. encoding/xml checks element names this
+// way but not a namespace declaration's prefix, which a later write would
+// reuse as an element's prefix.
+func isNCName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c == '_' || unicode.IsLetter(c):
+		case i > 0 && (c == '-' || c == '.' || c == '·' || unicode.In(c, unicode.Nd, unicode.Mn, unicode.Mc, unicode.Lm)):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// checkName reports a name that isn't an NCName, or a prefix that isn't.
+func checkName(n xml.Name) error {
+	if n.Space != "" && !isNCName(n.Space) || !isNCName(n.Local) {
+		return fmt.Errorf("%w: XML: invalid name %q", ErrMalformed, qname(n))
+	}
+	return nil
+}
+
+// checkPrefixes reports a prefix used without a declaration, and a name
+// (an element's, an attribute's, a declared prefix) that isn't valid.
 func checkPrefixes(nodes []*xmlNode, s scope) error {
 	for _, n := range nodes {
 		if n.kind != elemNode {
 			continue
+		}
+		if err := checkName(n.name); err != nil {
+			return err
+		}
+		for _, a := range n.attrs {
+			if err := checkName(a.Name); err != nil {
+				return err
+			}
 		}
 		in := s.enter(n)
 		if _, ok := in.ns(n.name, false); !ok {
