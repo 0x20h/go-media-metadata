@@ -576,9 +576,6 @@ func (f *heifFile) shared(id uint32, cm uint8, start, end uint64) bool {
 		}
 		for _, e := range it.Extents {
 			s := it.BaseOffset + e.Offset
-			if e.Length == 0 && it.ConstructionMethod == cm {
-				return true // to the end of the file or idat
-			}
 			s1, e1, ok := f.fileRange(it.ConstructionMethod, s, e.Length)
 			if !ok {
 				continue // past its container: refused before it gets here

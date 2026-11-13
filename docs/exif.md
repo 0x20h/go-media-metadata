@@ -84,3 +84,13 @@ altitude, or remove the position.
   holding the edit.
 - **Data that isn't TIFF**, or whose IFDs lie outside it, is refused with
   `ErrMalformed` rather than rewritten.
+- **Idempotent:** `EditExif` of its own output with the same edit
+  succeeds and returns the data unchanged, byte for byte; a fuzz target
+  checks it. To keep that true on malformed data:
+  - An IFD a pointer leads to but that doesn't read (its entries run past
+    the end) still counts as structure. Nothing that overlaps its count
+    field is zeroed or rewritten, which could make it read as an IFD.
+  - Values and IFDs that pointers place past the end of the data are
+    remembered. An edit that would have to append where one of them lies
+    is refused (`ErrUnsupported`), because the appended bytes would
+    become that value or IFD.

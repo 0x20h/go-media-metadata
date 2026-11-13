@@ -359,6 +359,15 @@ func FuzzEditExif(f *testing.F) {
 					continue
 				}
 				checkEdited(t, out, e)
+				// Idempotent: the same edit of its own output succeeds and
+				// changes nothing.
+				again, err := EditExif(out, e)
+				if err != nil {
+					t.Fatalf("%+v: EditExif of its own output: %v", e, err)
+				}
+				if !bytes.Equal(again, out) {
+					t.Fatalf("%+v: a second identical edit changed the data", e)
+				}
 			}
 		})
 	})
