@@ -185,7 +185,9 @@ func TestChunkedMetadata(t *testing.T) {
 				t.Error("an old XMP is still in the file")
 			}
 			for _, again := range []func() (*Plan, error){
-				func() (*Plan, error) { return PlanExif(bytes.NewReader(both), int64(len(both)), photoTIFF(binary.LittleEndian)) },
+				func() (*Plan, error) {
+					return PlanExif(bytes.NewReader(both), int64(len(both)), photoTIFF(binary.LittleEndian))
+				},
 				func() (*Plan, error) { return PlanXMP(bytes.NewReader(both), int64(len(both)), packet) },
 			} {
 				p, err := again()

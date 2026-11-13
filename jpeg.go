@@ -223,10 +223,12 @@ func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 	return Exif{}, nil
 }
 
-// ReadExif reads the Exif metadata of the JPEG or HEIF file in r (size
-// bytes): a JPEG's first Exif APP1 segment, a HEIF file's Exif item. A
-// file without Exif gives an empty Exif and no error. A file that is
-// neither format gives an error that is both ErrNotJPEG and ErrNotHEIF.
+// ReadExif reads the Exif metadata of the JPEG, HEIF, PNG, WebP or camera
+// RAW file in r (size bytes): a JPEG's first Exif APP1 segment, a HEIF
+// file's Exif item, a PNG's eXIf chunk, a WebP's EXIF chunk, a TIFF-based
+// RAW's IFDs (DNG, CR2, NEF, ARW, ORF, RW2) or a CR3's CMT boxes. A file without Exif gives an empty Exif and no error.
+// A file of none of these formats gives an error that is ErrNotJPEG,
+// ErrNotHEIF and ErrNotRAW.
 func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isJPEG(r, size) {
 		return readJPEGExif(r, size)
@@ -237,12 +239,15 @@ func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isWebP(r, size) {
 		return readWebPExif(r, size)
 	}
+	if x, ok, err := readRAWExif(r, size); ok {
+		return x, err
+	}
 	if !startsWithFtyp(r, size) {
-		return Exif{}, fmt.Errorf("%w: %w", ErrNotJPEG, ErrNotHEIF)
+		return Exif{}, fmt.Errorf("%w: %w: %w", ErrNotJPEG, ErrNotHEIF, ErrNotRAW)
 	}
 	x, err := readHEIFExif(r, size)
 	if errors.Is(err, ErrNotHEIF) {
-		return Exif{}, fmt.Errorf("%w: %w", ErrNotJPEG, err)
+		return Exif{}, fmt.Errorf("%w: %w: %w", ErrNotJPEG, err, ErrNotRAW)
 	}
 	return x, err
 }
