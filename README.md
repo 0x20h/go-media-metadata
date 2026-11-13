@@ -86,12 +86,18 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   stay in the file. In these formats the Exif Orientation is how the
   image is shown, so `PlanExifEdit` sets it too.
 - `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
-  segment or a HEIF Exif item: orientation, date with fraction and
-  offset, GPS position and altitude, or the position removed. Every other
+  segment or a HEIF Exif item: orientation, the date taken and the date
+  digitized (ExifTool's CreateDate), each with fraction and offset, GPS
+  position and altitude, or the position removed. Every other
   byte keeps its offset, so unknown tags, the thumbnail and maker notes
   stay valid. A value that fits is written in place; a longer value, or
   an IFD that needs a new entry, goes at the end. Old values and moved
   IFDs are zeroed, so a removed GPS position doesn't stay in the data.
+- For JPEG, `PlanExifEdit`, `PlanExif` and `SetExif` write the first Exif
+  segment: in place when the new data fits in it (padded with zeros), a
+  replacement segment otherwise (the old one isn't copied), a new segment
+  after the JFIF one where the file has none. Exif past a segment's 64 KB
+  is refused with `ErrUnsupported`. The scan data is copied byte for byte.
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.

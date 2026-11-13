@@ -23,6 +23,11 @@ type ExifEdit struct {
 	DateTimeOriginal *time.Time
 	OffsetKnown      bool
 
+	// DateTimeDigitized sets the DateTimeDigitized tag (ExifTool's
+	// CreateDate) as DateTimeOriginal sets its own: SubSecTimeDigitized,
+	// and OffsetTimeDigitized with OffsetKnown, removed otherwise.
+	DateTimeDigitized *time.Time
+
 	// GPS sets the position: latitude and longitude with their
 	// references, and the altitude with its reference when HasAltitude
 	// (an altitude without one is removed). RemoveGPS removes those tags
@@ -66,8 +71,10 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 			return nil, fmt.Errorf("mediameta: GPS position %v, %v (%v m) out of range", g.Latitude, g.Longitude, g.Altitude)
 		}
 	}
-	if d := edit.DateTimeOriginal; d != nil && (d.Year() < 0 || d.Year() > 9999) {
-		return nil, fmt.Errorf("mediameta: date %v out of range", d)
+	for _, d := range []*time.Time{edit.DateTimeOriginal, edit.DateTimeDigitized} {
+		if d != nil && (d.Year() < 0 || d.Year() > 9999) {
+			return nil, fmt.Errorf("mediameta: date %v out of range", d)
+		}
 	}
 	if len(tiff) == 0 {
 		tiff = []byte{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0}
@@ -77,21 +84,31 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 		return nil, err
 	}
 	var exif, gps []tiffChange
-	if d := edit.DateTimeOriginal; d != nil {
-		exif = append(exif, w.asciiChange(tagDateTimeOriginal, d.Format(exifDateLayout)))
+	for _, t := range []struct {
+		d                 *time.Time
+		date, sub, offset uint16
+	}{
+		{edit.DateTimeOriginal, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal},
+		{edit.DateTimeDigitized, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized},
+	} {
+		d := t.d
+		if d == nil {
+			continue
+		}
+		exif = append(exif, w.asciiChange(t.date, d.Format(exifDateLayout)))
 		if ns := d.Nanosecond(); ns != 0 {
 			sub := strconv.FormatInt(int64(ns)+1e9, 10)[1:]
 			for sub[len(sub)-1] == '0' {
 				sub = sub[:len(sub)-1]
 			}
-			exif = append(exif, w.asciiChange(tagSubSecTimeOriginal, sub))
+			exif = append(exif, w.asciiChange(t.sub, sub))
 		} else {
-			exif = append(exif, tiffChange{tag: tagSubSecTimeOriginal, remove: true})
+			exif = append(exif, tiffChange{tag: t.sub, remove: true})
 		}
 		if edit.OffsetKnown {
-			exif = append(exif, w.asciiChange(tagOffsetTimeOriginal, d.Format("-07:00")))
+			exif = append(exif, w.asciiChange(t.offset, d.Format("-07:00")))
 		} else {
-			exif = append(exif, tiffChange{tag: tagOffsetTimeOriginal, remove: true})
+			exif = append(exif, tiffChange{tag: t.offset, remove: true})
 		}
 	}
 	if g := edit.GPS; g != nil {
