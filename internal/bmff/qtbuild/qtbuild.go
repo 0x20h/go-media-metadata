@@ -51,6 +51,9 @@ type Options struct {
 	// chunk offsets (stco, or co64 with Co64) point into it.
 	MediaSize int
 	Co64      bool
+	// FreeAfterMoov adds a free box of that many bytes (header included,
+	// at least 8) right after moov, as writers leave room to grow into.
+	FreeAfterMoov int
 	// Seed makes the media data.
 	Seed int64
 }
@@ -210,14 +213,18 @@ func Build(o Options) (file []byte, mediaStart, mediaEnd int64) {
 		return box("moov", mvhd(o), traks, meta, u)
 	}
 	mdatHeader := 8
+	var free []byte
+	if o.FreeAfterMoov >= 8 {
+		free = box("free", make([]byte, o.FreeAfterMoov-8))
+	}
 	if o.MoovFirst {
 		moov := moovFor(0)
-		start := len(ftyp) + len(moov) + mdatHeader
+		start := len(ftyp) + len(moov) + len(free) + mdatHeader
 		moov = moovFor(uint64(start))
-		file = cat(ftyp, moov, box("mdat", media))
+		file = cat(ftyp, moov, free, box("mdat", media))
 		return file, int64(start), int64(start + len(media))
 	}
 	start := len(ftyp) + mdatHeader
-	file = cat(ftyp, box("mdat", media), moovFor(uint64(start)))
+	file = cat(ftyp, box("mdat", media), moovFor(uint64(start)), free)
 	return file, int64(start), int64(start + len(media))
 }

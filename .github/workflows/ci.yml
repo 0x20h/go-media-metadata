@@ -55,6 +55,7 @@ jobs:
           - FuzzIPTC
           - FuzzPlanXMPEdit
           - FuzzPlanMetadata
+          - FuzzVideoEdit
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

@@ -190,7 +190,9 @@ var qtContainers = map[bmff.Type]bool{
 }
 
 // parseQTNode parses box b (header included): a container's children,
-// and their children where they are containers; other boxes stay raw.
+// and their children where they are containers; other boxes stay raw,
+// with an explicit size where theirs is 0 ("to the end"), so a box
+// added after one doesn't end up inside it.
 func parseQTNode(b []byte, depth int) (*qtNode, error) {
 	boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
 	if err != nil || len(boxes) != 1 {
@@ -199,7 +201,7 @@ func parseQTNode(b []byte, depth int) (*qtNode, error) {
 	box := boxes[0]
 	n := &qtNode{typ: box.Type, large: box.Large()}
 	if !qtContainers[box.Type] || depth > bmff.MaxDepth {
-		n.raw = b
+		n.raw = bmff.ExplicitSize(b)
 		return n, nil
 	}
 	start := box.Body()
@@ -214,7 +216,7 @@ func parseQTNode(b []byte, depth int) (*qtNode, error) {
 	if err != nil {
 		// A container this package can't walk (udta with a trailing
 		// zero, say) is kept as it was, and not edited.
-		return &qtNode{typ: box.Type, raw: b}, nil
+		return &qtNode{typ: box.Type, raw: bmff.ExplicitSize(b)}, nil
 	}
 	for _, k := range kids {
 		c, err := parseQTNode(b[k.Offset:k.End()], depth+1)
@@ -501,7 +503,7 @@ func (k *keysNode) set(name, s string) error {
 		it.raw, it.large = nil, boxes[0].Large()
 		it.kids = []*qtNode{}
 		for _, c := range kids {
-			it.kids = append(it.kids, &qtNode{typ: c.Type, raw: b[c.Offset:c.End()]})
+			it.kids = append(it.kids, &qtNode{typ: c.Type, raw: bmff.ExplicitSize(b[c.Offset:c.End()])})
 		}
 	}
 	for j, c := range it.kids {
