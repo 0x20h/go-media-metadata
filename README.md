@@ -101,6 +101,11 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - `SetRotation` rotates an image losslessly by setting the `irot` property
   of its primary item, moving item offsets where the metadata grows or
   shrinks, and keeping the Exif Orientation tag in step where one exists.
+- `ParseXMP` reads an XMP packet's title, description, keywords and
+  rating, and `EditXMP` changes them in the packet, keeping everything
+  else in it (other properties, other languages, namespaces, comments)
+  and its length where the change fits in its padding. They work on the
+  packet's bytes, whatever file holds it.
 - For JPEG, `SetRotation`, `SetOrientation` and their plans set the Exif
   Orientation tag: in place where the first Exif segment has it (only its
   bytes change, the plan is one patch), in a new Exif segment after the
