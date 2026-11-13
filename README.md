@@ -26,12 +26,8 @@ info, _ := in.Stat()
 o, err := mediameta.ReadOrientation(in, info.Size())
 fmt.Println(o) // e.g. "rotated 90° clockwise"
 
-// Exif of a JPEG or HEIF file: orientation, when it was taken, where.
 x, err := mediameta.ReadExif(in, info.Size())
-fmt.Println(x.DateTimeOriginal, x.OffsetKnown) // the offset, when the camera wrote one
-if x.GPS != nil {
-	fmt.Println(x.GPS.Latitude, x.GPS.Longitude)
-}
+fmt.Println(x.DateTimeOriginal, x.OffsetKnown, x.GPS)
 
 // Rotate losslessly: write to a temporary file, then rename it over the
 // original once SetRotation has succeeded.
@@ -40,7 +36,7 @@ tmp, err := os.CreateTemp(filepath.Dir("photo.heic"), "photo-*.heic")
 err = mediameta.SetRotation(in, info.Size(), tmp, 180)
 
 // Or plan the edit, and where it keeps the file's size, patch a copy of
-// the file in place (e.g. a clone of it): a few bytes, whatever its size.
+// the file in place: a few bytes, whatever the file's size.
 plan, err := mediameta.PlanRotation(in, info.Size(), 180)
 // ...
 if plan.InPlace {
@@ -52,163 +48,58 @@ if plan.InPlace {
 
 ## Status
 
-Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
+Early, and growing format by format.
 
-- `ReadOrientation` returns an image's orientation (Exif numbering 1–8):
-  for HEIF from its `irot` and `imir` properties, for JPEG from its Exif
-  Orientation tag.
-- `ReadExif` reads a JPEG's Exif APP1 segment or a HEIF file's Exif item:
-  the Orientation tag, DateTimeOriginal with its fraction of a second and
-  its offset (OffsetTimeOriginal), and the GPS position and altitude.
-  Its results are checked against ExifTool on the test files.
-- Camera RAW: `ReadExif`, `ReadOrientation` and `ReadXMP` also read
-  TIFF-based RAW files (DNG, CR2, NEF, ARW, ORF, RW2; an RW2's Exif from
-  its embedded JPEG) and CR3 (its CMT boxes and XMP box), reading the
-  IFDs from the file as needed, never the image data.
-  `SetRAWOrientation` and `PlanRAWOrientation` change only the
-  Orientation value where it sits in IFD0 (CR3: CMT1), and the
-  `tiff:Orientation` digit of an XMP packet, in place. Nothing else is
-  written, so maker notes and image data stay byte for byte. A file
-  without the tag is refused rather than restructured.
-- `EditHEIFExif` and `PlanExifEdit` apply an `ExifEdit` to a HEIF
-  file's Exif item (or add one). A date or GPS change that fits is a
-  patch in place. The orientation is left to `SetOrientation`, since
-  HEIF readers show `irot` and `imir`, not the Exif tag.
-- PNG and WebP: `ReadExif`, `ReadOrientation` and `ReadXMP` read a
-  PNG's `eXIf` chunk and XMP `iTXt` chunk (compressed or not) and a
-  WebP's `EXIF` and `XMP ` chunks; `PlanExif`, `PlanXMP` and
-  `PlanExifEdit` (and the Set functions) write them, the image data
-  untouched. A value that fits its chunk is written there, padded, with
-  the PNG chunk's CRC rewritten: in place. A longer one, or a new one,
-  rewrites the file: a new PNG chunk goes right after `IHDR`, a new WebP
-  chunk after the image, with the `VP8X` flags and RIFF size updated (a
-  simple WebP gets the `VP8X` header metadata needs). Old values never
-  stay in the file. In these formats the Exif Orientation is how the
-  image is shown, so `PlanExifEdit` sets it too.
-- `EditExif` writes those fields back into TIFF data, for a JPEG's Exif
-  segment or a HEIF Exif item: orientation, the date taken and the date
-  digitized (ExifTool's CreateDate), each with fraction and offset, GPS
-  position and altitude, or the position removed. Every other
-  byte keeps its offset, so unknown tags, the thumbnail and maker notes
-  stay valid. A value that fits is written in place; a longer value, or
-  an IFD that needs a new entry, goes at the end. Old values and moved
-  IFDs are zeroed, so a removed GPS position doesn't stay in the data.
-- For JPEG, `PlanExifEdit`, `PlanExif` and `SetExif` write the first Exif
-  segment: in place when the new data fits in it (padded with zeros), a
-  replacement segment otherwise (the old one isn't copied), a new segment
-  after the JFIF one where the file has none. Exif past a segment's 64 KB
-  is refused with `ErrUnsupported`. The scan data is copied byte for byte.
-- `SetRotation` rotates an image losslessly by setting the `irot` property
-  of its primary item, moving item offsets where the metadata grows or
-  shrinks, and keeping the Exif Orientation tag in step where one exists.
-- `ParseXMP` reads an XMP packet's title, description, keywords and
-  rating, and `EditXMP` changes them in the packet, keeping everything
-  else in it (other properties, other languages, namespaces, comments)
-  and its length where the change fits in its padding. They work on the
-  packet's bytes, whatever file holds it. In a JPEG, `ReadXMP` and
-  `SetXMP` handle the XMP segment, extended XMP included: a packet past
-  64 KB is split, and read back as one.
-- For JPEG, `SetRotation`, `SetOrientation` and their plans set the Exif
-  Orientation tag: in place where the first Exif segment has it (only its
-  bytes change, the plan is one patch), in a new Exif segment after the
-  JFIF one where the file has no Exif. The scan data is copied byte for
-  byte; ExifTool reads and validates the files written.
-- `SetOrientation` sets any of the eight orientations, mirrored ones
-  included, through `irot` and `imir` in the order ISO/IEC 23008-12
-  applies them (rotation, then mirror). On a mirrored image `SetRotation`
-  keeps the mirror first, as the Exif numbering does: orientation 2 turned
-  90° clockwise is 7.
-  `imir`'s axis is read and written as Apple's ImageIO and libheif have
-  it: axis 1 mirrors left-right, axis 0 top-bottom. A test decodes every
-  orientation with libheif and compares the pixels, where it's installed.
-- `SetExif` and `SetXMP` replace or add the Exif and XMP items with data
-  the caller encoded (TIFF data; an XMP packet), and `ReadXMP` reads the
-  XMP item. A value that fits the item's data is patched there, in place;
-  a longer one goes in a new `mdat` box at the end. A missing item is
-  listed in `iinf` with a `cdsc` reference to the primary image, and the
-  item offsets the `meta` box's growth moves are moved. Image data is
-  copied byte for byte. `PlanExif` and `PlanXMP` are the same edits as
-  plans. A last box whose header says "to the end of the file" gets its
-  size before data is appended after it. Refused rather than written:
-  a file where an image's data overlaps the `meta` box (an edit rewrites
-  it), where another item's data runs to or past the end of the file
-  (appended data would join it), or where a new item wouldn't read back
-  from the rewritten `meta` box. A fuzz target writes Exif and XMP
-  items, added, replaced in place and moved, into mutated files: every write that succeeds reads
-  back with the new value and the same orientation, leaves the other
-  items' data byte for byte, and is in place when written again.
-  ExifTool's `-validate` finds no warning in the written files that the
-  source didn't have.
-- `PlanRotation` and `PlanOrientation` compute the same edits without
-  writing them: a `Plan` that
-  streams the new file (`WriteTo`) or, when the file keeps its size, lists
-  the bytes that change as patches to apply to a copy (`Apply`). Keeping
-  the mirroring (or its absence) is in place where the image has an `irot`
-  of its own; adding or removing a mirror changes the file's size.
-- QuickTime (MOV) and MP4: `ReadVideo` reads a movie's recording date,
-  duration, GPS position, the first video track's orientation and size,
-  the recording device's make and model, and the content identifier
-  that pairs a Live Photo's video with its still image. It takes the
-  date, place, make and model from the Keys metadata
-  (`com.apple.quicktime.*`, in a QuickTime or an MP4-style `meta`
-  box), else the user data (`©day`, `©xyz`, `©mak`, `©mod`), and the
-  date last from the movie header (UTC). The orientation comes from the
-  track header's matrix, in the Exif numbering images use: the four
-  rotations and four mirrorings, 0 for any other matrix. Only box
-  headers and the few small boxes these fields are in are read, never
-  the sample tables or the media data, wherever `moov` sits: 870 bytes
-  of a 1 MB test movie. Results are checked against ExifTool on the
-  test movies.
-- `SetVideoRotation`, `SetVideoOrientation` and their plans set a
-  movie's orientation: each video track's matrix, 36 bytes at a fixed
-  place in its track header, with the translation that keeps the turned
-  picture in view (as cameras write it). The plan is always in place and
-  patches nothing else, so the media data and the chunk offsets stay
-  valid; a track already shown that way isn't touched. A rotation keeps
-  a mirroring, as `SetRotation` does for images. A movie whose header
-  has a matrix of its own is refused. ExifTool and FFmpeg read the
-  rotations written. Date and place are next.
+| Format | Orientation | Exif | XMP |
+|---|---|---|---|
+| HEIF / HEIC / AVIF | read, write (`irot`, `imir`) | read, write, edit | read, write |
+| JPEG | read, write (Exif tag) | read, write, edit | read, write, extended XMP |
+| PNG, WebP | read, write (Exif tag) | read, write, edit | read, write |
+| Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
+| QuickTime (MOV), MP4 | read, write (track matrix) | | |
 
-### Compared with other tools
+`ReadVideo` reads a movie's recording date, duration, GPS position,
+orientation and size, make and model, and Live Photo content identifier;
+`SetVideoRotation` and `SetVideoOrientation` set its orientation in place.
 
-- **Minimal writes.** Where an image already has an `irot` property of its
-  own, `SetRotation` changes its one angle byte and nothing else moves. A
-  new `irot` is appended to the property container and associated as an
-  essential property after the descriptive ones (and before any `imir`),
-  the position Apple's ImageIO uses; item offsets are moved only when the
-  `meta` box grows ahead of the image data. No brands, items or properties
-  are added or reordered otherwise.
-- **The Exif Orientation tag is kept in step, deliberately.** Apple's
-  ImageIO leaves a HEIC's Exif Orientation as it was when it rotates the
-  image (so a file can say 6 in Exif and 180° in `irot`), which makes
-  tools that read Exif rather than `irot` show it wrongly. `SetRotation`
-  sets an existing tag to the orientation the file now shows; a file
-  without the tag doesn't get one.
+`ParseXMP` and `EditXMP` read and change an XMP packet's title,
+description, keywords and rating, whatever file holds the packet.
+
+## Documentation
+
+- [API](docs/api.md): reading, `Set…` and `Plan…`, in-place writes,
+  errors
+- Formats, covering where each value lives and how it's written:
+  [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
+  [PNG and WebP](docs/png-webp.md), [Camera RAW](docs/raw.md),
+  [QuickTime and MP4](docs/quicktime.md)
+- [Exif](docs/exif.md): the fields, writers' quirks compared with
+  ExifTool, and `EditExif`
+- [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
 
 ## Guarantees
 
-- **Lossless:** image data is never decoded or re-encoded; tests check it
-  is byte-identical after every write.
+- **Lossless:** image data is never decoded or re-encoded. Tests check
+  that it is byte-identical after every write.
 - **Safe on hostile input:** every parser is fuzzed. Lengths are checked,
-  counts are bounded by the bytes available, nesting is capped. Malformed
-  input gives an error, never a panic or an endless loop.
-- **Never the source:** a write reads the source and writes a new file to
-  the `io.Writer` you pass. On an error that writer may hold part of a
-  file, so write to a temporary file and rename it over the original only
-  once the call has succeeded. `Plan.Apply` writes only to the copy you
-  pass, and only when the plan is in place: the patches then hold every
-  byte that changes, and applied to a copy they give byte for byte what
-  `WriteTo` writes.
+  counts are bounded by the bytes available, and nesting is capped.
+  Malformed input gives an error, never a panic or an endless loop.
+- **Never the source:** a write goes to the `io.Writer` you pass, or, for
+  `Plan.Apply`, to the copy you pass. On an error that writer may hold
+  part of a file, so rename it over the original only on success.
+- **No old values left behind:** replaced data is zeroed or not copied,
+  so a removed value (a GPS position, say) doesn't stay in the file.
 
 ## Specifications
 
-- ISO/IEC 14496-12, ISO base media file format
-- ISO/IEC 23008-12, High Efficiency Image File Format (HEIF)
-- ITU-T T.81 (JPEG) for the marker segments
-- CIPA DC-008 (Exif 2.32): the Orientation, date and time, and GPS tags
+- ISO/IEC 14496-12 (ISO base media file format), ISO/IEC 23008-12 (HEIF)
+- ITU-T T.81 (JPEG), PNG (Third Edition), the WebP container
+- TIFF 6.0, CIPA DC-008 (Exif 2.32, plus Exif 3.0's GPS altitude
+  references)
+- ISO 16684-1 and the Adobe XMP Specification, Parts 1 to 3
 - Apple QuickTime File Format: movie and track headers, the Keys
-  metadata (`keys`, `ilst`) and user data text entries
-- ISO 6709 for the location strings, ISO 8601 for the dates
+  metadata (`keys`, `ilst`) and user data text entries; ISO 6709 for
+  locations, ISO 8601 for dates
 
 ## Licence
 
