@@ -78,6 +78,9 @@ func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 	if _, _, ok := newTIFF(tiff); !ok {
 		return nil, fmt.Errorf("mediameta: Exif data that doesn't start with a TIFF header")
 	}
+	if p, ok, err := planChunked(src, size, kindExif, func([]byte) ([]byte, error) { return tiff, nil }); ok {
+		return p, err
+	}
 	// A 4-byte offset to the TIFF header comes first (ISO/IEC 23008-12
 	// A.2.1): 0, the header follows.
 	return planItem(src, size, kindExif, append(make([]byte, 4), tiff...))
@@ -88,6 +91,9 @@ func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 func PlanXMP(src io.ReaderAt, size int64, packet []byte) (*Plan, error) {
 	if !utf8.Valid(packet) || !bytes.Contains(packet, []byte("xmpmeta")) && !bytes.Contains(packet, []byte("rdf:RDF")) {
 		return nil, fmt.Errorf("mediameta: XMP data that isn't UTF-8 XMP")
+	}
+	if p, ok, err := planChunked(src, size, kindXMP, func([]byte) ([]byte, error) { return packet, nil }); ok {
+		return p, err
 	}
 	return planItem(src, size, kindXMP, packet)
 }
@@ -382,10 +388,17 @@ func (f *heifFile) shared(id uint32, cm uint8, start, end uint64) bool {
 	return false
 }
 
-// ReadXMP returns the XMP packet of the HEIF or camera RAW file in r
-// (size bytes): a HEIF file's XMP item, a TIFF-based RAW's XMLPacket tag,
-// a CR3's XMP box. Nil without one.
+// ReadXMP returns the XMP packet of the HEIF, PNG, WebP or camera RAW
+// file in r (size bytes): a HEIF file's XMP item, a PNG's XMP iTXt chunk,
+// a WebP's "XMP " chunk, a TIFF-based RAW's XMLPacket tag, a CR3's XMP
+// box. Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
+	switch {
+	case isPNG(r, size):
+		return readPNGXMP(r, size)
+	case isWebP(r, size):
+		return readWebPXMP(r, size)
+	}
 	f, err := parseHEIF(r, size)
 	if err != nil {
 		if b, ok, rerr := readRAWXMP(r, size); ok {

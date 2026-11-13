@@ -189,19 +189,24 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	f, err := parseHEIF(r, size)
 	if err != nil {
-		// JPEG and RAW are checked only once HEIF fails, so a HEIF read
-		// costs no more than it did before they were supported.
+		// JPEG, PNG, WebP and RAW are checked only once HEIF fails, so a
+		// HEIF read costs no more than it did before they were supported.
 		var x Exif
-		if isJPEG(r, size) {
-			if x, err = readJPEGExif(r, size); err != nil {
+		switch {
+		case isJPEG(r, size):
+			x, err = readJPEGExif(r, size)
+		case isPNG(r, size):
+			x, err = readPNGExif(r, size)
+		case isWebP(r, size):
+			x, err = readWebPExif(r, size)
+		default:
+			rx, ok, rerr := readRAWExif(r, size)
+			if !ok {
 				return 0, err
 			}
-		} else if rx, ok, rerr := readRAWExif(r, size); ok {
-			if rerr != nil {
-				return 0, rerr
-			}
-			x = rx
-		} else {
+			x, err = rx, rerr
+		}
+		if err != nil {
 			return 0, err
 		}
 		if x.Orientation == 0 {
