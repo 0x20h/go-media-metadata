@@ -260,7 +260,7 @@ type mpfIndex struct {
 }
 
 // mpEntry is one image of the index; at is the file offset of its
-// offset field.
+// offset field (its size field is the 4 bytes before).
 type mpEntry struct {
 	size, offset uint32
 	at           int64
@@ -335,41 +335,55 @@ func (f *jpegFile) mpf(r io.ReaderAt) (mpfIndex, error) {
 	return x, nil
 }
 
-// fixMPF keeps a JPEG edit's MPF index pointing at its images: where the
-// edit changes the size of what lies between the index and the images
-// (a segment after the MPF one), it patches the index's offsets by that
-// much. An edit that would change the MPF segment itself is refused.
+// fixMPF keeps a JPEG edit's MPF index true to the file: every JPEG
+// write changes the marker segments, which are part of the first
+// (primary) image, so that image's size changes by the edit's total.
+// The other images' offsets count from the index, so they change by what
+// the edit adds or removes between the index and them (segments after
+// the MPF one). An edit inside the MPF segment is refused, as is one
+// that takes a size or offset out of range.
 func (f *jpegFile) fixMPF(r io.ReaderAt, e *spliceEdit) error {
 	x, err := f.mpf(r)
-	if err != nil || len(x.entries) < 2 {
+	if err != nil || len(x.entries) == 0 {
 		return err
 	}
 	segStart, segEnd := x.seg.offset, x.seg.body+x.seg.bodyLen
-	var delta int64
+	var total, after int64
 	for _, s := range e.splices {
+		d := int64(len(s.data)) - s.del
 		switch {
 		case s.at+s.del <= segStart:
 			// Before the index: it moves with its images.
 		case s.at >= segEnd:
-			delta += int64(len(s.data)) - s.del
+			after += d
 		default:
 			return fmt.Errorf("%w: an edit inside the MPF segment", ErrUnsupported)
 		}
+		total += d
 	}
-	if delta == 0 {
-		return nil
-	}
-	for _, en := range x.entries[1:] {
-		if en.offset == 0 {
-			continue
-		}
-		v := int64(en.offset) + delta
+	put := func(at int64, v int64, what string) error {
 		if v <= 0 || v > math.MaxUint32 {
-			return fmt.Errorf("%w: an MPF offset out of range after the edit", ErrUnsupported)
+			return fmt.Errorf("%w: an MPF image %s out of range after the edit", ErrUnsupported, what)
 		}
 		b := make([]byte, 4)
 		x.order.PutUint32(b, uint32(v))
-		e.add(splice{at: en.at, del: 4, data: b})
+		e.add(splice{at: at, del: 4, data: b})
+		return nil
+	}
+	if p := x.entries[0]; total != 0 && p.size != 0 {
+		if err := put(p.at-4, int64(p.size)+total, "size"); err != nil {
+			return err
+		}
+	}
+	if after != 0 {
+		for _, en := range x.entries[1:] {
+			if en.offset == 0 {
+				continue
+			}
+			if err := put(en.at, int64(en.offset)+after, "offset"); err != nil {
+				return err
+			}
+		}
 	}
 	return e.sorted()
 }

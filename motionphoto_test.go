@@ -353,3 +353,89 @@ func TestEmbeddedExifTool(t *testing.T) {
 		}
 	}
 }
+
+// checkMPFExact checks every MPF entry against where the images are: the
+// primary from 0 to the gain map's start, the gain map at its offset with
+// its length. Where exiftool is installed, ExifTool's MPImage lengths and
+// starts say the same.
+func checkMPFExact(t *testing.T, name string, file []byte, m motionPhoto) {
+	t.Helper()
+	f, err := parseJPEG(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	x, err := f.mpf(bytes.NewReader(file))
+	if err != nil || len(x.entries) != 2 {
+		t.Fatalf("%s: MPF %+v, %v", name, x, err)
+	}
+	sos := f.segs[len(f.segs)-1]
+	gainAt := int64(bytes.Index(file[sos.body:], m.gainMap)) + sos.body
+	if gainAt < sos.body {
+		t.Fatalf("%s: the gain map is gone", name)
+	}
+	if e := x.entries[0]; e.offset != 0 || int64(e.size) != gainAt {
+		t.Errorf("%s: primary entry offset %d size %d, want 0 and %d", name, e.offset, e.size, gainAt)
+	}
+	if e := x.entries[1]; x.base+int64(e.offset) != gainAt || int(e.size) != len(m.gainMap) {
+		t.Errorf("%s: gain map entry at %d size %d, want %d and %d", name, x.base+int64(e.offset), e.size, gainAt, len(m.gainMap))
+	}
+	if _, err := exec.LookPath("exiftool"); err != nil {
+		return
+	}
+	path := filepath.Join(t.TempDir(), "mpf.jpg")
+	if err := os.WriteFile(path, file, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("exiftool", "-n", "-s3", "-MPImage1:MPImageStart", "-MPImage1:MPImageLength",
+		"-MPImage2:MPImageStart", "-MPImage2:MPImageLength", path).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("0\n%d\n%d\n%d\n", gainAt, gainAt, len(m.gainMap))
+	if string(out) != want {
+		t.Errorf("%s: ExifTool's MPImage start/length %q, want %q", name, out, want)
+	}
+}
+
+// Writes that grow and shrink the primary image's segments, before and
+// after the MPF segment, keep every MPF entry exact.
+func TestMPFAfterWrites(t *testing.T) {
+	long := string(bytes.Repeat([]byte("a long title "), 40))
+	empty, none := "", []string{}
+	keywords := []string{"one", "two"}
+	date := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	steps := []struct {
+		name string
+		edit MetadataEdit
+	}{
+		{"Exif added (grows)", MetadataEdit{Exif: &ExifEdit{DateTimeOriginal: &date, GPS: &GPS{Latitude: 1, Longitude: 2}}}},
+		{"XMP grows", MetadataEdit{XMP: &XMPEdit{Title: &long}}},
+		{"IPTC added (grows)", MetadataEdit{IPTC: &IPTCEdit{Title: &long, Keywords: &keywords}}},
+		{"IPTC removed (shrinks)", MetadataEdit{IPTC: &IPTCEdit{Title: &empty, Keywords: &none}}},
+		{"all at once", MetadataEdit{Exif: &ExifEdit{RemoveGPS: true}, XMP: &XMPEdit{Title: &empty}, IPTC: &IPTCEdit{Keywords: &keywords}}},
+	}
+	for _, v := range motionVariants {
+		if v.o.microVideo || v.o.noMPF {
+			continue
+		}
+		m := buildMotionPhoto(t, v.o)
+		checkMPFExact(t, v.name+"/as built", m.file, m)
+		file := m.file
+		for _, s := range steps {
+			p, err := PlanMetadata(bytes.NewReader(file), int64(len(file)), s.edit)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", v.name, s.name, err)
+			}
+			var out bytes.Buffer
+			if _, err := p.WriteTo(&out); err != nil {
+				t.Fatal(err)
+			}
+			if s.name == "IPTC removed (shrinks)" && out.Len() >= len(file) {
+				t.Errorf("%s/%s: %d → %d bytes, didn't shrink", v.name, s.name, len(file), out.Len())
+			}
+			file = out.Bytes()
+			checkMPFExact(t, v.name+"/"+s.name, file, m)
+			checkEmbedded(t, v.name+"/"+s.name, file, m, v.o)
+		}
+	}
+}

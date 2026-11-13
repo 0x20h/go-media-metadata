@@ -121,17 +121,25 @@ timestamp (`GCamera:MotionPhotoPresentationTimestampUs`) is read too.
 Every JPEG writer copies the bytes after the edited segments as they
 are, so the embedded media stays byte for byte. The container
 directory's and MicroVideo's positions count from the end of the file,
-so a segment that changes size doesn't move them. The MPF index's
-offsets count from the index itself: when a write changes the size of
-anything between the index and its images (a segment after the MPF one,
-such as a new IPTC segment), the offsets are patched by that much. An
-edit inside the MPF segment, or one that takes an offset out of range,
-is refused (`ErrUnsupported`).
+so a segment that changes size doesn't move them. The MPF index is
+kept exact, sizes and offsets alike, as decoders use both:
+
+- **The first image's size** is the primary image's length, marker
+  segments included, so every write changes it by the write's total.
+- **The other images' offsets** count from the index itself, so they
+  change by what a write adds or removes between the index and them (a
+  segment after the MPF one, such as a new IPTC segment).
+
+An edit inside the MPF segment, or one that takes a size or offset out
+of range, is refused (`ErrUnsupported`).
 
 Tests build Motion Photos with a gain map: MPF before and after the XMP
 segment, without MPF, and in the MicroVideo form. Every writer
 (orientation, Exif, XMP, IPTC, all at once) keeps the video and the gain
-map byte for byte, and keeps the MPF index pointing at the gain map.
+map byte for byte, and keeps the MPF index pointing at the gain map. A
+chain of writes that grow and shrink segments before and after the MPF
+one checks every entry's offset and size against where the images are,
+and against ExifTool's `MPImageStart` and `MPImageLength`.
 Where exiftool is installed, ExifTool extracts the same video
 (`MotionPhotoVideo`, `EmbeddedVideo`) and gain map (`MPImage2`) before
 and after a write. `FuzzReadEmbedded` checks that what's read lies in
