@@ -42,7 +42,8 @@ type Video struct {
 	// Orientation is how the first video track is shown, from its track
 	// header's matrix, in the Exif numbering images use: a rotation by a
 	// multiple of 90° or a mirroring. 0 for a matrix that is none of the
-	// eight (scaled or skewed), or without a video track.
+	// eight (scaled or skewed), without a video track, or when the movie
+	// header has a matrix of its own that turns every track as well.
 	Orientation Orientation
 
 	// Width and Height are the first video track's size as stored, before
@@ -110,7 +111,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	var keys, udta qtTags
 	var mvhdCreated time.Time
-	video := false
+	video, movieTurned := false, false
 	for _, k := range kids {
 		switch k.Type {
 		case bmff.T("mvhd"):
@@ -119,6 +120,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 				return v, err
 			}
 			mvhdCreated, v.Duration = parseMvhd(b)
+			movieTurned = !mvhdIdentity(b)
 		case bmff.T("trak"):
 			if video {
 				continue // the first video track only
@@ -156,6 +158,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
+	if movieTurned {
+		v.Orientation = 0
+	}
 	return v, nil
 }
 
