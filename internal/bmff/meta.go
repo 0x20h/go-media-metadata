@@ -608,3 +608,7 @@ func explicitSize(raw []byte) []byte {
 	binary.BigEndian.PutUint32(out, uint32(len(raw)))
 	return out
 }
+
+// ExplicitSize is explicitSize, for writers outside this package that
+// keep boxes as raw bytes.
+func ExplicitSize(raw []byte) []byte { return explicitSize(raw) }
