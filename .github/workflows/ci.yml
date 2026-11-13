@@ -37,7 +37,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzReadOrientation, FuzzSetRotation, FuzzPlanRotation, FuzzReadExif, FuzzEditExif, FuzzReadRAW, FuzzChunked, FuzzJPEGExif, FuzzEditXMP, FuzzJPEGXMP, FuzzReadVideo, FuzzVideoOrientation, FuzzIPTC]
+        # One target per line, so that pull requests adding one don't conflict.
+        target:
+          - FuzzReadOrientation
+          - FuzzSetRotation
+          - FuzzPlanRotation
+          - FuzzReadExif
+          - FuzzEditExif
+          - FuzzReadRAW
+          - FuzzChunked
+          - FuzzJPEGExif
+          - FuzzEditXMP
+          - FuzzJPEGXMP
+          - FuzzReadVideo
+          - FuzzVideoOrientation
+          - FuzzPlanItems
+          - FuzzIPTC
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

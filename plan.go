@@ -147,6 +147,10 @@ func planEdit(src io.ReaderAt, size int64, edit func(*heifFile) error) (rotation
 	if err != nil {
 		return rotation{}, err
 	}
+	// The meta box changes; no image's data may lie in it.
+	if err := f.noDataInMeta(); err != nil {
+		return rotation{}, err
+	}
 	if err := edit(f); err != nil {
 		return rotation{}, err
 	}

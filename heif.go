@@ -470,6 +470,31 @@ func (f *heifFile) shiftOffsets(delta int64) error {
 	return nil
 }
 
+// noDataInMeta checks that no image's data (construction method 0)
+// overlaps the meta box, which an edit rewrites: data starting inside it,
+// or before it and running into it (or to the end of the file, across
+// it), would change with it. Exif and XMP items aren't images: their
+// bytes there may change, as an edit may change them anyway.
+func (f *heifFile) noDataInMeta() error {
+	start, end := uint64(f.meta.Offset), uint64(f.meta.End())
+	for _, it := range f.m.Loc.Items {
+		t := f.m.ItemTypes[it.ID]
+		if t == bmff.T("Exif") || t == bmff.T("mime") || it.ConstructionMethod != 0 || it.DataRefIndex != 0 {
+			continue
+		}
+		for _, e := range it.Extents {
+			abs := it.BaseOffset + e.Offset
+			if abs < it.BaseOffset || abs >= end {
+				continue
+			}
+			if e.Length == 0 || abs+e.Length > start || abs+e.Length < abs {
+				return fmt.Errorf("%w: item %d's data overlaps the meta box", ErrUnsupported, it.ID)
+			}
+		}
+	}
+	return nil
+}
+
 // patch replaces bytes at an offset of the output.
 type patch struct {
 	at   int64
