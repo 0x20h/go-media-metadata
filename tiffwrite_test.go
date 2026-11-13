@@ -492,3 +492,37 @@ func TestEditExifText(t *testing.T) {
 		}
 	}
 }
+
+// A sub-IFD pointer of a type other than LONG (here a big-endian SHORT,
+// which ReadExif accepts) is where the writer looks for that IFD too: an
+// edit doesn't rewrite IFD0 in place over an Exif IFD inside it.
+func TestEditExifShortPointerIFDIsKept(t *testing.T) {
+	order := binary.BigEndian
+	data := []byte{'M', 'M', 0, 42, 0, 0, 0, 8}
+	data = order.AppendUint16(data, 3)
+	entry := func(tag, typ uint16, count uint32, v uint16) {
+		data = order.AppendUint16(data, tag)
+		data = order.AppendUint16(data, typ)
+		data = order.AppendUint32(data, count)
+		data = order.AppendUint16(data, v)
+		data = append(data, 0, 0)
+	}
+	// Out of order, so an edit sorts them. The Exif IFD is at 34, the
+	// third entry's tag: an IFD of one entry, until sorting moves the
+	// pointer's tag there.
+	entry(tagExifIFD, typeShort, 1, 34)
+	entry(tagOrientation, typeShort, 1, 1)
+	entry(0x0001, typeShort, 1, 0)
+	data = order.AppendUint32(data, 0)
+	data = append(data, make([]byte, 8)...)
+	e := ExifEdit{Orientation: 2}
+	out, err := EditExif(data, e)
+	if err != nil {
+		// Refusing is fine; breaking the Exif IFD isn't.
+		return
+	}
+	checkEdited(t, out, e)
+	if _, err := EditExif(out, e); err != nil {
+		t.Fatalf("EditExif of its own output: %v", err)
+	}
+}
