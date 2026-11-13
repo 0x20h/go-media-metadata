@@ -128,6 +128,21 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
   the bytes that change as patches to apply to a copy (`Apply`). Keeping
   the mirroring (or its absence) is in place where the image has an `irot`
   of its own; adding or removing a mirror changes the file's size.
+- QuickTime (MOV) and MP4: `ReadVideo` reads a movie's recording date,
+  duration, GPS position, the first video track's orientation and size,
+  the recording device's make and model, and the content identifier
+  that pairs a Live Photo's video with its still image. It takes the
+  date, place, make and model from the Keys metadata
+  (`com.apple.quicktime.*`, in a QuickTime or an MP4-style `meta`
+  box), else the user data (`©day`, `©xyz`, `©mak`, `©mod`), and the
+  date last from the movie header (UTC). The orientation comes from the
+  track header's matrix, in the Exif numbering images use: the four
+  rotations and four mirrorings, 0 for any other matrix. Only box
+  headers and the few small boxes these fields are in are read, never
+  the sample tables or the media data, wherever `moov` sits: 870 bytes
+  of a 1 MB test movie. Results are checked against ExifTool on the
+  test movies. Writing is next: the rotation (a same-size patch of the
+  track matrix), then date and place.
 
 ### Compared with other tools
 
@@ -166,6 +181,9 @@ Early. HEIF/HEIC orientation, and reading Exif from JPEG and HEIF:
 - ISO/IEC 23008-12, High Efficiency Image File Format (HEIF)
 - ITU-T T.81 (JPEG) for the marker segments
 - CIPA DC-008 (Exif 2.32): the Orientation, date and time, and GPS tags
+- Apple QuickTime File Format: movie and track headers, the Keys
+  metadata (`keys`, `ilst`) and user data text entries
+- ISO 6709 for the location strings, ISO 8601 for the dates
 
 ## Licence
 
