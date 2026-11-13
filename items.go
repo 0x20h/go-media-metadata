@@ -131,6 +131,12 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if err := f.noDataInMeta(); err != nil {
 		return nil, err
 	}
+	// Data that runs past the end of idat, where it would be read from the
+	// meta box's other boxes or from the media data after it, makes it
+	// unclear which bytes are whose.
+	if err := f.idatInBounds(); err != nil {
+		return nil, err
+	}
 	var patches []patch
 	var old []oldData
 	var inPlace oldData // where the new data goes when it fits
@@ -173,7 +179,7 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if !placed {
 		// A last box that runs to the end of the file would take in the
 		// data appended after it: it gets its size.
-		closing, err := f.closeLastBox(src, delta)
+		closing, err := f.closeLastBox(src, delta, id)
 		if err != nil {
 			return nil, err
 		}
@@ -284,12 +290,30 @@ func (f *heifFile) endsBefore(id uint32, size int64) error {
 	return nil
 }
 
+// idatInBounds checks that every idat extent lies within idat's payload.
+func (f *heifFile) idatInBounds() error {
+	_, idatLen := idatPayload(f.raw)
+	for _, it := range f.m.Loc.Items {
+		if it.ConstructionMethod != 1 || it.DataRefIndex != 0 {
+			continue
+		}
+		for _, e := range it.Extents {
+			start := it.BaseOffset + e.Offset
+			if start < it.BaseOffset || start+e.Length < start || start+e.Length > uint64(max(idatLen, 0)) {
+				return fmt.Errorf("%w: item %d's data runs past the end of idat", ErrMalformed, it.ID)
+			}
+		}
+	}
+	return nil
+}
+
 // closeLastBox is the patch that writes the size of the file's last box
 // into its header when the header says 0, "to the end of the file" (ISO/IEC
 // 14496-12 4.2): a box appended after it would otherwise be read as part of
 // it. The meta box is encoded with its size, so it needs none. A box past 4
-// GB can't take its size in the 32-bit field and is refused.
-func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64) ([]patch, error) {
+// GB can't take its size in the 32-bit field and is refused, as is a header
+// another item's data covers (id, the item written, is left out).
+func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patch, error) {
 	last := f.boxes[len(f.boxes)-1]
 	if last.Offset == f.meta.Offset {
 		return nil, nil
@@ -303,6 +327,20 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64) ([]patch, error) {
 	}
 	if last.Size > 0xFFFFFFFF {
 		return nil, fmt.Errorf("%w: a last box of %d bytes that runs to the end of the file", ErrUnsupported, last.Size)
+	}
+	// The size field is a box header, which no item's data should cover;
+	// where one's does, patching it would change that item's data.
+	for _, it := range f.m.Loc.Items {
+		// id is the item being written: its data moves to the end.
+		if it.ID == id || it.ConstructionMethod != 0 || it.DataRefIndex != 0 {
+			continue
+		}
+		for _, e := range it.Extents {
+			start := it.BaseOffset + e.Offset
+			if start < uint64(last.Offset)+4 && (e.Length == 0 || start+e.Length > uint64(last.Offset)) {
+				return nil, fmt.Errorf("%w: item %d's data covers the header of the last box", ErrUnsupported, it.ID)
+			}
+		}
 	}
 	at := last.Offset
 	if at >= f.meta.End() {
@@ -378,11 +416,25 @@ func noRoom(err error) error {
 func (f *heifFile) patchItem(id uint32, payload []byte) (where oldData, data []byte, ok bool, err error) {
 	l := f.m.Loc
 	loc, _ := l.Item(id)
-	if loc.DataRefIndex != 0 || len(loc.Extents) != 1 || l.LengthSize == 0 {
+	if loc.DataRefIndex != 0 || len(loc.Extents) != 1 {
 		return oldData{}, nil, false, nil
 	}
 	e := &loc.Extents[0]
 	start := loc.BaseOffset + e.Offset
+	// An extent of length 0, the only kind an iloc without length fields
+	// has, runs to the end of the file (ISO/IEC 14496-12 8.11.3): data of
+	// exactly that length is written over it, and the length stays 0.
+	if e.Length == 0 && loc.ConstructionMethod == 0 && start >= loc.BaseOffset {
+		end := f.boxes[len(f.boxes)-1].End()
+		s := int64(start)
+		if s < 0 || s >= end || end-s != int64(len(payload)) || !f.inOneMediaData(s, end) || f.shared(id, 0, start, uint64(end)) {
+			return oldData{}, nil, false, nil
+		}
+		return oldData{at: s, n: end - s, afterEnd: s >= f.meta.End()}, bytes.Clone(payload), true, nil
+	}
+	if l.LengthSize == 0 {
+		return oldData{}, nil, false, nil
+	}
 	if start < loc.BaseOffset || e.Length < uint64(len(payload)) || e.Length == 0 || start+e.Length < start {
 		return oldData{}, nil, false, nil
 	}
@@ -509,19 +561,63 @@ func (f *heifFile) inOneMediaData(start, end int64) bool {
 
 // shared reports whether another item's data overlaps [start, end) of
 // construction method cm.
+//
+// The ranges are compared where they are in the file, whatever the
+// construction method: an idat extent is a range of the meta box, which a
+// malformed file can place over an mdat's data, and the other way round.
 func (f *heifFile) shared(id uint32, cm uint8, start, end uint64) bool {
+	s0, e0, ok := f.fileRange(cm, start, end-start)
+	if !ok {
+		return true
+	}
 	for _, it := range f.m.Loc.Items {
-		if it.ID == id || it.ConstructionMethod != cm || it.DataRefIndex != 0 {
+		if it.ID == id || it.DataRefIndex != 0 {
 			continue
 		}
 		for _, e := range it.Extents {
 			s := it.BaseOffset + e.Offset
-			if e.Length == 0 || s < end && s+e.Length > start {
+			if e.Length == 0 && it.ConstructionMethod == cm {
+				return true // to the end of the file or idat
+			}
+			s1, e1, ok := f.fileRange(it.ConstructionMethod, s, e.Length)
+			if !ok {
+				continue // past its container: refused before it gets here
+			}
+			if s1 < e0 && e1 > s0 {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// fileRange is where n bytes at offset at of construction method cm (0:
+// the file, 1: idat's payload) lie in the file; n 0 runs to the end of the
+// file or of idat. ok is false for a range it can't place.
+func (f *heifFile) fileRange(cm uint8, at, n uint64) (start, end uint64, ok bool) {
+	var base, limit uint64
+	switch cm {
+	case 0:
+		limit = uint64(f.boxes[len(f.boxes)-1].End())
+	case 1:
+		idat, idatLen := idatPayload(f.raw)
+		if idat < 0 {
+			return 0, 0, false
+		}
+		base, limit = uint64(f.meta.Offset+idat), uint64(idatLen)
+	default:
+		return 0, 0, false
+	}
+	if n == 0 {
+		if at > limit {
+			return 0, 0, false
+		}
+		n = limit - at
+	}
+	if at+n < at || at+n > limit {
+		return 0, 0, false
+	}
+	return base + at, base + at + n, true
 }
 
 // ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP or camera
