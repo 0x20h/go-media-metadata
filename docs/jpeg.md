@@ -93,6 +93,50 @@ length, its chunk's offset and the chunk.
 
 ExifTool reads a 180 KB split packet as one, with no warning.
 
+## Embedded media: Motion Photos, gain maps (MPF)
+
+A JPEG can carry media after its own image: a Motion Photo's video, an
+Ultra HDR gain map, a depth map. `ReadEmbedded` says where each one is,
+from three sources:
+
+- **The XMP container directory** (`Container:Directory`, Google's
+  container format). Its first item is the primary image. Each item
+  after it is `Item:Length` bytes followed by `Item:Padding` bytes, in
+  order, and the last one ends the file. They're placed from the end of
+  the file, so the image data is never read.
+- **The older Motion Photo form,** `GCamera:MicroVideoOffset`: the
+  video's distance from the end of the file.
+- **The Multi-Picture Format index** (APP2 `MPF\0`, CIPA DC-007): its
+  images after the first. Their offsets count from the index's TIFF
+  header. An image the container directory lists already isn't listed
+  twice.
+
+An item that isn't where the file says is left out: outside the file,
+inside the marker segments, or not starting as it should (a video
+without an `ftyp` box, a JPEG without SOI). The video's presentation
+timestamp (`GCamera:MotionPhotoPresentationTimestampUs`) is read too.
+
+### Writes keep them
+
+Every JPEG writer copies the bytes after the edited segments as they
+are, so the embedded media stays byte for byte. The container
+directory's and MicroVideo's positions count from the end of the file,
+so a segment that changes size doesn't move them. The MPF index's
+offsets count from the index itself: when a write changes the size of
+anything between the index and its images (a segment after the MPF one,
+such as a new IPTC segment), the offsets are patched by that much. An
+edit inside the MPF segment, or one that takes an offset out of range,
+is refused (`ErrUnsupported`).
+
+Tests build Motion Photos with a gain map: MPF before and after the XMP
+segment, without MPF, and in the MicroVideo form. Every writer
+(orientation, Exif, XMP, IPTC, all at once) keeps the video and the gain
+map byte for byte, and keeps the MPF index pointing at the gain map.
+Where exiftool is installed, ExifTool extracts the same video
+(`MotionPhotoVideo`, `EmbeddedVideo`) and gain map (`MPImage2`) before
+and after a write. `FuzzReadEmbedded` checks that what's read lies in
+the file and survives a write that grows the XMP.
+
 ## Test corpus
 
 `testdata/exiftool` holds synthetic JPEGs whose Exif, XMP and IPTC

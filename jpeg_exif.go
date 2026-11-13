@@ -51,6 +51,9 @@ func planJPEGExif(src io.ReaderAt, size int64, edit func(old []byte) ([]byte, er
 	default:
 		e.add(splice{at: f.afterJFIF(), data: app1(body)})
 	}
+	if err := f.fixMPF(src, e); err != nil {
+		return nil, err
+	}
 	return e.plan(src, size), nil
 }
 
