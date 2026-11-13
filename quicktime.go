@@ -554,11 +554,11 @@ func readDataString(r io.ReaderAt, item bmff.Box) (string, error) {
 		return "", nil
 	}
 	typ := binary.BigEndian.Uint32(b) & 0xFFFFFF
-	return textOf(b[8:], typ), nil
+	return qtText(b[8:], typ), nil
 }
 
-// textOf decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE).
-func textOf(b []byte, typ uint32) string {
+// qtText decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE).
+func qtText(b []byte, typ uint32) string {
 	switch typ {
 	case 1:
 		if !utf8.Valid(b) {
