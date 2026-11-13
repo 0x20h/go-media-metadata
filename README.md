@@ -64,6 +64,8 @@ orientation and size, make and model, and Live Photo content identifier;
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords and rating, whatever file holds the packet.
+In a JPEG, `ReadIPTC`, `ParseIPTC`, `EditIPTC` and `SetIPTC` read and
+change the IPTC-IIM title, keywords and description that mirror them.
 
 ## Documentation
 
@@ -76,6 +78,7 @@ description, keywords and rating, whatever file holds the packet.
 - [Exif](docs/exif.md): the fields, writers' quirks compared with
   ExifTool, and `EditExif`
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
+- [IPTC](docs/iptc.md): `ParseIPTC`, `EditIPTC`, and a JPEG's IPTC-IIM
 
 ## Guarantees
 
