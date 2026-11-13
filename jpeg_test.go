@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -386,6 +387,13 @@ func jpegSeeds(f *testing.F) {
 		f.Add(q.file)
 	}
 	f.Add(noTagJPEG(f, binary.LittleEndian))
+	// The files ExifTool wrote (testdata/exiftool).
+	paths, _ := filepath.Glob("testdata/exiftool/*.jpg")
+	for _, p := range paths {
+		if b, err := os.ReadFile(p); err == nil {
+			f.Add(b)
+		}
+	}
 }
 
 func FuzzReadExif(f *testing.F) {

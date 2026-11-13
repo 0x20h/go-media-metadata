@@ -53,7 +53,12 @@ type ExifEdit struct {
 const (
 	tagGPSVersionID = 0
 	tagMakerNote    = 0x927C
-	tagIFD1Thumb    = 0x0201 // JPEGInterchangeFormat
+	tagExifVersion  = 0x9000
+	// tagComponentsConfiguration and tagColorSpace are required in a
+	// JPEG's Exif IFD.
+	tagComponentsConfiguration = 0x9101
+	tagColorSpace              = 0xA001
+	tagIFD1Thumb               = 0x0201 // JPEGInterchangeFormat
 )
 
 // EditExif returns TIFF data (the TIFF header first, as in a JPEG's Exif
@@ -94,7 +99,8 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 			return nil, fmt.Errorf("mediameta: text that isn't UTF-8 without NUL")
 		}
 	}
-	if len(tiff) == 0 {
+	created := len(tiff) == 0
+	if created {
 		tiff = []byte{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0}
 	}
 	w, err := newTIFFWriter(tiff)
@@ -152,6 +158,12 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 		}
 	}
 	var ifd0 []tiffChange
+	if created {
+		// New data gets the tag Exif requires of a JPEG's IFD0
+		// (YCbCrPositioning, 1: centred, as JFIF specifies), as ExifTool
+		// writes it.
+		ifd0 = append(ifd0, tiffChange{tag: tagYCbCrPositioning, typ: typeShort, count: 1, value: w.order.AppendUint16(nil, 1), keep: true})
+	}
 	if edit.Orientation != 0 {
 		ifd0 = append(ifd0, tiffChange{tag: tagOrientation, typ: typeShort, count: 1, value: w.order.AppendUint16(nil, uint16(edit.Orientation))})
 	}
@@ -204,7 +216,19 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 		if !has && allRemovals(sub.changes) {
 			continue
 		}
-		at, err := w.apply(off, has, sub.changes)
+		changes := sub.changes
+		if !has && sub.ptr == tagExifIFD {
+			// A new Exif IFD gets the tags Exif requires of it (CIPA DC-008
+			// 4.6.5) that don't depend on the image, as ExifTool writes
+			// them: the version, the components (Y, Cb, Cr) and an
+			// uncalibrated color space. The image's size isn't known here.
+			changes = append([]tiffChange{
+				{tag: tagExifVersion, typ: typeUndef, count: 4, value: []byte("0232"), keep: true},
+				{tag: tagComponentsConfiguration, typ: typeUndef, count: 4, value: []byte{1, 2, 3, 0}, keep: true},
+				{tag: tagColorSpace, typ: typeShort, count: 1, value: w.order.AppendUint16(nil, 0xFFFF), keep: true},
+			}, changes...)
+		}
+		at, err := w.apply(off, has, changes)
 		if err != nil {
 			return nil, err
 		}

@@ -1,0 +1,32 @@
+{
+  "exif-ii.jpg": {
+    "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
+    "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 }
+  },
+  "exif-mm.jpg": {
+    "orientation": 8, "taken": "2019-12-31T23:59:59-05:00", "offsetKnown": true,
+    "gps": { "lat": -33.865, "lon": 151.2094, "alt": -12 }
+  },
+  "xmp.jpg": {
+    "orientation": 1,
+    "xmp": {
+      "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4,
+      "people": ["Ada"],
+      "regions": { "w": 64, "h": 48, "unit": "pixel", "list": [{ "name": "Ada", "type": "Face", "x": 0.25, "y": 0.33, "w": 0.25, "h": 0.33 }] }
+    }
+  },
+  "iptc-utf8.jpg": {
+    "orientation": 1,
+    "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" }
+  },
+  "iptc-latin1.jpg": {
+    "orientation": 1,
+    "iptc": { "title": "Grün", "keywords": ["Brücke"], "description": "Am See" }
+  },
+  "all.jpg": {
+    "orientation": 3, "taken": "2024-08-15T08:30:00+01:00", "offsetKnown": true,
+    "gps": { "lat": 48.137, "lon": 11.575 },
+    "xmp": { "title": "Morning", "description": "Breakfast outside", "keywords": ["summer"], "rating": 5 },
+    "iptc": { "title": "Morning", "keywords": ["summer"], "description": "Breakfast outside" }
+  }
+}

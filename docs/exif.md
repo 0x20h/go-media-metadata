@@ -101,6 +101,13 @@ Text with a NUL in it, or that isn't UTF-8, is refused.
   doesn't stay in the data.
 - **With empty data**, `EditExif` makes new TIFF data (big-endian)
   holding the edit.
+- **Required tags:** new data gets the tags Exif requires of a JPEG that
+  don't depend on the image, as ExifTool writes them: YCbCrPositioning
+  (centred) in IFD0. A new Exif IFD gets ExifVersion (0232),
+  ComponentsConfiguration (Y, Cb, Cr) and ColorSpace (uncalibrated). The
+  image size (ExifImageWidth, ExifImageHeight) isn't known from TIFF data
+  and is left out, as ExifTool leaves it out too. Existing IFDs that lack
+  these tags aren't changed.
 - **Data that isn't TIFF**, or whose IFDs lie outside it, is refused with
   `ErrMalformed` rather than rewritten.
 - **Idempotent:** `EditExif` of its own output with the same edit
