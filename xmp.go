@@ -24,6 +24,11 @@ type XMP struct {
 	// rating that isn't one of those whole numbers reads as none.
 	Rating    int
 	HasRating bool
+	// PersonInImage are the people shown (Iptc4xmpExt:PersonInImage).
+	PersonInImage []string
+	// Regions are the image's face and other regions (mwg-rs:Regions),
+	// nil without any; see Regions.
+	Regions *Regions
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
@@ -37,6 +42,13 @@ type XMPEdit struct {
 	// Rating sets xmp:Rating (-1 to 5); RemoveRating removes it.
 	Rating       *int
 	RemoveRating bool
+	// PersonInImage sets Iptc4xmpExt:PersonInImage; an empty list removes
+	// it.
+	PersonInImage *[]string
+	// Regions sets mwg-rs:Regions as a whole; one without regions removes
+	// it. Fields of the old regions that Region doesn't model (a region's
+	// rotation, extensions) aren't kept.
+	Regions *Regions
 }
 
 // Namespaces of the properties read and written.
@@ -235,17 +247,9 @@ func (d *xmpDoc) fields() XMP {
 	var x XMP
 	x.Title = d.langAlt(nsDC, "title")
 	x.Description = d.langAlt(nsDC, "description")
-	if ps := d.props(nsDC, "subject"); len(ps) > 0 {
-		if c := ps[0].container(); c != nil {
-			for _, li := range items(c) {
-				if v := strings.TrimSpace(textOf(li)); v != "" {
-					x.Keywords = append(x.Keywords, v)
-				}
-			}
-		} else if v := ps[0].value(); v != "" {
-			x.Keywords = append(x.Keywords, v)
-		}
-	}
+	x.Keywords = d.stringBag(nsDC, "subject")
+	x.PersonInImage = d.stringBag(nsIPTCX, "PersonInImage")
+	x.Regions = d.regions()
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
 		f, err := strconv.ParseFloat(ps[0].value(), 64)
 		if err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
@@ -288,6 +292,16 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			}
 		}
 	}
+	if edit.PersonInImage != nil {
+		for _, k := range *edit.PersonInImage {
+			if !utf8.ValidString(k) {
+				return nil, fmt.Errorf("mediameta: a name that isn't UTF-8")
+			}
+		}
+	}
+	if err := checkRegions(edit.Regions); err != nil {
+		return nil, err
+	}
 	if len(bytes.TrimSpace(packet)) == 0 {
 		packet = newXMPPacket()
 	}
@@ -310,6 +324,12 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 	}
 	if edit.RemoveRating {
 		changed = d.remove(nsXMP, "Rating") || changed
+	}
+	if edit.PersonInImage != nil {
+		changed = d.setBag(nsIPTCX, "PersonInImage", *edit.PersonInImage) || changed
+	}
+	if edit.Regions != nil {
+		changed = d.setRegions(edit.Regions) || changed
 	}
 	if !changed {
 		return bytes.Clone(packet), nil

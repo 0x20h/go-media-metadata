@@ -63,7 +63,8 @@ orientation and size, make and model, and Live Photo content identifier;
 `SetVideoRotation` and `SetVideoOrientation` set its orientation in place.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
-description, keywords and rating, whatever file holds the packet.
+description, keywords, rating, face regions (MWG) and the people shown,
+whatever file holds the packet.
 In a JPEG, `ReadIPTC`, `ParseIPTC`, `EditIPTC` and `SetIPTC` read and
 change the IPTC-IIM title, keywords and description that mirror them.
 

@@ -13,6 +13,8 @@ type XMP struct {
 	Keywords           []string // dc:subject
 	Rating             int      // xmp:Rating, -1 to 5, when HasRating
 	HasRating          bool
+	PersonInImage      []string // Iptc4xmpExt:PersonInImage
+	Regions            *Regions // mwg-rs:Regions, nil without any
 }
 ```
 
@@ -36,6 +38,8 @@ type XMPEdit struct {
 	Keywords           *[]string // nil leaves; empty removes
 	Rating             *int      // -1 to 5
 	RemoveRating       bool
+	PersonInImage      *[]string // nil leaves; empty removes
+	Regions            *Regions  // as a whole; no regions removes
 }
 ```
 
@@ -59,6 +63,40 @@ title without `x-default` gets one as its first item. A packet without an
 fits in its padding (the whitespace before `<?xpacket end`), so a writer
 can put it back in place. A packet that outgrows its padding gets 2 KB of
 new padding, as Part 1 suggests.
+
+## Face regions and people
+
+`XMP.Regions` and `XMP.PersonInImage` cover the people in an image:
+
+- **Regions** are `mwg-rs:Regions`, as the Metadata Working Group's
+  guidelines (2.0, 5.9) define them. They hold the image size the regions
+  were made for (`AppliedToDimensions`) and the list of regions. Each
+  region has a name, a type (`Face`, `Pet`, `Focus` or `BarCode`; empty
+  means `Face`) and an area. The area is its centre `X`, `Y` and size `W`,
+  `H`, as fractions of the stored image (`stArea`, unit `normalized`), with
+  (0, 0) at the top-left corner.
+- **PersonInImage** is `Iptc4xmpExt:PersonInImage`, the names of the
+  people shown (IPTC Photo Metadata, Extension schema).
+
+**Reading.** The struct fields are read wherever RDF allows them: as
+attributes of the property element, as its children with
+`rdf:parseType="Resource"`, or inside an `rdf:Description`. A region whose
+area isn't normalized, or doesn't fit the image (a value outside 0 to 1),
+is left out. Readers should compare `AppliedTo` with the image's own size,
+and ignore regions made for another one (an image cropped or turned
+since).
+
+**Writing.** `XMPEdit.Regions` writes `mwg-rs:Regions` as a whole, in the
+MWG's layout. The unit defaults to `pixel` and the type to `Face`.
+Fields of the old regions that `Region` doesn't model (a region's
+rotation, extensions) aren't kept. A `Regions` without regions removes
+the property. Regions without `AppliedTo`, or with an area outside 0 to
+1, are refused. `XMPEdit.PersonInImage` sets the names, and an empty list
+removes them. Setting the same regions again changes nothing.
+
+`TestXMPRegionsAgreeWithExifTool` checks that ExifTool reads the regions
+of a sample laid out as Lightroom and other writers do, and the ones
+`EditXMP` writes, as `ParseXMP` does.
 
 ## Parsing untrusted XML
 
