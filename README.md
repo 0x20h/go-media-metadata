@@ -58,6 +58,10 @@ Early, and growing format by format.
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 
+`ReadEmbedded` finds the media a JPEG carries after its image (a Motion
+Photo's video, an Ultra HDR gain map), and every JPEG write keeps it
+intact.
+
 `ReadVideo` reads a movie's recording date, duration, GPS position,
 orientation and size, make and model, and Live Photo content identifier;
 `SetVideoRotation` and `SetVideoOrientation` set its orientation in place;

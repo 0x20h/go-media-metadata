@@ -198,6 +198,9 @@ func PlanIPTC(src io.ReaderAt, size int64, iim []byte) (*Plan, error) {
 		for _, s := range segs {
 			e.add(splice{at: s.offset, del: s.body + s.bodyLen - s.offset})
 		}
+		if err := f.fixMPF(src, e); err != nil {
+			return nil, err
+		}
 		return e.plan(src, size), nil
 	}
 	body := append(append([]byte(nil), photoshopHeader...), writeIRBs(out)...)
@@ -216,6 +219,9 @@ func PlanIPTC(src io.ReaderAt, size int64, iim []byte) (*Plan, error) {
 		e.add(splice{at: f.afterAPPn(), data: app13(body)})
 	}
 	if err := e.sorted(); err != nil {
+		return nil, err
+	}
+	if err := f.fixMPF(src, e); err != nil {
 		return nil, err
 	}
 	return e.plan(src, size), nil

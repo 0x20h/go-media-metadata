@@ -189,6 +189,9 @@ func planJPEGXMP(src io.ReaderAt, size int64, packet []byte) (*Plan, error) {
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
+	if err := f.fixMPF(src, e); err != nil {
+		return nil, err
+	}
 	return e.plan(src, size), nil
 }
 
