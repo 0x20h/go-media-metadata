@@ -73,10 +73,14 @@ func SetXMP(src io.ReaderAt, size int64, dst io.Writer, packet []byte) error {
 // data box at the end of the file. Either way the old data is overwritten
 // with zeros, so a value removed from the metadata (a GPS position, say)
 // isn't left in the file to be found; the patch of an in-place edit
-// covers the whole old extent.
+// covers the whole old extent. A JPEG's first Exif segment is set as
+// PlanExifEdit sets it.
 func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 	if _, _, ok := newTIFF(tiff); !ok {
 		return nil, fmt.Errorf("mediameta: Exif data that doesn't start with a TIFF header")
+	}
+	if isJPEG(src, size) {
+		return planJPEGExif(src, size, func([]byte) ([]byte, error) { return tiff, nil })
 	}
 	if p, ok, err := planChunked(src, size, kindExif, func([]byte) ([]byte, error) { return tiff, nil }); ok {
 		return p, err

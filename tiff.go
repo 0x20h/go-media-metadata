@@ -55,6 +55,10 @@ const (
 	tagOffsetTimeOriginal = 0x9011
 	tagSubSecTimeOriginal = 0x9291
 
+	tagDateTimeDigitized   = 0x9004
+	tagOffsetTimeDigitized = 0x9012
+	tagSubSecTimeDigitized = 0x9292
+
 	tagGPSLatitudeRef  = 1
 	tagGPSLatitude     = 2
 	tagGPSLongitudeRef = 3
