@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -394,5 +395,45 @@ func checkPhotoFields(t *testing.T, name string, x Exif) {
 	}
 	if x.GPS == nil || x.GPS.Latitude != 51.5 || x.GPS.Longitude != -0.125 {
 		t.Errorf("%s: GPS %+v", name, x.GPS)
+	}
+}
+
+// withRIFFTail is a WebP with tail added at the end of its RIFF data, the
+// RIFF size raised to match.
+func withRIFFTail(file, tail []byte) []byte {
+	out := append(bytes.Clone(file), tail...)
+	binary.LittleEndian.PutUint32(out[4:], binary.LittleEndian.Uint32(out[4:])+uint32(len(tail)))
+	return out
+}
+
+// Bytes after a WebP's last chunk, too few for a chunk, stay after it: a
+// new XMP chunk goes after the last chunk, not after them, where they'd
+// read as its header's start. A last chunk missing its pad byte is refused
+// rather than followed by a chunk it runs into.
+func TestWebPChunkAfterStrayBytes(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "webp", "lossy.webp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stray := []byte{0, 0, 0, 0, 0}
+	file := withRIFFTail(b, stray)
+	packet := xmpPacket("Harbour at dusk", 0)
+	p, err := PlanXMP(bytes.NewReader(file), int64(len(file)), packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkPlan(t, file, p)
+	out := written(t, p)
+	checkChunked(t, file, out)
+	if got := readJPEGXMPOf(t, out); !bytes.Equal(got, packet) {
+		t.Errorf("the XMP reads back as %q", got)
+	}
+	if !bytes.HasSuffix(out, stray) {
+		t.Error("the stray bytes aren't at the end any more")
+	}
+
+	odd := withRIFFTail(b, []byte("JUNK\x01\x00\x00\x00x")) // one byte, no pad byte
+	if _, err := PlanXMP(bytes.NewReader(odd), int64(len(odd)), packet); !errors.Is(err, ErrMalformed) {
+		t.Errorf("a last chunk without its pad byte: %v", err)
 	}
 }

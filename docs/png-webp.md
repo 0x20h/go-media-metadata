@@ -26,8 +26,11 @@ them. Data past the RIFF size isn't the WebP's and is copied as it is.
 - **Exif** is the `EXIF` chunk, and **XMP** the `XMP ` chunk.
 
 **Writing.** A payload that fits is written in place, as for PNG. A
-longer one replaces the chunk. A new chunk goes at the end of the RIFF
-data, after the image, which is the container's order. A simple WebP
+longer one replaces the chunk. A new chunk goes after the last chunk,
+after the image, which is the container's order. Bytes after the last
+chunk that are too few for a chunk stay after the new one, at the end,
+where readers pass over them; a last chunk missing its pad byte would run
+into a new chunk, and is refused (`ErrMalformed`). A simple WebP
 (`VP8` or `VP8L` alone) gets the `VP8X` header that metadata needs, with
 the canvas size from the bitstream's header and the alpha flag from a
 `VP8L` image. The `VP8X` flag for the chunk is set, and the RIFF size
