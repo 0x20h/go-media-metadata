@@ -57,6 +57,13 @@ func SetExif(src io.ReaderAt, size int64, dst io.Writer, tiff []byte) error {
 // item (a "mime" item of type application/rdf+xml) set to packet, UTF-8
 // XMP as an x:xmpmeta element or an XMP packet. It's added when the file
 // has none, as SetExif adds an Exif item.
+//
+// A JPEG's XMP goes in its XMP APP1 segment: in place where it fits there
+// (padded with whitespace), else in a new segment that replaces it, after
+// the Exif segment for a JPEG without XMP. A packet past one segment's
+// 64 KB is split into a standard and an extended part (XMP Part 3): the
+// largest properties go to the extended part, in chunks after the
+// standard segment. Old extended segments are removed.
 func SetXMP(src io.ReaderAt, size int64, dst io.Writer, packet []byte) error {
 	p, err := PlanXMP(src, size, packet)
 	if err != nil {
@@ -95,6 +102,9 @@ func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 func PlanXMP(src io.ReaderAt, size int64, packet []byte) (*Plan, error) {
 	if !utf8.Valid(packet) || !bytes.Contains(packet, []byte("xmpmeta")) && !bytes.Contains(packet, []byte("rdf:RDF")) {
 		return nil, fmt.Errorf("mediameta: XMP data that isn't UTF-8 XMP")
+	}
+	if isJPEG(src, size) {
+		return planJPEGXMP(src, size, packet)
 	}
 	if p, ok, err := planChunked(src, size, kindXMP, func([]byte) ([]byte, error) { return packet, nil }); ok {
 		return p, err
@@ -392,12 +402,15 @@ func (f *heifFile) shared(id uint32, cm uint8, start, end uint64) bool {
 	return false
 }
 
-// ReadXMP returns the XMP packet of the HEIF, PNG, WebP or camera RAW
-// file in r (size bytes): a HEIF file's XMP item, a PNG's XMP iTXt chunk,
-// a WebP's "XMP " chunk, a TIFF-based RAW's XMLPacket tag, a CR3's XMP
-// box. Nil without one.
+// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP or camera
+// RAW file in r (size bytes): a JPEG's XMP APP1 segment (with its
+// extended XMP merged in, as one packet, where the file has all of it), a
+// HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP " chunk, a
+// TIFF-based RAW's XMLPacket tag, a CR3's XMP box. Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	switch {
+	case isJPEG(r, size):
+		return readJPEGXMP(r, size)
 	case isPNG(r, size):
 		return readPNGXMP(r, size)
 	case isWebP(r, size):

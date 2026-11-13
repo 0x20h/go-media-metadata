@@ -31,7 +31,7 @@ func TestRealVideos(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			st, err := f.Stat()
 			if err != nil {
 				t.Fatal(err)
