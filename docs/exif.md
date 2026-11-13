@@ -113,3 +113,7 @@ Text with a NUL in it, or that isn't UTF-8, is refused.
     remembered. An edit that would have to append where one of them lies
     is refused (`ErrUnsupported`), because the appended bytes would
     become that value or IFD.
+  - The writer follows an Exif, GPS or interoperability IFD pointer as
+    the reader does: one of type BYTE or SHORT, or one stored out of
+    line, leads to the same IFD. An IFD found only through such a pointer
+    is still protected from being overwritten.
