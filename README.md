@@ -56,6 +56,10 @@ Early, and growing format by format.
 | JPEG | read, write (Exif tag) | read, write, edit | read, write, extended XMP |
 | PNG, WebP | read, write (Exif tag) | read, write, edit | read, write |
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
+| QuickTime (MOV), MP4 | read (track matrix) | | |
+
+`ReadVideo` reads a movie's recording date, duration, GPS position,
+orientation and size, make and model, and Live Photo content identifier.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords and rating, whatever file holds the packet.
@@ -66,7 +70,8 @@ description, keywords and rating, whatever file holds the packet.
   errors
 - Formats, covering where each value lives and how it's written:
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
-  [PNG and WebP](docs/png-webp.md), [Camera RAW](docs/raw.md)
+  [PNG and WebP](docs/png-webp.md), [Camera RAW](docs/raw.md),
+  [QuickTime and MP4](docs/quicktime.md)
 - [Exif](docs/exif.md): the fields, writers' quirks compared with
   ExifTool, and `EditExif`
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
@@ -91,6 +96,9 @@ description, keywords and rating, whatever file holds the packet.
 - TIFF 6.0, CIPA DC-008 (Exif 2.32, plus Exif 3.0's GPS altitude
   references)
 - ISO 16684-1 and the Adobe XMP Specification, Parts 1 to 3
+- Apple QuickTime File Format: movie and track headers, the Keys
+  metadata (`keys`, `ilst`) and user data text entries; ISO 6709 for
+  locations, ISO 8601 for dates
 
 ## Licence
 
