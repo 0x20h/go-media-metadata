@@ -217,7 +217,14 @@ func planWebPChunk(r io.ReaderAt, size int64, kind metadataKind, edit func(old [
 			e.add(splice{at: d.at, del: d.end() - d.at})
 		}
 	} else {
-		e.add(splice{at: f.riffEnd, data: chunk(payload)})
+		// After the last chunk: bytes after it in the RIFF data, too few
+		// for a chunk, stay at the end, where readers pass over them. A
+		// last chunk missing its pad byte would run into the new one.
+		last := f.chunks[len(f.chunks)-1]
+		if last.end() > f.riffEnd {
+			return nil, fmt.Errorf("%w: a last chunk without its pad byte", ErrMalformed)
+		}
+		e.add(splice{at: last.end(), data: chunk(payload)})
 	}
 	// VP8X: its flag set, or a VP8X made for a simple file.
 	if first := f.chunks[0]; string(first.fourcc[:]) == "VP8X" {
