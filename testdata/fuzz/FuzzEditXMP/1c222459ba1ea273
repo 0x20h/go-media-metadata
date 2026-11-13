@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:00=\"http://purl.org/dc/elements/1.1/\" xmp0000000=\"0\">0</rdf:Description>00</rdf:RDF>0</x:xmpmeta>")
