@@ -338,6 +338,26 @@ func (w *tiffWriter) valueSpan(e tiffRawEntry) (start, end uint64, ok bool) {
 	return at, at + size, true
 }
 
+// entryUint is an entry's (first) value as an unsigned integer, read as
+// ReadExif reads it: a pointer of type BYTE or SHORT, or one stored out of
+// line, leads where the reader goes.
+func (w *tiffWriter) entryUint(e tiffRawEntry) (uint32, bool) {
+	size := e.size()
+	if size == 0 {
+		return 0, false
+	}
+	v := e.raw[8:]
+	if size > 4 {
+		start, end, _ := w.valueSpan(e)
+		if end > uint64(len(w.data)) {
+			return 0, false
+		}
+		v = w.data[start:end]
+	}
+	t := tiffReader{data: w.data, order: w.order}
+	return t.uint(field{typ: e.typ, count: int(e.count), value: v})
+}
+
 // release zeroes an entry's out-of-line value when it's that entry's
 // alone.
 func (w *tiffWriter) release(e tiffRawEntry) {
@@ -398,7 +418,9 @@ func newTIFFWriter(tiff []byte) (*tiffWriter, error) {
 				w.dangling = append(w.dangling, tiffSpan{start: start, end: end})
 			}
 			if e.tag == tagExifIFD || e.tag == tagGPSIFD || e.tag == 0xA005 {
-				walk(w.order.Uint32(e.raw[8:]), depth+1)
+				if at, ok := w.entryUint(e); ok {
+					walk(at, depth+1)
+				}
 			}
 		}
 		if next, ok := w.next(off, len(es)); ok && next != 0 {
