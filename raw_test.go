@@ -37,17 +37,18 @@ func gpsOf(ifd0 map[uint16]field, t tiffReader) uint32  { v, _ := t.uint(ifd0[ta
 // rawTIFFFile is a TIFF-based RAW with photoTIFF's fields: IFD0 with a
 // Make, the orientation (SHORT or LONG) and the XMP packet; the Exif IFD
 // with a maker note; the GPS IFD; then image data.
-func rawTIFFFile(order byteOrder, orientationType uint16) []byte {
+func rawTIFFFile(order byteOrder, orientationType uint16, extra ...tiffEntry) []byte {
 	b := &tiffBuilder{order: order}
 	orient := b.short(6)
 	if orientationType == typeLong {
 		orient = b.long(6)
 	}
-	b.ifd0 = []tiffEntry{
+	b.ifd0 = append([]tiffEntry{
 		{0x010F, typeASCII, 6, []byte("Canon\x00")},
 		{tagOrientation, orientationType, 1, orient},
 		{tagXMP, typeByte, uint32(len(rawXMP)), rawXMP},
-	}
+	}, extra...)
+	sortEntries(b.ifd0)
 	b.exif = append(subIFD(order, exifOf), tiffEntry{tagMakerNote, typeUndef, 32, bytes.Repeat([]byte{0xC4}, 32)})
 	sortEntries(b.exif)
 	b.gp = subIFD(order, gpsOf)
@@ -97,12 +98,14 @@ func rawFiles(t testing.TB) map[string][]byte {
 	orf := rawTIFFFile(binary.LittleEndian, typeShort)
 	orf[2], orf[3] = 'R', 'O'
 	return map[string][]byte{
-		"ii.dng":        rawTIFFFile(binary.LittleEndian, typeShort),
-		"mm.nef":        rawTIFFFile(binary.BigEndian, typeShort),
-		"long.arw":      rawTIFFFile(binary.LittleEndian, typeLong),
-		"olympus.orf":   orf,
-		"panasonic.rw2": rw2(t),
-		"canon.cr3":     cr3File(),
+		"ii.dng": rawTIFFFile(binary.LittleEndian, typeShort),
+		// A DNG proper: DNGVersion 1.4, as ExifTool tells DNG from TIFF.
+		"dngversion.dng": rawTIFFFile(binary.LittleEndian, typeShort, tiffEntry{0xC612, typeByte, 4, []byte{1, 4, 0, 0}}),
+		"mm.nef":         rawTIFFFile(binary.BigEndian, typeShort),
+		"long.arw":       rawTIFFFile(binary.LittleEndian, typeLong),
+		"olympus.orf":    orf,
+		"panasonic.rw2":  rw2(t),
+		"canon.cr3":      cr3File(),
 	}
 }
 
@@ -278,6 +281,9 @@ func TestRealRAWFiles(t *testing.T) {
 			t.Errorf("%s: %v", e.Name(), err)
 		}
 		t.Logf("%s: %+v", e.Name(), x)
+		if ps, err := ReadPreviews(bytes.NewReader(data), int64(len(data))); err == nil {
+			t.Logf("%s: previews %+v", e.Name(), ps)
+		}
 		p, err := PlanRAWOrientation(bytes.NewReader(data), int64(len(data)), 3)
 		if err != nil {
 			t.Logf("%s: %v", e.Name(), err)

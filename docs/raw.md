@@ -20,6 +20,31 @@ packet is capped at 4 MiB.
   its own. A top-level `uuid` box holds the XMP. The file's `ftyp` brand
   is `crx `.
 
+## Previews
+
+`ReadPreviews` finds the JPEG previews a TIFF-based RAW embeds, largest
+first, with each one's offset, length, width and height. It looks in
+IFD0, the IFDs chained after it, and the SubIFDs of each, for:
+
+- **a JPEGInterchangeFormat and its length** (tags 513 and 514): CR2's
+  thumbnail, NEF's JpgFromRaw, ARW's preview and thumbnail;
+- **a single strip compressed as JPEG** (Compression 6, 7 or 34892):
+  DNG's previews in SubIFDs, CR2's full-size JPEG in IFD0.
+
+A candidate counts only when it's a baseline or progressive JPEG inside
+the file. Its frame header gives the size, read from the candidate's
+first 4 KB, or up to 128 KB when big marker segments come first. That
+also leaves out raw image data stored as lossless JPEG (DNG, CR2)
+without rules per make. Only IFDs and candidate heads are read: 4 KB of
+a 90 KB preview in the tests.
+
+Tests build a DNG (an uncompressed thumbnail, lossless raw data and a
+JPEG preview in SubIFDs), a CR2, a NEF and an ARW in their makers'
+layouts. Where exiftool is installed, every JPEG preview it extracts
+(`PreviewImage`, `JpgFromRaw`, `ThumbnailImage`, `OtherImage`) is one
+`ReadPreviews` finds, byte for byte. `FuzzReadPreviews` checks that
+what's found lies in the file.
+
 ## Writing the orientation
 
 `SetRAWOrientation` and `PlanRAWOrientation` change only IFD0's
