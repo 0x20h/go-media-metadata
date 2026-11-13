@@ -139,6 +139,8 @@ func TestJPEGWritesAgreeWithExifTool(t *testing.T) {
 		"patched-ii": orientationJPEG(t, binary.LittleEndian, typeShort, 1),
 		"patched-mm": orientationJPEG(t, binary.BigEndian, typeShort, 1),
 		"inserted":   plainJPEG(t),
+		"added-ii":   noTagJPEG(t, binary.LittleEndian),
+		"added-mm":   noTagJPEG(t, binary.BigEndian),
 		"after-jfif": withSegments(plainJPEG(t), jfif),
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name+".jpg"), src, 0o644); err != nil {

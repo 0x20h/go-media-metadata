@@ -238,8 +238,9 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // (the mirroring kept, as above): changed in place where the first Exif
 // segment has one, so the file keeps its size and only the tag's bytes
 // change; in a new Exif segment after SOI and any JFIF segment where the
-// file has none. A JPEG whose Exif segment lacks the tag gives
-// ErrUnsupported (adding it would rewrite IFD0), unless nothing changes.
+// file has none. A JPEG whose Exif segment lacks the tag gets it through
+// EditExif, which adds the entry to IFD0 and keeps every other byte's
+// offset.
 //
 // On an error nothing useful has been written to dst: write to a
 // temporary file and rename it over the original only on success.

@@ -385,6 +385,7 @@ func jpegSeeds(f *testing.F) {
 	for _, q := range quirks(f) {
 		f.Add(q.file)
 	}
+	f.Add(noTagJPEG(f, binary.LittleEndian))
 }
 
 func FuzzReadExif(f *testing.F) {
