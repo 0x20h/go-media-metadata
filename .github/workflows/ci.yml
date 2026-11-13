@@ -54,6 +54,7 @@ jobs:
           - FuzzPlanItems
           - FuzzIPTC
           - FuzzPlanXMPEdit
+          - FuzzPlanMetadata
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
