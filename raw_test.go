@@ -384,12 +384,6 @@ func TestRealRAWAgreesWithExifTool(t *testing.T) {
 				if err != nil || len(got) < 4 || got[0] != 0xFF || got[1] != 0xD8 {
 					continue
 				}
-				// Previews only a maker note locates aren't read yet
-				// (issue #52): Nikon's PreviewIFD.
-				if strings.EqualFold(filepath.Ext(path), ".nef") && tag == "PreviewImage" {
-					t.Logf("ExifTool's %s (%d bytes), from the maker note: not read yet", tag, len(got))
-					continue
-				}
 				found := false
 				for _, p := range ps {
 					ours := data[p.Offset : p.Offset+p.Length]
