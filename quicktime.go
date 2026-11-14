@@ -14,10 +14,6 @@ import (
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
 
-// ErrNotQuickTime is returned for a file that isn't a QuickTime (MOV) or
-// ISO base media (MP4, M4V, 3GP) movie.
-var ErrNotQuickTime = errors.New("not a QuickTime or MP4 file")
-
 // Video is what this package reads from a QuickTime (MOV) or MP4 movie:
 // the fields a media library sorts, places and shows videos by. A field
 // the file doesn't have, or has in a form this package doesn't accept, is
@@ -89,12 +85,12 @@ const maxQTSeconds = 496 * 366 * 86400
 func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	var v Video
 	if size < 8 {
-		return v, ErrNotQuickTime
+		return v, errNotQuickTime
 	}
 	top, err := bmff.ReadBoxes(r, 0, size)
 	if err != nil {
 		if errors.Is(err, bmff.ErrMalformed) && !looksLikeMovie(r, size) {
-			return v, ErrNotQuickTime
+			return v, errNotQuickTime
 		}
 		return v, err
 	}
@@ -198,12 +194,12 @@ func checkMovie(r io.ReaderAt, top []bmff.Box) error {
 		if hasMoov && !hasMeta {
 			return nil
 		}
-		return ErrNotQuickTime
+		return errNotQuickTime
 	}
 	ftyp := top[0]
 	n := ftyp.BodyLen()
 	if n < 8 || n > 1024 {
-		return ErrNotQuickTime
+		return errNotQuickTime
 	}
 	b := make([]byte, n)
 	if _, err := r.ReadAt(b, ftyp.Body()); err != nil {
@@ -217,7 +213,7 @@ func checkMovie(r io.ReaderAt, top []bmff.Box) error {
 			return nil
 		}
 	}
-	return ErrNotQuickTime
+	return errNotQuickTime
 }
 
 // readBox reads a box's payload, at most max bytes long.

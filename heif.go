@@ -2,23 +2,10 @@ package mediameta
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
-)
-
-var (
-	// ErrNotHEIF is returned for a file that isn't a HEIF image file.
-	ErrNotHEIF = errors.New("not a HEIF image file")
-	// ErrUnsupported is returned for a HEIF file this package can't
-	// change safely: the file is left as it is rather than risk a wrong
-	// result.
-	ErrUnsupported = errors.New("unsupported HEIF structure")
-	// ErrMalformed is returned for input that breaks the file's structure:
-	// its boxes, or its JPEG marker segments.
-	ErrMalformed = bmff.ErrMalformed
 )
 
 // heifBrands are the ftyp brands of HEIF image files (ISO/IEC 23008-12,
@@ -40,14 +27,14 @@ type heifFile struct {
 
 func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 	if size < 8 {
-		return nil, ErrNotHEIF
+		return nil, errNotHEIF
 	}
 	boxes, err := bmff.ReadBoxes(r, 0, size)
 	if err != nil {
 		return nil, err
 	}
 	if len(boxes) == 0 || boxes[0].Type != bmff.T("ftyp") {
-		return nil, ErrNotHEIF
+		return nil, errNotHEIF
 	}
 	if err := checkBrands(r, boxes[0]); err != nil {
 		return nil, err
@@ -65,7 +52,7 @@ func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 		f.meta = b
 	}
 	if !found {
-		return nil, fmt.Errorf("%w: no meta box", ErrNotHEIF)
+		return nil, fmt.Errorf("%w: no meta box", errNotHEIF)
 	}
 	if f.meta.Size > bmff.MaxMeta {
 		return nil, fmt.Errorf("%w: meta box of %d bytes", ErrUnsupported, f.meta.Size)
@@ -79,7 +66,7 @@ func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 		return nil, err
 	}
 	if f.m.Handler != bmff.T("pict") {
-		return nil, fmt.Errorf("%w: meta handler %v", ErrNotHEIF, f.m.Handler)
+		return nil, fmt.Errorf("%w: meta handler %v", errNotHEIF, f.m.Handler)
 	}
 	if !f.m.HasPrimary || f.m.Prop == nil || f.m.Loc == nil {
 		return nil, fmt.Errorf("%w: no primary item, item properties or item locations", ErrMalformed)
@@ -90,7 +77,7 @@ func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 func checkBrands(r io.ReaderAt, ftyp bmff.Box) error {
 	n := ftyp.BodyLen()
 	if n < 8 || n > 1024 {
-		return fmt.Errorf("%w: ftyp of %d bytes", ErrNotHEIF, n)
+		return fmt.Errorf("%w: ftyp of %d bytes", errNotHEIF, n)
 	}
 	b := make([]byte, n)
 	if _, err := r.ReadAt(b, ftyp.Body()); err != nil {
@@ -107,7 +94,7 @@ func checkBrands(r io.ReaderAt, ftyp bmff.Box) error {
 			return nil
 		}
 	}
-	return ErrNotHEIF
+	return errNotHEIF
 }
 
 // irotAngle reads an irot property: anticlockwise quarter turns.
@@ -185,7 +172,7 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 // tag, 1 without one (or with a value outside 1 to 8, which readers
 // ignore).
 //
-// A file of none of these formats gives an error that is ErrNotHEIF.
+// A file of none of these formats gives an error that is errNotHEIF.
 func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	f, err := parseHEIF(r, size)
 	if err != nil {
@@ -201,6 +188,15 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			x, err = readWebPExif(r, size)
 		case isJXL(r, size):
 			return readJXLOrientation(r, size)
+		case detectFormat(r, size) == formatMovie:
+			v, err := ReadVideo(r, size)
+			if err != nil {
+				return 0, err
+			}
+			if !v.Orientation.Valid() {
+				return 0, fmt.Errorf("%w: no video track, or a track matrix that isn't one of the eight orientations", ErrUnsupported)
+			}
+			return v.Orientation, nil
 		default:
 			rx, ok, rerr := readRAWExif(r, size)
 			if !ok {
@@ -248,18 +244,20 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // temporary file and rename it over the original only on success.
 // PlanRotation computes the same edit and can apply it in place.
 func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
-	r, err := planRotation(src, size, degrees)
-	if err != nil {
-		if e, ok, jerr := jpegRotation(src, size, degrees); ok {
-			if jerr != nil {
-				return jerr
-			}
-			_, err := e.write(src, size, dst)
+	if detectFormat(src, size) == formatHEIF {
+		// Streamed without building a plan.
+		r, err := planRotation(src, size, degrees)
+		if err != nil {
 			return err
 		}
+		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 		return err
 	}
-	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
+	p, err := PlanRotation(src, size, degrees)
+	if err != nil {
+		return err
+	}
+	_, err = p.WriteTo(dst)
 	return err
 }
 

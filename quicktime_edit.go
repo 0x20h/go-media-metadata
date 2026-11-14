@@ -32,7 +32,7 @@ type VideoEdit struct {
 // are rewritten with it when the media data moves.
 const maxMoov = 64 << 20
 
-// PlanVideoEdit is EditVideo's edit, computed but not written. It reads
+// PlanVideoMetadata is SetVideoMetadata's edit, computed but not written. It reads
 // the movie box, never the media data.
 //
 // It is in place when the movie box keeps its size: a value of the same
@@ -40,7 +40,7 @@ const maxMoov = 64 << 20
 // free box inside it), or one that grows into a free box right after it.
 // Otherwise the movie box is rewritten; when it comes before the media
 // data, every chunk offset (stco, co64) that points past it moves with it.
-func PlanVideoEdit(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, error) {
+func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, error) {
 	if edit.GPS != nil && edit.RemoveGPS {
 		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
 	}
@@ -48,12 +48,12 @@ func PlanVideoEdit(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, error) {
 		return nil, fmt.Errorf("mediameta: GPS position %+v out of range", *g)
 	}
 	if size < 8 {
-		return nil, ErrNotQuickTime
+		return nil, errNotQuickTime
 	}
 	top, err := bmff.ReadBoxes(src, 0, size)
 	if err != nil {
 		if !looksLikeMovie(src, size) {
-			return nil, ErrNotQuickTime
+			return nil, errNotQuickTime
 		}
 		return nil, err
 	}
@@ -124,13 +124,13 @@ func PlanVideoEdit(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, error) {
 	return e.plan(src, size), nil
 }
 
-// EditVideo writes to dst the QuickTime or MP4 movie in src (size bytes)
-// with edit applied (see VideoEdit and PlanVideoEdit). The media data is
+// SetVideoMetadata writes to dst the QuickTime or MP4 movie in src (size bytes)
+// with edit applied (see VideoEdit and PlanVideoMetadata). The media data is
 // copied byte for byte. On an error nothing useful has been written to
 // dst: write to a temporary file and rename it over the original only on
 // success.
-func EditVideo(src io.ReaderAt, size int64, dst io.Writer, edit VideoEdit) error {
-	p, err := PlanVideoEdit(src, size, edit)
+func SetVideoMetadata(src io.ReaderAt, size int64, dst io.Writer, edit VideoEdit) error {
+	p, err := PlanVideoMetadata(src, size, edit)
 	if err != nil {
 		return err
 	}

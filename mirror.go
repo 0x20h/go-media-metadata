@@ -22,18 +22,20 @@ import (
 // follows, as for SetRotation. A JPEG file gets the tag, as SetRotation
 // sets it. On an error nothing useful has been written to dst.
 func SetOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) error {
-	r, err := planOrientation(src, size, o)
-	if err != nil {
-		if e, ok, jerr := jpegOrientation(src, size, o); ok {
-			if jerr != nil {
-				return jerr
-			}
-			_, err := e.write(src, size, dst)
+	if detectFormat(src, size) == formatHEIF {
+		// Streamed without building a plan.
+		r, err := planOrientation(src, size, o)
+		if err != nil {
 			return err
 		}
+		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 		return err
 	}
-	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
+	p, err := PlanOrientation(src, size, o)
+	if err != nil {
+		return err
+	}
+	_, err = p.WriteTo(dst)
 	return err
 }
 

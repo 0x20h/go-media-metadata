@@ -388,7 +388,7 @@ func TestReadPreviewsReadsLittle(t *testing.T) {
 
 func TestReadPreviewsNotRAW(t *testing.T) {
 	jpg := plainJPEG(t)
-	if _, err := ReadPreviews(bytes.NewReader(jpg), int64(len(jpg))); err != ErrNotRAW {
+	if _, err := ReadPreviews(bytes.NewReader(jpg), int64(len(jpg))); err != errNotRAW {
 		t.Errorf("a JPEG: %v", err)
 	}
 }

@@ -63,17 +63,32 @@ const patchMergeGap = 8
 // size. For a JPEG it's in place where the Exif Orientation tag exists:
 // one patch of the tag's bytes.
 func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
-	r, err := planRotation(src, size, degrees)
-	if err != nil {
-		if e, ok, jerr := jpegRotation(src, size, degrees); ok {
-			if jerr != nil {
-				return nil, jerr
-			}
-			return e.plan(src, size), nil
+	if degrees%90 != 0 {
+		return nil, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
+	}
+	switch detectFormat(src, size) {
+	case formatHEIF:
+		r, err := planRotation(src, size, degrees)
+		if err != nil {
+			return nil, err
 		}
+		return r.plan(src, size), nil
+	case formatJPEG:
+		e, _, err := jpegRotation(src, size, degrees)
+		if err != nil {
+			return nil, err
+		}
+		return e.plan(src, size), nil
+	case formatMovie:
+		return planVideoRotation(src, size, degrees)
+	case formatUnknown:
+		return nil, ErrUnknownFormat
+	}
+	o, err := ReadOrientation(src, size)
+	if err != nil {
 		return nil, err
 	}
-	return r.plan(src, size), nil
+	return PlanOrientation(src, size, orientationFor(o.Mirrored(), degrees))
 }
 
 // PlanOrientation is SetOrientation's edit, computed but not written, as
@@ -82,17 +97,35 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 // the irot byte as PlanRotation does; adding or removing a mirror changes
 // an association, and with it the size.
 func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
-	r, err := planOrientation(src, size, o)
-	if err != nil {
-		if e, ok, jerr := jpegOrientation(src, size, o); ok {
-			if jerr != nil {
-				return nil, jerr
-			}
-			return e.plan(src, size), nil
-		}
-		return nil, err
+	if !o.Valid() {
+		return nil, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
 	}
-	return r.plan(src, size), nil
+	switch detectFormat(src, size) {
+	case formatHEIF:
+		r, err := planOrientation(src, size, o)
+		if err != nil {
+			return nil, err
+		}
+		return r.plan(src, size), nil
+	case formatJPEG:
+		e, _, err := jpegOrientation(src, size, o)
+		if err != nil {
+			return nil, err
+		}
+		return e.plan(src, size), nil
+	case formatPNG, formatWebP:
+		return planExifEdit(src, size, ExifEdit{Orientation: o})
+	case formatRAW:
+		if _, _, isRAF, _ := openRAF(src, size); isRAF {
+			return nil, fmt.Errorf("%w: a RAF isn't written", ErrUnsupported)
+		}
+		return planRAWOrientation(src, size, o)
+	case formatMovie:
+		return planVideoOrientation(src, size, o)
+	case formatJXL:
+		return nil, fmt.Errorf("%w: a JPEG XL codestream's orientation isn't written", ErrUnsupported)
+	}
+	return nil, ErrUnknownFormat
 }
 
 // plan is the Plan of an edit.

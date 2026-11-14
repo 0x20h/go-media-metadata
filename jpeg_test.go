@@ -332,8 +332,8 @@ func TestParseJPEGErrors(t *testing.T) {
 		file []byte
 		want error
 	}{
-		"empty":                 {nil, ErrNotJPEG},
-		"GIF":                   {[]byte("GIF89a\x01\x00\x01\x00\x00\x00\x00"), ErrNotJPEG},
+		"empty":                 {nil, ErrUnknownFormat},
+		"GIF":                   {[]byte("GIF89a\x01\x00\x01\x00\x00\x00\x00"), ErrUnknownFormat},
 		"SOI only":              {[]byte{0xFF, 0xD8, 0xFF}, ErrMalformed},
 		"before the scan":       {good[:sos], ErrMalformed},
 		"EOI before the scan":   {[]byte{0xFF, 0xD8, 0xFF, 0xD9}, ErrMalformed},
@@ -347,11 +347,10 @@ func TestParseJPEGErrors(t *testing.T) {
 			t.Errorf("%s: %v, want %v", name, err, c.want)
 		}
 	}
-	// Neither format: the error is both, so callers that check for a HEIF
-	// file keep working.
+	// No format this package reads: ErrUnknownFormat.
 	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
-	if _, err := ReadExif(bytes.NewReader(gif), int64(len(gif))); !errors.Is(err, ErrNotHEIF) {
-		t.Errorf("ReadExif(GIF): %v, want ErrNotHEIF too", err)
+	if _, err := ReadExif(bytes.NewReader(gif), int64(len(gif))); !errors.Is(err, ErrUnknownFormat) {
+		t.Errorf("ReadExif(GIF): %v, want ErrUnknownFormat", err)
 	}
 	// Fill bytes before a marker and a restart marker are fine.
 	fill := withSegments(good, []byte{0xFF, 0xFF, 0xFF, markerRST0})

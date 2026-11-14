@@ -150,7 +150,7 @@ func TestPlanVideoEdit(t *testing.T) {
 				o := qtbuild.Default()
 				l.edit(&o)
 				file, start, end := qtbuild.Build(o)
-				p, err := PlanVideoEdit(bytes.NewReader(file), int64(len(file)), e.edit)
+				p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), e.edit)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -160,7 +160,7 @@ func TestPlanVideoEdit(t *testing.T) {
 					t.Fatal("the media data isn't in the written file")
 				}
 				// A second identical edit changes nothing.
-				p2, err := PlanVideoEdit(bytes.NewReader(got), int64(len(got)), e.edit)
+				p2, err := PlanVideoMetadata(bytes.NewReader(got), int64(len(got)), e.edit)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -178,7 +178,7 @@ func TestPlanVideoEditNothing(t *testing.T) {
 		o := qtbuild.Default()
 		l.edit(&o)
 		file, _, _ := qtbuild.Build(o)
-		p, err := PlanVideoEdit(bytes.NewReader(file), int64(len(file)), VideoEdit{})
+		p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), VideoEdit{})
 		if err != nil {
 			t.Fatalf("%s: %v", l.name, err)
 		}
@@ -214,7 +214,7 @@ func TestPlanVideoEditLayout(t *testing.T) {
 			o := qtbuild.Default()
 			c.opts(&o)
 			file, _, _ := qtbuild.Build(o)
-			p, err := PlanVideoEdit(bytes.NewReader(file), int64(len(file)), c.edit)
+			p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), c.edit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -237,11 +237,11 @@ func TestPlanVideoEditRefuses(t *testing.T) {
 	o.MoovFirst = true
 	file, _, _ := qtbuild.Build(o)
 	frag := append(bytes.Clone(file), 0, 0, 0, 16, 'm', 'o', 'o', 'f', 0, 0, 0, 8, 'm', 'f', 'h', 'd')
-	if _, err := PlanVideoEdit(bytes.NewReader(frag), int64(len(frag)), grow); !errors.Is(err, ErrUnsupported) {
+	if _, err := PlanVideoMetadata(bytes.NewReader(frag), int64(len(frag)), grow); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("a fragment after moov: %v, want ErrUnsupported", err)
 	}
 	// An edit in place doesn't move anything, so it's fine.
-	if _, err := PlanVideoEdit(bytes.NewReader(frag), int64(len(frag)), VideoEdit{}); err != nil {
+	if _, err := PlanVideoMetadata(bytes.NewReader(frag), int64(len(frag)), VideoEdit{}); err != nil {
 		t.Errorf("no edit: %v", err)
 	}
 	for _, bad := range []VideoEdit{
@@ -249,12 +249,12 @@ func TestPlanVideoEditRefuses(t *testing.T) {
 		{GPS: &GPS{Longitude: math.NaN()}},
 		{GPS: editPlace, RemoveGPS: true},
 	} {
-		if _, err := PlanVideoEdit(bytes.NewReader(file), int64(len(file)), bad); err == nil {
+		if _, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), bad); err == nil {
 			t.Errorf("%+v accepted", bad)
 		}
 	}
 	jpeg := plainJPEG(t)
-	if _, err := PlanVideoEdit(bytes.NewReader(jpeg), int64(len(jpeg)), grow); !errors.Is(err, ErrNotQuickTime) {
+	if _, err := PlanVideoMetadata(bytes.NewReader(jpeg), int64(len(jpeg)), grow); !errors.Is(err, errNotQuickTime) {
 		t.Errorf("a JPEG: %v", err)
 	}
 }
@@ -284,7 +284,7 @@ func FuzzVideoEdit(f *testing.F) {
 		withinDeadline(t, func() {
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
 			for _, e := range videoEdits[3:5] {
-				p, err := PlanVideoEdit(bytes.NewReader(data), int64(len(data)), e.edit)
+				p, err := PlanVideoMetadata(bytes.NewReader(data), int64(len(data)), e.edit)
 				if err != nil {
 					continue
 				}
@@ -329,7 +329,7 @@ func TestVideoEditOtherTools(t *testing.T) {
 		file, _, _ := qtbuild.Build(o)
 		edit := VideoEdit{Created: &editDate, GPS: editPlace}
 		var out bytes.Buffer
-		if err := EditVideo(bytes.NewReader(file), int64(len(file)), &out, edit); err != nil {
+		if err := SetVideoMetadata(bytes.NewReader(file), int64(len(file)), &out, edit); err != nil {
 			t.Fatal(err)
 		}
 		name := strings.ReplaceAll(l.name, " ", "-")
@@ -415,7 +415,7 @@ func TestVideoEditEncoded(t *testing.T) {
 				t.Fatal(err)
 			}
 			edit := VideoEdit{Created: &editDate, GPS: editPlace}
-			p, err := PlanVideoEdit(bytes.NewReader(file), int64(len(file)), edit)
+			p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), edit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -453,7 +453,7 @@ func BenchmarkPlanVideoEdit(b *testing.B) {
 			cr := &countingReader{r: bytes.NewReader(file)}
 			b.ReportAllocs()
 			for range b.N {
-				if _, err := PlanVideoEdit(cr, int64(len(file)), edit); err != nil {
+				if _, err := PlanVideoMetadata(cr, int64(len(file)), edit); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -202,7 +202,7 @@ func TestChunkedMetadata(t *testing.T) {
 			}
 			// Fields through EditExif, orientation included.
 			d := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-			p, err = PlanExifEdit(bytes.NewReader(both), int64(len(both)), ExifEdit{Orientation: 3, DateTimeOriginal: &d})
+			p, err = planExifEdit(bytes.NewReader(both), int64(len(both)), ExifEdit{Orientation: 3, DateTimeOriginal: &d})
 			if err != nil {
 				t.Fatal(err)
 			}

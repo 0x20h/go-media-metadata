@@ -2,13 +2,9 @@ package mediameta
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 )
-
-// ErrNotWebP is returned for a file that isn't a WebP.
-var ErrNotWebP = errors.New("not a WebP file")
 
 // VP8X flags (WebP container specification).
 const (
@@ -53,7 +49,7 @@ type webpFile struct {
 
 func parseWebP(r io.ReaderAt, size int64) (*webpFile, error) {
 	if !isWebP(r, size) {
-		return nil, ErrNotWebP
+		return nil, errNotWebP
 	}
 	var h [4]byte
 	if _, err := r.ReadAt(h[:], 4); err != nil {

@@ -202,7 +202,7 @@ func TestReadIPTCWithoutIPTC(t *testing.T) {
 		t.Errorf("got %q", b)
 	}
 	png := []byte("\x89PNG\r\n\x1a\n")
-	if _, err := ReadIPTC(bytes.NewReader(png), int64(len(png))); !errors.Is(err, ErrNotJPEG) {
+	if _, err := ReadIPTC(bytes.NewReader(png), int64(len(png))); !errors.Is(err, errNotJPEG) {
 		t.Errorf("a PNG: %v", err)
 	}
 }

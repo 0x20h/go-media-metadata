@@ -229,10 +229,10 @@ func TestJPEGWritesKeepEmbedded(t *testing.T) {
 		{"orientation", func(b []byte) (*Plan, error) { return PlanOrientation(bytes.NewReader(b), int64(len(b)), 6) }},
 		{"Exif date", func(b []byte) (*Plan, error) {
 			d := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
-			return PlanExifEdit(bytes.NewReader(b), int64(len(b)), ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}})
+			return planExifEdit(bytes.NewReader(b), int64(len(b)), ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}})
 		}},
 		{"XMP title", func(b []byte) (*Plan, error) {
-			return PlanXMPEdit(bytes.NewReader(b), int64(len(b)), XMPEdit{Title: &long, Keywords: &keywords})
+			return planXMPEdit(bytes.NewReader(b), int64(len(b)), XMPEdit{Title: &long, Keywords: &keywords})
 		}},
 		{"IPTC", func(b []byte) (*Plan, error) {
 			return PlanMetadata(bytes.NewReader(b), int64(len(b)), MetadataEdit{IPTC: &IPTCEdit{Title: &long, Keywords: &keywords}})
@@ -285,7 +285,7 @@ func FuzzReadEmbedded(f *testing.F) {
 				}
 			}
 			// A write that grows the XMP keeps every part.
-			p, err := PlanXMPEdit(bytes.NewReader(data), int64(len(data)), XMPEdit{Title: &long})
+			p, err := planXMPEdit(bytes.NewReader(data), int64(len(data)), XMPEdit{Title: &long})
 			if err != nil {
 				return
 			}

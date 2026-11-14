@@ -253,12 +253,13 @@ func TestSetRotationErrors(t *testing.T) {
 		t.Error("45° accepted")
 	}
 	jpeg := []byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9")
-	if _, err := ReadOrientation(bytes.NewReader(jpeg), int64(len(jpeg))); !errors.Is(err, ErrNotHEIF) && !errors.Is(err, ErrMalformed) {
+	if _, err := ReadOrientation(bytes.NewReader(jpeg), int64(len(jpeg))); !errors.Is(err, errNotHEIF) && !errors.Is(err, ErrMalformed) {
 		t.Errorf("a JPEG: %v", err)
 	}
+	// An MP4 is read as a movie now: this one has no movie box.
 	mp4 := []byte("\x00\x00\x00\x14ftypisom\x00\x00\x02\x00isom\x00\x00\x00\x08free")
-	if _, err := ReadOrientation(bytes.NewReader(mp4), int64(len(mp4))); !errors.Is(err, ErrNotHEIF) {
-		t.Errorf("an MP4: %v", err)
+	if _, err := ReadOrientation(bytes.NewReader(mp4), int64(len(mp4))); !errors.Is(err, ErrMalformed) {
+		t.Errorf("an MP4 without moov: %v", err)
 	}
 	// Truncated anywhere: an error, never a panic.
 	for n := range len(orig) {

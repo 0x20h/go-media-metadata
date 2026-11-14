@@ -227,7 +227,7 @@ func FuzzPlanRotation(f *testing.F) {
 			}
 			// Exif edits through EditExif.
 			for _, e := range []ExifEdit{{RemoveGPS: true}, {GPS: &GPS{Latitude: 1, Longitude: 2}}} {
-				if p, err := PlanExifEdit(bytes.NewReader(data), int64(len(data)), e); err == nil {
+				if p, err := planExifEdit(bytes.NewReader(data), int64(len(data)), e); err == nil {
 					checkPlan(t, data, p)
 				}
 			}

@@ -3,16 +3,11 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
-
-// ErrNotRAW is returned for a file that is neither TIFF-based (DNG, CR2,
-// NEF, ARW, ORF, RW2, TIFF) nor a CR3.
-var ErrNotRAW = errors.New("not a camera RAW or TIFF file")
 
 // Tags of TIFF-based RAW files read here.
 const (
@@ -351,18 +346,7 @@ func readRAWXMP(r io.ReaderAt, size int64) ([]byte, bool, error) {
 	return b, true, nil
 }
 
-// SetRAWOrientation writes to dst the TIFF-based RAW or CR3 in src (size
-// bytes) with its orientation set to o, as PlanRAWOrientation plans it.
-func SetRAWOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) error {
-	p, err := PlanRAWOrientation(src, size, o)
-	if err != nil {
-		return err
-	}
-	_, err = p.WriteTo(dst)
-	return err
-}
-
-// PlanRAWOrientation plans setting the orientation of a camera RAW file:
+// planRAWOrientation plans setting the orientation of a camera RAW file:
 // a TIFF-based one (DNG, CR2, NEF, ARW, ORF, RW2) or a CR3. Only the
 // Orientation value of IFD0 (a CR3's CMT1) changes, where it is: a tag
 // that's there, with its value in its entry. The plan is always in place,
@@ -370,7 +354,7 @@ func SetRAWOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation
 // tiff:Orientation, of that digit, so the two agree. Nothing else is
 // written: image data and maker notes stay byte for byte. A file without
 // the tag is refused (ErrUnsupported) rather than restructured.
-func PlanRAWOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
+func planRAWOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
 	if !o.Valid() {
 		return nil, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
 	}
@@ -391,7 +375,7 @@ func PlanRAWOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, erro
 			return nil, err
 		}
 		if !ok {
-			return nil, ErrNotRAW
+			return nil, errNotRAW
 		}
 		data, base, ok := c.tiff("CMT1")
 		if !ok {
