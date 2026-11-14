@@ -59,7 +59,7 @@ the JPEG path, which reads the Exif tag.
   `cdsc`, else the one with the lowest item id, and it must hold TIFF
   data. Its first 4 bytes give the offset to the TIFF header (A.2.1). The
   XMP item is a `mime` item of type `application/rdf+xml`.
-- **Writing** (`SetExif`, `SetXMP`, `EditHEIFExif` and their plans):
+- **Writing** (`SetExif`, `SetXMP`, `SetMetadata` and their plans):
   - Data that fits in the item's single extent (in `mdat` or `idat`) is
     written there, and the item's length is patched. That is in place.
   - Longer data goes in a new `mdat` box at the end of the file, and the
@@ -94,7 +94,7 @@ the JPEG path, which reads the Exif tag.
     data byte for byte, and is in place when written again. ExifTool's
     `-validate` finds no warning in the written files that the source
     didn't already have.
-- **`EditHEIFExif` doesn't set the orientation.** It applies an
-  `ExifEdit` to the item, but refuses one that sets the orientation
+- **An Exif edit doesn't set the orientation.** `PlanMetadata`'s Exif part
+  applies an `ExifEdit` to the item, but refuses one that sets the orientation
   (`ErrOrientationInExif`), because the tag alone would disagree with
   `irot`/`imir`. `SetOrientation` sets both.

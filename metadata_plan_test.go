@@ -45,13 +45,13 @@ func sequential(t *testing.T, file []byte, e MetadataEdit) []byte {
 		file = written(t, p)
 	}
 	if e.Exif != nil && *e.Exif != (ExifEdit{}) {
-		step(PlanExifEdit(bytes.NewReader(file), int64(len(file)), *e.Exif))
+		step(planExifEdit(bytes.NewReader(file), int64(len(file)), *e.Exif))
 	}
 	if e.IPTC != nil && *e.IPTC != (IPTCEdit{}) {
 		step(planIPTCEdit(bytes.NewReader(file), int64(len(file)), *e.IPTC))
 	}
 	if e.XMP != nil && *e.XMP != (XMPEdit{}) {
-		step(PlanXMPEdit(bytes.NewReader(file), int64(len(file)), *e.XMP))
+		step(planXMPEdit(bytes.NewReader(file), int64(len(file)), *e.XMP))
 	}
 	return file
 }
@@ -146,6 +146,7 @@ func TestPlanMetadataIPTCOnlyInJPEG(t *testing.T) {
 func FuzzPlanMetadata(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
+	imageIOSeeds(f)
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}

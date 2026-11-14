@@ -9,12 +9,13 @@ extended XMP is covered in [jpeg](jpeg.md).
 
 ```go
 type XMP struct {
-	Title, Description string   // dc:title, dc:description
-	Keywords           []string // dc:subject
-	Rating             int      // xmp:Rating, -1 to 5, when HasRating
-	HasRating          bool
-	PersonInImage      []string // Iptc4xmpExt:PersonInImage
-	Regions            *Regions // mwg-rs:Regions, nil without any
+	Title, Description   string   // dc:title, dc:description
+	Keywords             []string // dc:subject
+	HierarchicalKeywords []string // lr:hierarchicalSubject, "A|B|C" as written
+	Rating               int      // xmp:Rating, -1 to 5, when HasRating
+	HasRating            bool
+	PersonInImage        []string // Iptc4xmpExt:PersonInImage
+	Regions              *Regions // mwg-rs:Regions, nil without any
 }
 ```
 
@@ -29,21 +30,30 @@ type XMP struct {
   `<dc:subject>one</dc:subject>`) are read too.
 - A rating is a Real. `3.0` reads as 3; a fractional or out-of-range
   rating reads as none.
+- Hierarchical keywords (`lr:hierarchicalSubject`, as Lightroom and
+  other organisers write them) are each a path whose levels are
+  separated by `|`, such as `Places|Europe|Berlin`. They're returned as
+  written; splitting them into levels is the caller's.
 
 ## Writing: EditXMP
 
 ```go
 type XMPEdit struct {
-	Title, Description *string   // nil leaves; "" removes
-	Keywords           *[]string // nil leaves; empty removes
-	Rating             *int      // -1 to 5
-	RemoveRating       bool
-	PersonInImage      *[]string // nil leaves; empty removes
-	Regions            *Regions  // as a whole; no regions removes
+	Title, Description   *string   // nil leaves; "" removes
+	Keywords             *[]string // nil leaves; empty removes
+	HierarchicalKeywords *[]string // nil leaves; empty removes
+	Rating               *int      // -1 to 5
+	RemoveRating         bool
+	PersonInImage        *[]string // nil leaves; empty removes
+	Regions              *Regions  // as a whole; no regions removes
 }
 ```
 
-`EditXMP` changes those properties and keeps everything else:
+`EditXMP` changes those properties and keeps everything else. Keywords
+and hierarchical keywords are separate properties: setting one leaves the
+other, so a caller that keeps them in step sets both.
+
+It keeps:
 
 - other properties, and a title's other languages;
 - namespaces as declared, comments, whitespace between elements, and
@@ -98,15 +108,14 @@ removes them. Setting the same regions again changes nothing.
 of a sample laid out as Lightroom and other writers do, and the ones
 `EditXMP` writes, as `ParseXMP` does.
 
-## Editing a file's packet: PlanXMPEdit
+## Editing a file's packet: PlanMetadata
 
 ```go
-func PlanXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error)
-func EditFileXMP(src io.ReaderAt, size int64, dst io.Writer, edit XMPEdit) error
+p, err := mediameta.PlanMetadata(src, size, mediameta.MetadataEdit{XMP: &edit})
 ```
 
-`PlanXMPEdit` edits the XMP packet of a JPEG, HEIF, PNG or WebP file in
-three steps:
+`PlanMetadata`'s XMP part edits the XMP packet of a JPEG, HEIF, PNG, WebP
+or JPEG XL file in three steps:
 
 1. It reads the packet as `ReadXMP` does, with a JPEG's extended XMP
    merged in.
@@ -118,7 +127,7 @@ in place: a HEIF item's data, a JPEG's XMP segment, or a PNG or WebP
 chunk. A longer one goes where `SetXMP` puts it, and the old one doesn't
 stay in the file. A file without XMP gets a new packet holding the edit.
 A packet this package can't parse is refused with `EditXMP`'s error
-rather than replaced, since the rest of it would be lost. `EditFileXMP`
+rather than replaced, since the rest of it would be lost. `SetMetadata`
 streams the same edit to a writer.
 
 ## Parsing untrusted XML

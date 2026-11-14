@@ -31,9 +31,9 @@ func SetMetadata(src io.ReaderAt, size int64, dst io.Writer, edit MetadataEdit) 
 }
 
 // PlanMetadata plans every part of edit as one edit of the JPEG, HEIF,
-// PNG or WebP file in src (size bytes): the Exif part as PlanExifEdit,
+// PNG or WebP file in src (size bytes): the Exif part as planExifEdit,
 // the IPTC part as EditIPTC applied to the file's IPTC data, the XMP part
-// as PlanXMPEdit, in that order, each on the file the parts before it
+// as planXMPEdit, in that order, each on the file the parts before it
 // make. Nothing is written until the plan is: either every part is
 // written or, on an error, none.
 //
@@ -46,13 +46,13 @@ func PlanMetadata(src io.ReaderAt, size int64, edit MetadataEdit) (*Plan, error)
 	type part func(io.ReaderAt, int64) (*Plan, error)
 	var parts []part
 	if e := edit.Exif; e != nil && *e != (ExifEdit{}) {
-		parts = append(parts, func(r io.ReaderAt, n int64) (*Plan, error) { return PlanExifEdit(r, n, *e) })
+		parts = append(parts, func(r io.ReaderAt, n int64) (*Plan, error) { return planExifEdit(r, n, *e) })
 	}
 	if e := edit.IPTC; e != nil && *e != (IPTCEdit{}) {
 		parts = append(parts, func(r io.ReaderAt, n int64) (*Plan, error) { return planIPTCEdit(r, n, *e) })
 	}
 	if e := edit.XMP; e != nil && *e != (XMPEdit{}) {
-		parts = append(parts, func(r io.ReaderAt, n int64) (*Plan, error) { return PlanXMPEdit(r, n, *e) })
+		parts = append(parts, func(r io.ReaderAt, n int64) (*Plan, error) { return planXMPEdit(r, n, *e) })
 	}
 	if len(parts) == 0 {
 		return &Plan{InPlace: true, Size: size, NewSize: size, src: src}, nil

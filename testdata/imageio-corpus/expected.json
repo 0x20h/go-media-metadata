@@ -1,0 +1,35 @@
+{
+  "exif.jpg": {
+    "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
+    "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 }
+  },
+  "exif.heic": {
+    "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
+    "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
+    "xmp": {}
+  },
+  "iptc.jpg": {
+    "orientation": 1,
+    "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" },
+    "xmp": { "title": "Grün", "description": "Am See", "keywords": ["Brücke", "See"] }
+  },
+  "xmp.jpg": {
+    "orientation": 1,
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 }
+  },
+  "xmp.heic": {
+    "orientation": 1,
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 }
+  },
+  "all.jpg": {
+    "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
+    "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 },
+    "iptc": { "title": "Lake", "keywords": ["lake", "snow"], "description": "A lake in the mountains" }
+  },
+  "all.heic": {
+    "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
+    "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 }
+  }
+}

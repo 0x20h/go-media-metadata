@@ -209,6 +209,87 @@ func rawSamples(t testing.TB) []rawSample {
 	// CR3: THMB in the metadata uuid box, PRVW in its own, the full-size
 	// JPEG as the first sample of a track.
 	out = append(out, cr3Sample(t, big, mid, small))
+	out = append(out, makerNoteSamples(t, mid, small)...)
+	return out
+}
+
+// makerNoteSamples are RAWs whose previews only their maker notes locate:
+// a NEF (Nikon, a TIFF header inside, PreviewIFD) and two ORFs (Olympus,
+// new style with CameraSettings and a thumbnail; old style).
+func makerNoteSamples(t testing.TB, prev, thumb []byte) []rawSample {
+	le, be := binary.LittleEndian, binary.BigEndian
+	var out []rawSample
+	withMakerNote := func(order binary.ByteOrder, header []byte, make string, mn func(w *rawLayout) []byte) []byte {
+		w := newRawLayout(order, header)
+		note := mn(w)
+		exif := w.ifd(0, ent{tagMakerNote, typeUndef, uint32(len(note)), note})
+		return w.finish(w.ifd(0, asciiEnt(0x010F, make), w.l(tagExifIFD, exif)))
+	}
+	// NEF: "Nikon\0" 2.10, then a TIFF whose IFD0 points to the
+	// PreviewIFD; offsets count from that TIFF header.
+	// The IFD right after the TIFF header, as Nikon writes it (and
+	// ExifTool expects).
+	nef := withMakerNote(be, []byte("MM\x00*\x00\x00\x00\x00"), "NIKON CORPORATION", func(*rawLayout) []byte {
+		const ifd0, pifd = 8, 8 + 2 + 2*12 + 4
+		data := pifd + 2 + 2*12 + 4
+		tiff := append([]byte("MM\x00*\x00\x00\x00\x08"), make([]byte, data-8)...)
+		put := func(at int, tag, typ uint16, count uint32, v []byte) {
+			be.PutUint16(tiff[at:], tag)
+			be.PutUint16(tiff[at+2:], typ)
+			be.PutUint32(tiff[at+4:], count)
+			copy(tiff[at+8:], v)
+		}
+		long := func(v int) []byte { return be.AppendUint32(nil, uint32(v)) }
+		be.PutUint16(tiff[ifd0:], 2)
+		put(ifd0+2, 0x0001, typeUndef, 4, []byte("0210"))
+		put(ifd0+14, tagNikonPreviewIFD, typeLong, 1, long(pifd))
+		be.PutUint16(tiff[pifd:], 2)
+		put(pifd+2, tagJPEGOffset, typeLong, 1, long(data))
+		put(pifd+14, tagJPEGLength, typeLong, 1, long(len(prev)))
+		return append(append([]byte("Nikon\x00\x02\x10\x00\x00"), tiff...), prev...)
+	})
+	out = append(out, rawSample{"NEF maker note", "nef", nef, [][]byte{prev}})
+
+	// ORF, new style: "OLYMPUS\0II", version 3, the IFD at 12; offsets
+	// from the maker note's start. The thumbnail is tag 0x0100's value,
+	// the preview in the CameraSettings IFD (0x2020).
+	orf := withMakerNote(le, []byte("IIRO\x00\x00\x00\x00"), "OLYMPUS IMAGING CORP.", func(*rawLayout) []byte {
+		const ifd0, cs = 12, 12 + 2 + 2*12 + 4
+		data := cs + 2 + 2*12 + 4
+		mn := append([]byte("OLYMPUS\x00II\x03\x00"), make([]byte, data-12)...)
+		put := func(at int, tag, typ uint16, count, v uint32) {
+			le.PutUint16(mn[at:], tag)
+			le.PutUint16(mn[at+2:], typ)
+			le.PutUint32(mn[at+4:], count)
+			le.PutUint32(mn[at+8:], v)
+		}
+		le.PutUint16(mn[ifd0:], 2)
+		put(ifd0+2, tagOlympusThumbnail, typeUndef, uint32(len(thumb)), uint32(data))
+		put(ifd0+14, tagOlympusCamera, typeIFD, 1, cs)
+		le.PutUint16(mn[cs:], 2)
+		put(cs+2, tagOlympusPreviewStart, typeLong, 1, uint32(data+len(thumb)))
+		put(cs+14, tagOlympusPreviewLen, typeLong, 1, uint32(len(prev)))
+		return append(append(mn, thumb...), prev...)
+	})
+	out = append(out, rawSample{"ORF maker note", "orf", orf, [][]byte{prev, thumb}})
+
+	// ORF, old style: "OLYMP\0", the IFD at 8 in the file's byte order,
+	// offsets from the file's TIFF header.
+	old := withMakerNote(le, []byte("IIRO\x00\x00\x00\x00"), "OLYMPUS OPTICAL CO.,LTD", func(w *rawLayout) []byte {
+		pAt, tAt := w.blob(prev), w.blob(thumb)
+		mn := append([]byte("OLYMP\x00\x01\x00"), w.short(3)...)
+		e := func(tag, typ uint16, count, v uint32) {
+			mn = append(mn, w.short(tag)...)
+			mn = append(mn, w.short(typ)...)
+			mn = append(mn, w.long(count)...)
+			mn = append(mn, w.long(v)...)
+		}
+		e(tagOlympusOldStart, typeLong, 1, pAt)
+		e(tagOlympusOldLen, typeLong, 1, uint32(len(prev)))
+		e(tagOlympusThumbnail, typeUndef, uint32(len(thumb)), tAt)
+		return append(mn, 0, 0, 0, 0)
+	})
+	out = append(out, rawSample{"ORF old maker note", "orf", old, [][]byte{prev, thumb}})
 	return out
 }
 
@@ -307,7 +388,7 @@ func TestReadPreviewsReadsLittle(t *testing.T) {
 
 func TestReadPreviewsNotRAW(t *testing.T) {
 	jpg := plainJPEG(t)
-	if _, err := ReadPreviews(bytes.NewReader(jpg), int64(len(jpg))); err != ErrNotRAW {
+	if _, err := ReadPreviews(bytes.NewReader(jpg), int64(len(jpg))); err != errNotRAW {
 		t.Errorf("a JPEG: %v", err)
 	}
 }

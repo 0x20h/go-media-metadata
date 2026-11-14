@@ -229,10 +229,10 @@ func TestJPEGWritesKeepEmbedded(t *testing.T) {
 		{"orientation", func(b []byte) (*Plan, error) { return PlanOrientation(bytes.NewReader(b), int64(len(b)), 6) }},
 		{"Exif date", func(b []byte) (*Plan, error) {
 			d := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
-			return PlanExifEdit(bytes.NewReader(b), int64(len(b)), ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}})
+			return planExifEdit(bytes.NewReader(b), int64(len(b)), ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}})
 		}},
 		{"XMP title", func(b []byte) (*Plan, error) {
-			return PlanXMPEdit(bytes.NewReader(b), int64(len(b)), XMPEdit{Title: &long, Keywords: &keywords})
+			return planXMPEdit(bytes.NewReader(b), int64(len(b)), XMPEdit{Title: &long, Keywords: &keywords})
 		}},
 		{"IPTC", func(b []byte) (*Plan, error) {
 			return PlanMetadata(bytes.NewReader(b), int64(len(b)), MetadataEdit{IPTC: &IPTCEdit{Title: &long, Keywords: &keywords}})
@@ -285,7 +285,7 @@ func FuzzReadEmbedded(f *testing.F) {
 				}
 			}
 			// A write that grows the XMP keeps every part.
-			p, err := PlanXMPEdit(bytes.NewReader(data), int64(len(data)), XMPEdit{Title: &long})
+			p, err := planXMPEdit(bytes.NewReader(data), int64(len(data)), XMPEdit{Title: &long})
 			if err != nil {
 				return
 			}
@@ -436,6 +436,33 @@ func TestMPFAfterWrites(t *testing.T) {
 			file = out.Bytes()
 			checkMPFExact(t, v.name+"/"+s.name, file, m)
 			checkEmbedded(t, v.name+"/"+s.name, file, m, v.o)
+		}
+	}
+}
+
+// An MPF entry of size 0 lists no image, even where a JPEG starts at its
+// offset (the fuzzer found one).
+func TestReadEmbeddedMPFSizeZero(t *testing.T) {
+	m := buildMotionPhoto(t, motionOpts{})
+	f, err := parseJPEG(bytes.NewReader(m.file), int64(len(m.file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := f.mpf(bytes.NewReader(m.file))
+	if err != nil || len(x.entries) != 2 {
+		t.Fatalf("%+v, %v", x, err)
+	}
+	// Only the MPF index lists the gain map: the container directory gets
+	// another name of the same length.
+	file := bytes.ReplaceAll(m.file, []byte("Container:Directory"), []byte("Container:Directorz"))
+	x.order.PutUint32(file[x.entries[1].at-4:], 0) // the gain map's size
+	e, err := ReadEmbedded(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, img := range e.Images {
+		if img.Length <= 0 {
+			t.Errorf("an image of %d bytes: %+v", img.Length, img)
 		}
 	}
 }

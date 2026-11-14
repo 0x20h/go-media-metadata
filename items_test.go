@@ -325,6 +325,7 @@ func itemSeeds(f *testing.F) {
 func FuzzPlanItems(f *testing.F) {
 	seeds(f)
 	itemSeeds(f)
+	imageIOSeeds(f)
 	exif, xmp, long := photoTIFF(binary.LittleEndian), xmpPacket("Harbour at dusk", 0), xmpPacket("Harbour at dawn", 3000)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
@@ -345,7 +346,7 @@ func FuzzPlanItems(f *testing.F) {
 						t.Errorf("the Exif written reads back as %+v, %v", x, err)
 					}
 				}},
-				{"exif edit", func(r *bytes.Reader, n int64) (*Plan, error) { return PlanExifEdit(r, n, ExifEdit{RemoveGPS: true}) }, func(t *testing.T, out []byte) {
+				{"exif edit", func(r *bytes.Reader, n int64) (*Plan, error) { return planExifEdit(r, n, ExifEdit{RemoveGPS: true}) }, func(t *testing.T, out []byte) {
 					if x, err := readHEIFExif(bytes.NewReader(out), int64(len(out))); err != nil || x.GPS != nil {
 						t.Errorf("the GPS position removed reads back as %+v, %v", x, err)
 					}

@@ -85,7 +85,7 @@ func TestPlanExifEditJPEG(t *testing.T) {
 			{"orientation", ExifEdit{Orientation: 3}},
 		} {
 			t.Run(name+"/"+c.name, func(t *testing.T) {
-				p, err := PlanExifEdit(bytes.NewReader(file), int64(len(file)), c.edit)
+				p, err := planExifEdit(bytes.NewReader(file), int64(len(file)), c.edit)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -125,7 +125,7 @@ func TestPlanExifEditJPEGOldValuesGone(t *testing.T) {
 		{"remove gps", ExifEdit{RemoveGPS: true}, true},
 		{"move", editAll, false},
 	} {
-		p, err := PlanExifEdit(bytes.NewReader(file), int64(len(file)), c.edit)
+		p, err := planExifEdit(bytes.NewReader(file), int64(len(file)), c.edit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestPlanExifEditJPEGDateInPlace(t *testing.T) {
 	d := time.Date(2031, 7, 8, 9, 10, 11, 120_000_000, time.FixedZone("", -7*3600))
 	edit := ExifEdit{DateTimeOriginal: &d, OffsetKnown: true}
 	file := withSegments(plainJPEG(t), exifSegment(photoTIFF(binary.LittleEndian)))
-	p, err := PlanExifEdit(bytes.NewReader(file), int64(len(file)), edit)
+	p, err := planExifEdit(bytes.NewReader(file), int64(len(file)), edit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestPlanExifEditJPEGDateInPlace(t *testing.T) {
 		t.Fatalf("not in place (%d → %d bytes)", p.Size, p.NewSize)
 	}
 	out := written(t, p)
-	again, err := PlanExifEdit(bytes.NewReader(out), int64(len(out)), edit)
+	again, err := planExifEdit(bytes.NewReader(out), int64(len(out)), edit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestPlanExifJPEGErrors(t *testing.T) {
 		t.Errorf("Exif past 64 KB: %v", err)
 	}
 	broken := file[:bytes.Index(file, []byte{0xFF, markerSOS})]
-	if _, err := PlanExifEdit(bytes.NewReader(broken), int64(len(broken)), editAll); !errors.Is(err, ErrMalformed) {
+	if _, err := planExifEdit(bytes.NewReader(broken), int64(len(broken)), editAll); !errors.Is(err, ErrMalformed) {
 		t.Errorf("a JPEG cut before its image data: %v", err)
 	}
 }
@@ -183,7 +183,7 @@ func TestPlanExifEditJPEGWithExifTool(t *testing.T) {
 	}
 	dir := t.TempDir()
 	for name, file := range jpegFiles(t) {
-		p, err := PlanExifEdit(bytes.NewReader(file), int64(len(file)), editAll)
+		p, err := planExifEdit(bytes.NewReader(file), int64(len(file)), editAll)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,7 +224,7 @@ func FuzzJPEGExif(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			r := bytes.NewReader(data)
-			if p, err := PlanExifEdit(r, int64(len(data)), editAll); err == nil {
+			if p, err := planExifEdit(r, int64(len(data)), editAll); err == nil {
 				checkPlan(t, data, p)
 			}
 			if p, err := PlanExif(r, int64(len(data)), photoTIFF(binary.LittleEndian)); err == nil {

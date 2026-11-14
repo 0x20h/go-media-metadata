@@ -4,16 +4,12 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
-
-// ErrNotJPEG is returned for a file that isn't a JPEG file.
-var ErrNotJPEG = errors.New("not a JPEG file")
 
 // JPEG markers (ITU-T T.81 B.1.1.3, and JFIF/Exif for the APPn ones).
 const (
@@ -64,7 +60,7 @@ type jpegFile struct {
 
 func parseJPEG(r io.ReaderAt, size int64) (*jpegFile, error) {
 	if !isJPEG(r, size) {
-		return nil, ErrNotJPEG
+		return nil, errNotJPEG
 	}
 	f := &jpegFile{}
 	at := int64(2)
@@ -226,9 +222,10 @@ func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 // ReadExif reads the Exif metadata of the JPEG, HEIF, PNG, WebP or camera
 // RAW file in r (size bytes): a JPEG's first Exif APP1 segment, a HEIF
 // file's Exif item, a PNG's eXIf chunk, a WebP's EXIF chunk, a TIFF-based
-// RAW's IFDs (DNG, CR2, NEF, ARW, ORF, RW2) or a CR3's CMT boxes. A file without Exif gives an empty Exif and no error.
-// A file of none of these formats gives an error that is ErrNotJPEG,
-// ErrNotHEIF and ErrNotRAW.
+// RAW's IFDs (DNG, CR2, NEF, ARW, ORF, RW2), a CR3's CMT boxes, a RAF's
+// embedded JPEG, or a JPEG XL file's Exif box. A file without Exif gives an
+// empty Exif and no error; a file of none of these formats gives an error
+// that is ErrUnknownFormat.
 func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isJPEG(r, size) {
 		return readJPEGExif(r, size)
@@ -239,17 +236,16 @@ func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isWebP(r, size) {
 		return readWebPExif(r, size)
 	}
+	if isJXL(r, size) {
+		return readJXLExif(r, size)
+	}
 	if x, ok, err := readRAWExif(r, size); ok {
 		return x, err
 	}
 	if !startsWithFtyp(r, size) {
-		return Exif{}, fmt.Errorf("%w: %w: %w", ErrNotJPEG, ErrNotHEIF, ErrNotRAW)
+		return Exif{}, ErrUnknownFormat
 	}
-	x, err := readHEIFExif(r, size)
-	if errors.Is(err, ErrNotHEIF) {
-		return Exif{}, fmt.Errorf("%w: %w: %w", ErrNotJPEG, err, ErrNotRAW)
-	}
-	return x, err
+	return readHEIFExif(r, size)
 }
 
 // startsWithFtyp reports whether the file starts with an ftyp box, as an

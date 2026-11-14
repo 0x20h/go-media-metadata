@@ -39,7 +39,10 @@ const (
 //     NEF and ARW have their previews;
 //   - a single strip compressed as JPEG (Compression 6, 7 or 34892), as
 //     DNG has its previews in SubIFDs and CR2 its full-size one in IFD0;
-//   - an RW2's JpgFromRaw (tag 46) and the thumbnail in its Exif.
+//   - an RW2's JpgFromRaw (tag 46) and the thumbnail in its Exif;
+//   - a Nikon maker note's PreviewIFD, and an Olympus maker note's
+//     preview (in its CameraSettings IFD, or its own IFD in the old
+//     style), at offsets counted from the maker note.
 //
 // For a Fujifilm RAF it takes the JPEG the header points to and the
 // thumbnail in its Exif; for a Canon CR3, the THMB and PRVW boxes' JPEGs
@@ -51,7 +54,7 @@ const (
 // lossless JPEG. Only IFDs, boxes and the head of each candidate are read.
 //
 // A file without a preview gives none and no error; a file of none of
-// these formats gives ErrNotRAW.
+// these formats gives errNotRAW.
 func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 	var out []Preview
 	seen := map[int64]bool{}
@@ -83,7 +86,7 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 	}
 	t, ok := openRAWTIFF(r, size)
 	if !ok {
-		return nil, ErrNotRAW
+		return nil, errNotRAW
 	}
 	visit := func(ifd map[uint16]field) {
 		if o, ok := t.uint(ifd[tagJPEGOffset]); ok {
@@ -127,6 +130,8 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 		_, at, n := sec.Outer()
 		jpegAndThumbnail(r, at, n, add)
 	}
+	// Previews only a maker note locates (Nikon, Olympus).
+	t.makerNotePreviews(add)
 	return sortPreviews(out), nil
 }
 

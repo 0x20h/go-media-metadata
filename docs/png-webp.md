@@ -39,7 +39,7 @@ follows. Further chunks of the same kind are removed.
 ## Orientation
 
 In both formats the Exif Orientation tag is how the image is shown, so
-`ReadOrientation` reads it, and `PlanExifEdit` sets it along with the
+`ReadOrientation` reads it, and `PlanOrientation` sets it (as does `PlanMetadata`'s Exif part) along with the
 other fields.
 
 ## XMP content

@@ -7,26 +7,13 @@ import (
 	"io"
 )
 
-// ErrOrientationInExif is returned by PlanExifEdit for an edit that sets
+// ErrOrientationInExif is returned by PlanMetadata for an Exif part that sets
 // the Orientation tag: a HEIF image is shown by its irot and imir
 // properties, so the tag alone would only disagree with them. Use
 // SetOrientation, which sets both.
 var ErrOrientationInExif = errors.New("mediameta: a HEIF image's orientation is set with SetOrientation, not in its Exif")
 
-// EditHEIFExif writes to dst the HEIF file in src (size bytes) with edit
-// applied to its Exif item (see EditExif), or with a new Exif item holding
-// the edit when it has none. Everything else is as SetExif writes it.
-// A JPEG, PNG or WebP file is edited as PlanExifEdit says.
-func EditHEIFExif(src io.ReaderAt, size int64, dst io.Writer, edit ExifEdit) error {
-	p, err := PlanExifEdit(src, size, edit)
-	if err != nil {
-		return err
-	}
-	_, err = p.WriteTo(dst)
-	return err
-}
-
-// PlanExifEdit is EditHEIFExif's edit, computed but not written. The Exif
+// planExifEdit is EditHEIFExif's edit, computed but not written. The Exif
 // item keeps what comes before its TIFF data (the offset, and a header
 // such as "Exif\0\0"), and EditExif keeps every byte it doesn't change
 // where it was: an edit whose values fit where the old ones were (a new
@@ -40,7 +27,7 @@ func EditHEIFExif(src io.ReaderAt, size int64, dst io.Writer, edit ExifEdit) err
 // segment after its JFIF header. Exif past the segment's 64 KB is refused
 // with ErrUnsupported. A JPEG's, PNG's or WebP's Exif Orientation is how
 // it's shown, so an edit may set it there.
-func PlanExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
+func planExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
 	if isJPEG(src, size) {
 		return planJPEGExif(src, size, func(old []byte) ([]byte, error) { return EditExif(old, edit) })
 	}

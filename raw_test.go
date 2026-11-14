@@ -147,7 +147,7 @@ func TestPlanRAWOrientation(t *testing.T) {
 	for name, file := range rawFiles(t) {
 		for o := Orientation(1); o <= 8; o++ {
 			t.Run(fmt.Sprintf("%s/%d", name, o), func(t *testing.T) {
-				p, err := PlanRAWOrientation(bytes.NewReader(file), int64(len(file)), o)
+				p, err := planRAWOrientation(bytes.NewReader(file), int64(len(file)), o)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -171,8 +171,8 @@ func TestPlanRAWOrientation(t *testing.T) {
 					t.Errorf("the XMP says %q", xmp)
 				}
 				var direct bytes.Buffer
-				if err := SetRAWOrientation(bytes.NewReader(file), int64(len(file)), &direct, o); err != nil || !bytes.Equal(direct.Bytes(), out) {
-					t.Errorf("SetRAWOrientation differs: %v", err)
+				if err := SetOrientation(bytes.NewReader(file), int64(len(file)), &direct, o); err != nil || !bytes.Equal(direct.Bytes(), out) {
+					t.Errorf("SetOrientation differs: %v", err)
 				}
 			})
 		}
@@ -181,24 +181,24 @@ func TestPlanRAWOrientation(t *testing.T) {
 
 func TestPlanRAWOrientationErrors(t *testing.T) {
 	file := rawTIFFFile(binary.LittleEndian, typeShort)
-	if _, err := PlanRAWOrientation(bytes.NewReader(file), int64(len(file)), 9); err == nil {
+	if _, err := planRAWOrientation(bytes.NewReader(file), int64(len(file)), 9); err == nil {
 		t.Error("orientation 9 accepted")
 	}
 	b := &tiffBuilder{order: binary.LittleEndian, ifd0: []tiffEntry{{0x010F, typeASCII, 6, []byte("Canon\x00")}}}
 	none := append(b.build(), make([]byte, 64)...)
-	if _, err := PlanRAWOrientation(bytes.NewReader(none), int64(len(none)), 3); !errors.Is(err, ErrUnsupported) {
+	if _, err := planRAWOrientation(bytes.NewReader(none), int64(len(none)), 3); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("no Orientation tag: %v", err)
 	}
 	jpg := plainJPEG(t)
-	if _, err := PlanRAWOrientation(bytes.NewReader(jpg), int64(len(jpg)), 3); !errors.Is(err, ErrNotRAW) {
+	if _, err := planRAWOrientation(bytes.NewReader(jpg), int64(len(jpg)), 3); !errors.Is(err, errNotRAW) {
 		t.Errorf("a JPEG: %v", err)
 	}
 	heic := planFiles(t)[0].data
-	if _, err := PlanRAWOrientation(bytes.NewReader(heic), int64(len(heic)), 3); !errors.Is(err, ErrNotRAW) {
+	if _, err := planRAWOrientation(bytes.NewReader(heic), int64(len(heic)), 3); !errors.Is(err, errNotRAW) {
 		t.Errorf("a HEIF file: %v", err)
 	}
 	garbage := []byte("not an image file at all")
-	if _, err := ReadExif(bytes.NewReader(garbage), int64(len(garbage))); !errors.Is(err, ErrNotRAW) || !errors.Is(err, ErrNotJPEG) {
+	if _, err := ReadExif(bytes.NewReader(garbage), int64(len(garbage))); !errors.Is(err, ErrUnknownFormat) {
 		t.Errorf("garbage: %v", err)
 	}
 }
@@ -213,7 +213,7 @@ func TestRAWAgreesWithExifTool(t *testing.T) {
 	dir := t.TempDir()
 	files := rawFiles(t)
 	for name, file := range files {
-		p, err := PlanRAWOrientation(bytes.NewReader(file), int64(len(file)), 8)
+		p, err := planRAWOrientation(bytes.NewReader(file), int64(len(file)), 8)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -284,7 +284,7 @@ func TestRealRAWFiles(t *testing.T) {
 		if ps, err := ReadPreviews(bytes.NewReader(data), int64(len(data))); err == nil {
 			t.Logf("%s: previews %+v", e.Name(), ps)
 		}
-		p, err := PlanRAWOrientation(bytes.NewReader(data), int64(len(data)), 3)
+		p, err := planRAWOrientation(bytes.NewReader(data), int64(len(data)), 3)
 		if err != nil {
 			t.Logf("%s: %v", e.Name(), err)
 			continue
@@ -307,7 +307,7 @@ func FuzzReadRAW(f *testing.F) {
 			_, _ = ReadExif(r, int64(len(data)))
 			_, _ = ReadOrientation(r, int64(len(data)))
 			_, _ = ReadXMP(r, int64(len(data)))
-			if p, err := PlanRAWOrientation(r, int64(len(data)), 3); err == nil {
+			if p, err := planRAWOrientation(r, int64(len(data)), 3); err == nil {
 				checkPlan(t, data, p)
 			}
 		})
@@ -382,12 +382,6 @@ func TestRealRAWAgreesWithExifTool(t *testing.T) {
 			for _, tag := range []string{"PreviewImage", "JpgFromRaw", "ThumbnailImage", "OtherImage"} {
 				got, err := exec.Command("exiftool", "-b", "-"+tag, path).Output()
 				if err != nil || len(got) < 4 || got[0] != 0xFF || got[1] != 0xD8 {
-					continue
-				}
-				// Previews only a maker note locates aren't read yet
-				// (issue #52): Nikon's PreviewIFD.
-				if strings.EqualFold(filepath.Ext(path), ".nef") && tag == "PreviewImage" {
-					t.Logf("ExifTool's %s (%d bytes), from the maker note: not read yet", tag, len(got))
 					continue
 				}
 				found := false

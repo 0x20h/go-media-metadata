@@ -24,15 +24,22 @@ formats existed.
 
 ## Writing
 
-There are two ways to write an edit:
+One naming scheme covers every write:
 
-- **`Set…` functions** (`SetRotation`, `SetOrientation`, `SetExif`,
-  `SetXMP`, `EditHEIFExif`, `EditFileXMP`, `SetMetadata`,
-  `SetRAWOrientation`) stream the edited file to an `io.Writer`.
 - **`Plan…` functions** (`PlanRotation`, `PlanOrientation`, `PlanExif`,
-  `PlanXMP`, `PlanExifEdit`, `PlanXMPEdit`, `PlanMetadata`,
-  `PlanRAWOrientation`) compute the same edit without writing it, as a
-  `Plan`.
+  `PlanXMP`, `PlanIPTC`, `PlanMetadata`, `PlanVideoMetadata`) compute an
+  edit of a file without writing it, as a `Plan`.
+- **`Set…` functions** with the same names (`SetRotation`, …,
+  `SetVideoMetadata`) stream that edit to an `io.Writer`: the same bytes
+  as the plan's `WriteTo`.
+- **`Edit…` functions** (`EditExif`, `EditXMP`, `EditIPTC`) change
+  metadata held in memory (TIFF data, an XMP packet, IPTC-IIM data), not
+  a file.
+
+Edits of a file's Exif, XMP and IPTC fields go through `PlanMetadata` and
+`SetMetadata`, with only the parts needed. The orientation and rotation
+functions take every format the package writes (HEIF, JPEG, PNG, WebP,
+camera RAW, QuickTime and MP4) and look at the file to tell which.
 
 Neither ever writes to the source. On an error the writer may hold part
 of a file, so write to a temporary file and rename it over the original
@@ -79,9 +86,9 @@ func SetMetadata(src io.ReaderAt, size int64, dst io.Writer, edit MetadataEdit) 
 `PlanMetadata` plans one edit of a file in every standard it names, so a
 caller writes the file once, all or nothing:
 
-- **Parts run in order:** the Exif part as `PlanExifEdit`, then the IPTC
-  part (the file's IPTC-IIM data through `EditIPTC`), then the XMP part as
-  `PlanXMPEdit`. Each part is planned on the file the parts before it
+- **Parts run in order:** the Exif part (the file's Exif through
+  `EditExif`), then the IPTC part (its IPTC-IIM data through `EditIPTC`),
+  then the XMP part (its packet through `EditXMP`). Each part is planned on the file the parts before it
   make, and the result is byte for byte what writing them one after
   another gives.
 - **Parts are optional:** a nil part, or one with every field left at its
@@ -111,11 +118,14 @@ A write never leaves an old value in the file:
 
 | Error | Meaning |
 |---|---|
-| `ErrNotHEIF`, `ErrNotJPEG`, `ErrNotPNG`, `ErrNotWebP`, `ErrNotRAW` | the file isn't that format. A file that is no supported format at all gives an error that is both `ErrNotJPEG` and `ErrNotHEIF`. |
+| `ErrUnknownFormat` | the file is of no format the function takes: one this package doesn't read, or, for a function that takes one format (`ReadVideo`, `ReadPreviews`, `ReadEmbedded`), another |
 | `ErrMalformed` | the file breaks its own structure: a length past its container, a truncated header, too many segments, XML that doesn't parse |
 | `ErrUnsupported` | a structure this package can't change safely. The file is left as it is rather than risk a wrong result. |
 | `ErrNotInPlace` | `Plan.Apply` on a plan that changes the file's size |
-| `ErrOrientationInExif` | an `ExifEdit` that sets a HEIF image's orientation; use `SetOrientation` (see [heif](heif.md)) |
+| `ErrOrientationInExif` | a `MetadataEdit` whose Exif part sets a HEIF image's orientation; use `SetOrientation` (see [heif](heif.md)) |
+
+Every error wraps one of these, with context, and its text starts
+"mediameta: ". Test for them with `errors.Is`.
 
 ## Hostile input
 

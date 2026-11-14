@@ -47,6 +47,23 @@ Three formats keep their previews elsewhere:
   reports the first two up to the end of their box, which is a few bytes
   of padding longer.
 
+Two makers keep previews in their maker notes, at offsets that count from
+the maker note, not the file:
+
+- **Nikon** (`Nikon\0` version 2): a TIFF header 10 bytes in, from which
+  offsets count. Its IFD0's tag 17 points to a PreviewIFD, whose tags 513
+  and 514 give the preview.
+- **Olympus** (`OLYMPUS\0` with its byte order, the IFD at 12): offsets
+  count from the maker note's start. Tag 0x0100's value is a JPEG
+  thumbnail; the CameraSettings IFD (tag 0x2020, a pointer or an
+  UNDEFINED value holding the IFD) gives the preview's start and length
+  (tags 0x0101 and 0x0102). In the old style (`OLYMP\0`, the IFD at 8),
+  tags 0x0088 and 0x0089 give the preview and 0x0100 the thumbnail, at
+  offsets from the file's TIFF header.
+
+Only the maker note's header and these IFDs are read, never the whole
+maker note.
+
 A candidate counts only when it's a baseline or progressive JPEG inside
 the file. Its frame header gives the size, read from the candidate's
 first 4 KB, or up to 128 KB when big marker segments come first. That
@@ -65,18 +82,18 @@ what's found lies in the file.
 
 `testdata/raw-samples.txt` lists real camera files from raw.pixls.us,
 each released under CC0, with their SHA-256 sums: DNG from a camera and
-two phones, CR2, CR3, NEF, ARW, ORF, RAF and RW2. They aren't committed.
+two phones, CR2, CR3, NEF, ARW, two ORFs, RAF and RW2. They aren't committed.
 `scripts/fetch-raw-samples.sh` downloads them into
 `testdata/raw-samples/` (git-ignored), checks the sums and runs the
 real-file tests on them. Where exiftool is installed, those tests compare
 the date taken, the orientation and the GPS position with ExifTool's,
 and check that every JPEG preview ExifTool extracts is one
-`ReadPreviews` finds. They all agree, except for a NEF preview that only
-the Nikon maker note locates (not read yet).
+`ReadPreviews` finds. All of them agree, the maker-note previews of the
+NEF (D2H) and an ORF (E-450) included.
 
 ## Writing the orientation
 
-`SetRAWOrientation` and `PlanRAWOrientation` change only IFD0's
+`SetOrientation`, `SetRotation` and their plans change only IFD0's
 Orientation value (for a CR3, CMT1's), where it sits: a tag with its
 value in its entry (SHORT, or LONG as some writers have it). Where the
 file's XMP packet has `tiff:Orientation`, as an attribute or an element,

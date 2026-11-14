@@ -220,8 +220,8 @@ func TestReadVideoNotAMovie(t *testing.T) {
 		"short": {0, 0, 0},
 		"text":  []byte("this is not a movie file at all"),
 	} {
-		if _, err := ReadVideo(bytes.NewReader(file), int64(len(file))); !errors.Is(err, ErrNotQuickTime) {
-			t.Errorf("%s: %v, want ErrNotQuickTime", name, err)
+		if _, err := ReadVideo(bytes.NewReader(file), int64(len(file))); !errors.Is(err, errNotQuickTime) {
+			t.Errorf("%s: %v, want errNotQuickTime", name, err)
 		}
 	}
 }

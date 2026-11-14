@@ -22,11 +22,13 @@ type IPTC struct {
 }
 
 // IPTCEdit is a change to IPTC-IIM data. A nil field leaves that dataset
-// as it is.
+// as it is, so the zero IPTCEdit changes nothing.
 type IPTCEdit struct {
-	// Title and Description set 2:05 and 2:120; "" removes them.
+	// Title and Description set 2:05 and 2:120. nil leaves the dataset as
+	// it is; "" removes it.
 	Title, Description *string
-	// Keywords sets the 2:25 datasets; an empty list removes them.
+	// Keywords sets the 2:25 datasets. nil leaves them as they are; an
+	// empty list removes them.
 	Keywords *[]string
 }
 

@@ -86,7 +86,8 @@ func ReadEmbedded(r io.ReaderAt, size int64) (Embedded, error) {
 	}
 	for _, e := range mpf.entries[min(1, len(mpf.entries)):] {
 		at := mpf.base + int64(e.offset)
-		if e.offset == 0 || at < minOffset || int64(e.size) > size-at || !startsJPEG(r, at) {
+		// An image of no bytes is no image, whatever is at its offset.
+		if e.offset == 0 || e.size == 0 || at < minOffset || int64(e.size) > size-at || !startsJPEG(r, at) {
 			continue
 		}
 		dup := false

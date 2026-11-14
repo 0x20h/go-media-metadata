@@ -24,7 +24,7 @@ func TestPlanVideoOrientation(t *testing.T) {
 				opts := qtbuild.Default()
 				l.edit(&opts)
 				file, start, end := qtbuild.Build(opts)
-				p, err := PlanVideoOrientation(bytes.NewReader(file), int64(len(file)), o)
+				p, err := planVideoOrientation(bytes.NewReader(file), int64(len(file)), o)
 				if opts.NoVideo {
 					if !errors.Is(err, ErrUnsupported) {
 						t.Fatalf("no video track: %v, want ErrUnsupported", err)
@@ -46,7 +46,7 @@ func TestPlanVideoOrientation(t *testing.T) {
 					t.Errorf("%d bytes patched for one video track", n)
 				}
 				var out bytes.Buffer
-				if err := SetVideoOrientation(bytes.NewReader(file), int64(len(file)), &out, o); err != nil {
+				if err := SetOrientation(bytes.NewReader(file), int64(len(file)), &out, o); err != nil {
 					t.Fatal(err)
 				}
 				written := out.Bytes()
@@ -77,7 +77,7 @@ func TestVideoOrientationMatrix(t *testing.T) {
 	o := qtbuild.Default()
 	o.Matrix = [4]int32{1 << 16, 0, 0, 1 << 16}
 	file, _, _ := qtbuild.Build(o)
-	p, err := PlanVideoRotation(bytes.NewReader(file), int64(len(file)), 90)
+	p, err := planVideoRotation(bytes.NewReader(file), int64(len(file)), 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,17 +108,17 @@ func TestVideoRotationKeepsMirror(t *testing.T) {
 	file, _, _ := qtbuild.Build(o)
 	for deg, want := range map[int]Orientation{0: 2, 90: 7, 180: 4, 270: 5, -90: 5, 450: 7} {
 		var out bytes.Buffer
-		if err := SetVideoRotation(bytes.NewReader(file), int64(len(file)), &out, deg); err != nil {
+		if err := SetRotation(bytes.NewReader(file), int64(len(file)), &out, deg); err != nil {
 			t.Fatal(err)
 		}
 		if got := readVideo(t, out.Bytes()).Orientation; got != want {
 			t.Errorf("%d°: %v, want %v", deg, got, want)
 		}
 	}
-	if _, err := PlanVideoRotation(bytes.NewReader(file), int64(len(file)), 45); err == nil {
+	if _, err := planVideoRotation(bytes.NewReader(file), int64(len(file)), 45); err == nil {
 		t.Error("45° accepted")
 	}
-	if _, err := PlanVideoOrientation(bytes.NewReader(file), int64(len(file)), 9); err == nil {
+	if _, err := planVideoOrientation(bytes.NewReader(file), int64(len(file)), 9); err == nil {
 		t.Error("orientation 9 accepted")
 	}
 }
@@ -126,7 +126,7 @@ func TestVideoRotationKeepsMirror(t *testing.T) {
 // Setting the orientation a movie has changes nothing.
 func TestVideoOrientationUnchanged(t *testing.T) {
 	file, _, _ := qtbuild.Build(qtbuild.Default())
-	p, err := PlanVideoOrientation(bytes.NewReader(file), int64(len(file)), 6)
+	p, err := planVideoOrientation(bytes.NewReader(file), int64(len(file)), 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestVideoOrientationTracks(t *testing.T) {
 	o := qtbuild.Default()
 	o.VideoTracks = 2
 	file, _, _ := qtbuild.Build(o)
-	p, err := PlanVideoOrientation(bytes.NewReader(file), int64(len(file)), 3)
+	p, err := planVideoOrientation(bytes.NewReader(file), int64(len(file)), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestVideoOrientationTracks(t *testing.T) {
 	o = qtbuild.Default()
 	o.MovieMatrix = [4]int32{0, 1 << 16, -1 << 16, 0}
 	file, _, _ = qtbuild.Build(o)
-	if _, err := PlanVideoOrientation(bytes.NewReader(file), int64(len(file)), 1); !errors.Is(err, ErrUnsupported) {
+	if _, err := planVideoOrientation(bytes.NewReader(file), int64(len(file)), 1); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("a turned movie header: %v, want ErrUnsupported", err)
 	}
 	if v := readVideo(t, file); v.Orientation != 0 {
@@ -169,7 +169,7 @@ func FuzzVideoOrientation(f *testing.F) {
 			// some movies the reader refuses; those needn't read back.
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
 			for _, o := range []Orientation{1, 6, 7} {
-				p, err := PlanVideoOrientation(bytes.NewReader(data), int64(len(data)), o)
+				p, err := planVideoOrientation(bytes.NewReader(data), int64(len(data)), o)
 				if err != nil {
 					continue
 				}
@@ -203,7 +203,7 @@ func BenchmarkPlanVideoRotation(b *testing.B) {
 	cr := &countingReader{r: bytes.NewReader(file)}
 	b.ReportAllocs()
 	for range b.N {
-		if _, err := PlanVideoRotation(cr, int64(len(file)), 180); err != nil {
+		if _, err := planVideoRotation(cr, int64(len(file)), 180); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -224,7 +224,7 @@ func TestVideoRotationOtherTools(t *testing.T) {
 	file, _, _ := qtbuild.Build(base)
 	for _, deg := range []int{0, 90, 180, 270} {
 		var out bytes.Buffer
-		if err := SetVideoRotation(bytes.NewReader(file), int64(len(file)), &out, deg); err != nil {
+		if err := SetRotation(bytes.NewReader(file), int64(len(file)), &out, deg); err != nil {
 			t.Fatal(err)
 		}
 		p := filepath.Join(dir, fmt.Sprintf("r%d.mov", deg))
