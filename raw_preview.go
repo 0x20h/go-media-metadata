@@ -31,31 +31,31 @@ const (
 	maxSubIFDs  = 16
 )
 
-// ReadPreviews finds the JPEG previews a TIFF-based camera RAW file
-// (DNG, CR2, NEF, ARW, ORF, RW2) embeds, largest first. It looks in IFD0,
-// the IFDs chained after it, and the SubIFDs of each, at:
+// ReadPreviews finds the JPEG previews a camera RAW file embeds, largest
+// first. For a TIFF-based one (DNG, CR2, NEF, ARW, ORF, RW2) it looks in
+// IFD0, the IFDs chained after it, and the SubIFDs of each, at:
 //
 //   - a JPEGInterchangeFormat and its length (tags 513 and 514), as CR2,
 //     NEF and ARW have their previews;
 //   - a single strip compressed as JPEG (Compression 6, 7 or 34892), as
-//     DNG has its previews in SubIFDs and CR2 its full-size one in IFD0.
+//     DNG has its previews in SubIFDs and CR2 its full-size one in IFD0;
+//   - an RW2's JpgFromRaw (tag 46) and the thumbnail in its Exif.
+//
+// For a Fujifilm RAF it takes the JPEG the header points to and the
+// thumbnail in its Exif; for a Canon CR3, the THMB and PRVW boxes' JPEGs
+// and the first sample of each track (the full-size JPEG).
 //
 // A candidate counts only where it is a baseline or progressive JPEG
 // inside the file: its frame header (read from its first few KB) gives
 // the size. That leaves out the raw image data some files store as
-// lossless JPEG. Only IFDs and the head of each candidate are read.
+// lossless JPEG. Only IFDs, boxes and the head of each candidate are read.
 //
-// A file without a preview gives none and no error; a file that isn't
-// TIFF-based gives ErrNotRAW.
+// A file without a preview gives none and no error; a file of none of
+// these formats gives ErrNotRAW.
 func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
-	t, ok := openRAWTIFF(r, size)
-	if !ok {
-		return nil, ErrNotRAW
-	}
 	var out []Preview
 	seen := map[int64]bool{}
-	add := func(off, n uint32) {
-		at, length := int64(off), int64(n)
+	add := func(at, length int64) {
 		if at <= 0 || length < 4 || at+length > size || seen[at] {
 			return
 		}
@@ -66,17 +66,36 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 		seen[at] = true
 		out = append(out, Preview{Offset: at, Length: length, Width: w, Height: h})
 	}
+	if at, n, isRAF, ok := openRAF(r, size); isRAF {
+		if ok {
+			jpegAndThumbnail(r, at, n, add)
+		}
+		return sortPreviews(out), nil
+	}
+	if _, isCR3, err := openCR3(r, size); isCR3 {
+		if err != nil {
+			return nil, err
+		}
+		if err := cr3Previews(r, size, add); err != nil {
+			return nil, err
+		}
+		return sortPreviews(out), nil
+	}
+	t, ok := openRAWTIFF(r, size)
+	if !ok {
+		return nil, ErrNotRAW
+	}
 	visit := func(ifd map[uint16]field) {
 		if o, ok := t.uint(ifd[tagJPEGOffset]); ok {
 			if n, ok := t.uint(ifd[tagJPEGLength]); ok {
-				add(o, n)
+				add(int64(o), int64(n))
 			}
 		}
 		switch c, _ := t.uint(ifd[tagCompression]); c {
 		case 6, 7, 34892:
 			offs, lens := t.uints(ifd[tagStripOffsets]), t.uints(ifd[tagStripByteCounts])
 			if len(offs) == 1 && len(lens) == 1 {
-				add(offs[0], lens[0])
+				add(int64(offs[0]), int64(lens[0]))
 			}
 		}
 	}
@@ -103,6 +122,16 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 		}
 		off = t.nextIFD(off)
 	}
+	// A Panasonic RW2's JpgFromRaw, with the thumbnail in its Exif.
+	if sec, ok := t.jpgFromRaw(); ok {
+		_, at, n := sec.Outer()
+		jpegAndThumbnail(r, at, n, add)
+	}
+	return sortPreviews(out), nil
+}
+
+// sortPreviews orders previews largest first: by pixels, then length.
+func sortPreviews(out []Preview) []Preview {
 	sort.SliceStable(out, func(i, j int) bool {
 		ai, aj := out[i].Width*out[i].Height, out[j].Width*out[j].Height
 		if ai != aj {
@@ -110,7 +139,7 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 		}
 		return out[i].Length > out[j].Length
 	})
-	return out, nil
+	return out
 }
 
 // uints are a SHORT, LONG or IFD field's values; nil for another type.

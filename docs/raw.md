@@ -1,7 +1,7 @@
 # Camera RAW
 
 Covers TIFF-based RAW files (DNG, CR2, NEF, ARW, ORF, RW2, and plain
-TIFF) and Canon CR3.
+TIFF), Canon CR3 and Fujifilm RAF (read only).
 
 ## Reading
 
@@ -15,6 +15,9 @@ packet is capped at 4 MiB.
 - **RW2:** IFD0 points to no Exif IFD; the Exif is read from the JPEG
   the file embeds.
 - **XMP:** IFD0's XMLPacket tag (700).
+- **RAF:** a header starting `FUJIFILMCCD-RAW ` gives the offset and
+  length of a JPEG (big-endian, at bytes 84 and 88); the Exif and XMP
+  are read from that JPEG. RAF isn't written.
 - **CR3:** a `uuid` box in `moov` holds the TIFF metadata: CMT1 (IFD0),
   CMT2 (the Exif IFD) and CMT4 (the GPS IFD), each a TIFF structure of
   its own. A top-level `uuid` box holds the XMP. The file's `ftyp` brand
@@ -31,6 +34,19 @@ IFD0, the IFDs chained after it, and the SubIFDs of each, for:
 - **a single strip compressed as JPEG** (Compression 6, 7 or 34892):
   DNG's previews in SubIFDs, CR2's full-size JPEG in IFD0.
 
+Three formats keep their previews elsewhere:
+
+- **RW2:** the JPEG in IFD0's JpgFromRaw tag (46), and the thumbnail in
+  that JPEG's Exif IFD1.
+- **RAF:** the JPEG the header points to, and the thumbnail in its Exif
+  IFD1.
+- **CR3:** the thumbnail in the metadata `uuid` box's `THMB` box, the
+  preview in the `PRVW` box of its own `uuid` box (each after a 16-byte
+  header giving the JPEG's length), and the full-size JPEG, which is the
+  first sample of a track, found through its `stsz` and `stco`. ExifTool
+  reports the first two up to the end of their box, which is a few bytes
+  of padding longer.
+
 A candidate counts only when it's a baseline or progressive JPEG inside
 the file. Its frame header gives the size, read from the candidate's
 first 4 KB, or up to 128 KB when big marker segments come first. That
@@ -44,6 +60,19 @@ layouts. Where exiftool is installed, every JPEG preview it extracts
 (`PreviewImage`, `JpgFromRaw`, `ThumbnailImage`, `OtherImage`) is one
 `ReadPreviews` finds, byte for byte. `FuzzReadPreviews` checks that
 what's found lies in the file.
+
+### Real files
+
+`testdata/raw-samples.txt` lists real camera files from raw.pixls.us,
+each released under CC0, with their SHA-256 sums: DNG from a camera and
+two phones, CR2, CR3, NEF, ARW, ORF, RAF and RW2. They aren't committed.
+`scripts/fetch-raw-samples.sh` downloads them into
+`testdata/raw-samples/` (git-ignored), checks the sums and runs the
+real-file tests on them. Where exiftool is installed, those tests compare
+the date taken, the orientation and the GPS position with ExifTool's,
+and check that every JPEG preview ExifTool extracts is one
+`ReadPreviews` finds. They all agree, except for a NEF preview that only
+the Nikon maker note locates (not read yet).
 
 ## Writing the orientation
 

@@ -55,7 +55,7 @@ Early, and growing format by format.
 | HEIF / HEIC / AVIF | read, write (`irot`, `imir`) | read, write, edit | read, write, edit |
 | JPEG | read, write (Exif tag) | read, write, edit | read, write, edit, extended XMP |
 | PNG, WebP | read, write (Exif tag) | read, write, edit | read, write, edit |
-| Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2) | read, write in place | read | read |
+| Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2; RAF read only) | read, write in place | read | read |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 
 `ReadPreviews` finds the JPEG previews a camera RAW embeds, with their

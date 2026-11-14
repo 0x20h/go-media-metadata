@@ -307,9 +307,12 @@ func (c *cr3) xmpAt() (at, n int64, ok bool) {
 	return c.xmp.Body(), c.xmp.BodyLen(), true
 }
 
-// readRAWExif reads the Exif of a TIFF-based RAW or a CR3; ok is false
-// for a file that is neither.
+// readRAWExif reads the Exif of a TIFF-based RAW, a CR3 or a RAF (from
+// the JPEG it embeds); ok is false for a file that is none of them.
 func readRAWExif(r io.ReaderAt, size int64) (Exif, bool, error) {
+	if x, ok, err := readRAFExif(r, size); ok {
+		return x, true, err
+	}
 	if t, ok := openRAWTIFF(r, size); ok {
 		x, err := readRAWTIFFExif(t)
 		return x, true, err
@@ -324,6 +327,9 @@ func readRAWExif(r io.ReaderAt, size int64) (Exif, bool, error) {
 // readRAWXMP reads the XMP packet of a TIFF-based RAW (IFD0's XMLPacket)
 // or a CR3 (its XMP uuid box); nil without one.
 func readRAWXMP(r io.ReaderAt, size int64) ([]byte, bool, error) {
+	if b, ok, err := readRAFXMP(r, size); ok {
+		return b, true, err
+	}
 	var at, n int64
 	var has bool
 	if t, ok := openRAWTIFF(r, size); ok {

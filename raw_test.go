@@ -255,8 +255,8 @@ func TestRAWAgreesWithExifTool(t *testing.T) {
 }
 
 // TestRealRAWFiles reads RAW files outside the repository and plans an
-// orientation for each: set MEDIAMETA_RAW_DIR to a folder of them. No
-// file is written.
+// orientation for each: set MEDIAMETA_RAW_DIR to a folder of them
+// (scripts/fetch-raw-samples.sh fetches a CC0 set). No file is written.
 func TestRealRAWFiles(t *testing.T) {
 	dir := os.Getenv("MEDIAMETA_RAW_DIR")
 	if dir == "" {
@@ -268,7 +268,7 @@ func TestRealRAWFiles(t *testing.T) {
 	}
 	for _, e := range entries {
 		switch strings.ToLower(filepath.Ext(e.Name())) {
-		case ".dng", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2":
+		case ".dng", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".raf":
 		default:
 			continue
 		}
@@ -312,4 +312,95 @@ func FuzzReadRAW(f *testing.F) {
 			}
 		})
 	})
+}
+
+// TestRealRAWAgreesWithExifTool compares the real files of
+// MEDIAMETA_RAW_DIR with ExifTool: the date taken, the orientation and the
+// GPS position, and every JPEG preview ExifTool extracts is one
+// ReadPreviews finds (the same bytes, or those followed only by the zero
+// padding of the box they're in, which ExifTool keeps).
+func TestRealRAWAgreesWithExifTool(t *testing.T) {
+	dir := os.Getenv("MEDIAMETA_RAW_DIR")
+	if dir == "" {
+		t.Skip("set MEDIAMETA_RAW_DIR to test real RAW files")
+	}
+	if _, err := exec.LookPath("exiftool"); err != nil {
+		t.Skip("exiftool not installed")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		switch strings.ToLower(filepath.Ext(e.Name())) {
+		case ".dng", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".raf":
+		default:
+			continue
+		}
+		t.Run(e.Name(), func(t *testing.T) {
+			path := filepath.Join(dir, e.Name())
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			x, err := ReadExif(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := exec.Command("exiftool", "-n", "-s3", "-f", "-DateTimeOriginal", "-Orientation", "-GPSLatitude", "-GPSLongitude", path).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := strings.Split(strings.TrimSpace(string(out)), "\n")
+			if len(f) != 4 {
+				t.Fatalf("ExifTool: %q", out)
+			}
+			if f[0] != "-" && !strings.HasPrefix(f[0], x.DateTimeOriginal.Format("2006:01:02 15:04:05")) {
+				t.Errorf("date taken %v, ExifTool %s", x.DateTimeOriginal, f[0])
+			}
+			if want := f[1]; want != "-" && fmt.Sprint(int(o)) != want {
+				t.Errorf("orientation %d, ExifTool %s", o, want)
+			}
+			if f[2] != "-" {
+				if x.GPS == nil || fmt.Sprintf("%.6f,%.6f", x.GPS.Latitude, x.GPS.Longitude) != func() string {
+					var a, b float64
+					_, _ = fmt.Sscan(f[2], &a)
+					_, _ = fmt.Sscan(f[3], &b)
+					return fmt.Sprintf("%.6f,%.6f", a, b)
+				}() {
+					t.Errorf("GPS %+v, ExifTool %s,%s", x.GPS, f[2], f[3])
+				}
+			}
+			ps, err := ReadPreviews(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tag := range []string{"PreviewImage", "JpgFromRaw", "ThumbnailImage", "OtherImage"} {
+				got, err := exec.Command("exiftool", "-b", "-"+tag, path).Output()
+				if err != nil || len(got) < 4 || got[0] != 0xFF || got[1] != 0xD8 {
+					continue
+				}
+				// Previews only a maker note locates aren't read yet
+				// (issue #52): Nikon's PreviewIFD.
+				if strings.EqualFold(filepath.Ext(path), ".nef") && tag == "PreviewImage" {
+					t.Logf("ExifTool's %s (%d bytes), from the maker note: not read yet", tag, len(got))
+					continue
+				}
+				found := false
+				for _, p := range ps {
+					ours := data[p.Offset : p.Offset+p.Length]
+					found = found || bytes.Equal(got, ours) ||
+						bytes.HasPrefix(got, ours) && len(bytes.Trim(got[len(ours):], "\x00")) == 0
+				}
+				if !found {
+					t.Errorf("ExifTool's %s (%d bytes) isn't one of the previews found: %+v", tag, len(got), ps)
+				}
+			}
+			t.Logf("%d previews: %+v", len(ps), ps)
+		})
+	}
 }

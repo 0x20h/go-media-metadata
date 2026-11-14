@@ -189,7 +189,74 @@ func rawSamples(t testing.TB) []rawSample {
 		ifd0 := w.ifd(ifd1, asciiEnt(0x010F, "SONY"), asciiEnt(0x0110, "ILCE-7"), w.l(tagJPEGOffset, prev), w.l(tagJPEGLength, uint32(len(mid))))
 		out = append(out, rawSample{"ARW", "arw", w.finish(ifd0), [][]byte{mid, small}})
 	}
+	// RAF: the header points to a JPEG whose Exif has a thumbnail.
+	{
+		embedded := jpegWithThumbnail(t, big, small)
+		h := make([]byte, 92)
+		copy(h, rafMagic)
+		binary.BigEndian.PutUint32(h[84:], 100)
+		binary.BigEndian.PutUint32(h[88:], uint32(len(embedded)))
+		file := append(append(h, make([]byte, 8)...), embedded...)
+		out = append(out, rawSample{"RAF", "raf", file, [][]byte{embedded, small}})
+	}
+	// RW2: header "IIU\0", the JPEG (with a thumbnail) as JpgFromRaw.
+	{
+		embedded := jpegWithThumbnail(t, mid, small)
+		w := newRawLayout(le, []byte("IIU\x00\x00\x00\x00\x00"))
+		ifd0 := w.ifd(0, asciiEnt(0x010F, "Panasonic"), ent{tagJpgFromRaw, typeUndef, uint32(len(embedded)), embedded})
+		out = append(out, rawSample{"RW2", "rw2", w.finish(ifd0), [][]byte{embedded, small}})
+	}
+	// CR3: THMB in the metadata uuid box, PRVW in its own, the full-size
+	// JPEG as the first sample of a track.
+	out = append(out, cr3Sample(t, big, mid, small))
 	return out
+}
+
+// jpegWithThumbnail is main with an Exif segment whose IFD1 holds thumb.
+func jpegWithThumbnail(t testing.TB, main, thumb []byte) []byte {
+	w := newRawLayout(binary.LittleEndian, []byte("II*\x00\x00\x00\x00\x00"))
+	at := w.blob(thumb)
+	ifd1 := w.ifd(0, w.s(tagCompression, 6), w.l(tagJPEGOffset, at), w.l(tagJPEGLength, uint32(len(thumb))))
+	ifd0 := w.ifd(ifd1, w.s(tagOrientation, 1))
+	tiff := w.finish(ifd0)
+	return append(append([]byte{0xFF, 0xD8}, app1(append(append([]byte(nil), exifHeader...), tiff...))...), main[2:]...)
+}
+
+func cr3Sample(t testing.TB, full, prvw, thmb []byte) rawSample {
+	box := func(typ string, body ...[]byte) []byte {
+		n := 8
+		for _, b := range body {
+			n += len(b)
+		}
+		out := binary.BigEndian.AppendUint32(nil, uint32(n))
+		out = append(out, typ...)
+		for _, b := range body {
+			out = append(out, b...)
+		}
+		return out
+	}
+	u32 := func(v uint32) []byte { return binary.BigEndian.AppendUint32(nil, v) }
+	// A 16-byte header with the JPEG's length at lenAt, then the JPEG and
+	// some padding, as Canon writes them.
+	headed := func(typ string, lenAt int, jpg []byte) []byte {
+		h := make([]byte, 16)
+		binary.BigEndian.PutUint32(h[lenAt:], uint32(len(jpg)))
+		return box(typ, h, jpg, []byte{0, 0, 0})
+	}
+	ftyp := box("ftyp", []byte("crx "), u32(1), []byte("crx isom"))
+	thmbBox := headed("THMB", 8, thmb)
+	meta := box("uuid", cr3MetaUUID[:], thmbBox)
+	trak := func(chunk uint32) []byte {
+		stsz := box("stsz", u32(0), u32(0), u32(1), u32(uint32(len(full))))
+		stco := box("stco", u32(0), u32(1), u32(chunk))
+		return box("trak", box("mdia", box("minf", box("stbl", stsz, stco))))
+	}
+	moovFor := func(chunk uint32) []byte { return box("moov", meta, trak(chunk)) }
+	prvwBox := box("uuid", cr3PreviewUUID[:], make([]byte, 8), headed("PRVW", 12, prvw))
+	head := append(append(ftyp, moovFor(0)...), prvwBox...)
+	chunk := uint32(len(head) + 8)
+	file := append(append(append(ftyp, moovFor(chunk)...), prvwBox...), box("mdat", full)...)
+	return rawSample{"CR3", "cr3", file, [][]byte{full, prvw, thmb}}
 }
 
 func TestReadPreviews(t *testing.T) {
@@ -289,7 +356,9 @@ func TestReadPreviewsExifTool(t *testing.T) {
 			found++
 			ok := false
 			for _, p := range ps {
-				ok = ok || bytes.Equal(got, s.file[p.Offset:p.Offset+p.Length])
+				ours := s.file[p.Offset : p.Offset+p.Length]
+				ok = ok || bytes.Equal(got, ours) ||
+					bytes.HasPrefix(got, ours) && len(bytes.Trim(got[len(ours):], "\x00")) == 0
 			}
 			if !ok {
 				t.Errorf("%s: ExifTool's %s (%d bytes) isn't a preview found", s.name, tag, len(got))
