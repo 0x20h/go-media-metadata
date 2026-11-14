@@ -33,6 +33,14 @@ type XMP struct {
 	// Regions are the image's face and other regions (mwg-rs:Regions),
 	// nil without any; see Regions.
 	Regions *Regions
+	// GPS is the position in exif:GPSLatitude and exif:GPSLongitude, with
+	// exif:GPSAltitude and exif:GPSAltitudeRef: nil without a valid
+	// latitude and longitude. See parseXMPCoord for the forms read.
+	GPS *GPS
+	// DateCreated is photoshop:DateCreated, when the photo was taken, and
+	// CreateDate xmp:CreateDate, when the file was made (for a photo, as a
+	// rule, the same). nil without a valid date.
+	DateCreated, CreateDate *XMPDate
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
@@ -266,6 +274,9 @@ func (d *xmpDoc) fields() XMP {
 	x.HierarchicalKeywords = d.stringBag(nsLR, "hierarchicalSubject")
 	x.PersonInImage = d.stringBag(nsIPTCX, "PersonInImage")
 	x.Regions = d.regions()
+	x.GPS = d.xmpGPS()
+	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
+	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
 		f, err := strconv.ParseFloat(ps[0].value(), 64)
 		if err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {

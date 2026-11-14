@@ -6,7 +6,7 @@
   "exif.heic": {
     "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
     "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
-    "xmp": {}
+    "xmp": { "dateCreated": { "time": "2025-05-04T13:14:15", "precision": 5 } }
   },
   "iptc.jpg": {
     "orientation": 1,
@@ -24,12 +24,15 @@
   "all.jpg": {
     "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
     "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
-    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 },
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4,
+      "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
+      "dateCreated": { "time": "2025-05-04T13:14:15.25", "precision": 5 } },
     "iptc": { "title": "Lake", "keywords": ["lake", "snow"], "description": "A lake in the mountains" }
   },
   "all.heic": {
     "orientation": 6, "taken": "2025-05-04T13:14:15.25+02:00", "offsetKnown": true,
     "gps": { "lat": 51.5, "lon": -0.125, "alt": 35.5 },
-    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4 }
+    "xmp": { "title": "Lake", "description": "A lake in the mountains", "keywords": ["lake", "snow"], "rating": 4,
+      "dateCreated": { "time": "2025-05-04T13:14:15.25", "precision": 5 } }
   }
 }

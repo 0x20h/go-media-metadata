@@ -37,6 +37,7 @@ testdata/iphone/grid-gainmap-orientation6.heic
 testdata/exiftool/*.jpg
     A synthetic 64x48 image (a gradient with a red square, drawn and
     encoded by Go's image/jpeg; no photograph), with metadata written by
-    ExifTool 13.44 (see testdata/exiftool/README.md and make.sh). Made for
+    ExifTool 13.44, xmp-where-when.jpg by ExifTool 13.55 (see
+    testdata/exiftool/README.md and make.sh). Made for
     this project by its authors. Dedicated to the public domain under CC0
     1.0: https://creativecommons.org/publicdomain/zero/1.0/
