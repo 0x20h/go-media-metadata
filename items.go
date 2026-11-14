@@ -630,6 +630,8 @@ func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 		return readPNGXMP(r, size)
 	case isWebP(r, size):
 		return readWebPXMP(r, size)
+	case isJXL(r, size):
+		return readJXLXMP(r, size)
 	}
 	f, err := parseHEIF(r, size)
 	if err != nil {
