@@ -336,7 +336,7 @@ func parseILoc(b []byte, large bool) (*ILoc, error) {
 }
 
 // errFieldTooSmall is a value that no longer fits its field.
-var errFieldTooSmall = fmt.Errorf("an iloc value doesn't fit its field")
+var errFieldTooSmall = fmt.Errorf("mediameta: an iloc value doesn't fit its field")
 
 // ErrFieldTooSmall reports whether err is a value outgrowing its field.
 func ErrFieldTooSmall(err error) bool { return err == errFieldTooSmall }

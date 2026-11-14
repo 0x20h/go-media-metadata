@@ -54,7 +54,7 @@ const (
 // lossless JPEG. Only IFDs, boxes and the head of each candidate are read.
 //
 // A file without a preview gives none and no error; a file of none of
-// these formats gives ErrNotRAW.
+// these formats gives errNotRAW.
 func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 	var out []Preview
 	seen := map[int64]bool{}
@@ -86,7 +86,7 @@ func ReadPreviews(r io.ReaderAt, size int64) ([]Preview, error) {
 	}
 	t, ok := openRAWTIFF(r, size)
 	if !ok {
-		return nil, ErrNotRAW
+		return nil, errNotRAW
 	}
 	visit := func(ifd map[uint16]field) {
 		if o, ok := t.uint(ifd[tagJPEGOffset]); ok {

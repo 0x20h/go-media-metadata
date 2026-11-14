@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// xmpEditFiles are files of every format PlanXMPEdit writes, with an XMP
+// xmpEditFiles are files of every format planXMPEdit writes, with an XMP
 // packet and without: the HEIF layouts and sample files, JPEGs, PNGs and
 // WebPs.
 func xmpEditFiles(t testing.TB) map[string][]byte {
@@ -126,7 +126,7 @@ func TestPlanXMPEdit(t *testing.T) {
 		before := readXMPFields(t, file)
 		for _, e := range xmpEdits {
 			t.Run(name+"/"+e.name, func(t *testing.T) {
-				p, err := PlanXMPEdit(bytes.NewReader(file), int64(len(file)), e.edit)
+				p, err := planXMPEdit(bytes.NewReader(file), int64(len(file)), e.edit)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -136,7 +136,7 @@ func TestPlanXMPEdit(t *testing.T) {
 					t.Errorf("reads back as %+v, want %+v", got, want)
 				}
 				sameImage(t, file, out)
-				again, err := PlanXMPEdit(bytes.NewReader(out), int64(len(out)), e.edit)
+				again, err := planXMPEdit(bytes.NewReader(out), int64(len(out)), e.edit)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -157,11 +157,11 @@ func xmpEqual(a, b XMP) bool {
 // and nothing is planned.
 func TestPlanXMPEditErrors(t *testing.T) {
 	file := testPNG(t)
-	if _, err := PlanXMPEdit(bytes.NewReader(file), int64(len(file)), XMPEdit{Rating: ptr(6)}); err == nil {
+	if _, err := planXMPEdit(bytes.NewReader(file), int64(len(file)), XMPEdit{Rating: ptr(6)}); err == nil {
 		t.Error("a rating of 6 was planned")
 	}
 	broken := pngWithChunks(t, pngChunkBytes("iTXt", xmpITXt([]byte(`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF`))))
-	if _, err := PlanXMPEdit(bytes.NewReader(broken), int64(len(broken)), XMPEdit{Title: ptr("x")}); err == nil {
+	if _, err := planXMPEdit(bytes.NewReader(broken), int64(len(broken)), XMPEdit{Title: ptr("x")}); err == nil {
 		t.Error("a packet that doesn't parse was replaced")
 	}
 }
@@ -178,7 +178,7 @@ func TestPlanXMPEditWithExifTool(t *testing.T) {
 	names := map[string]string{}
 	warned := map[string]string{}
 	for name, file := range xmpEditFiles(t) {
-		p, err := PlanXMPEdit(bytes.NewReader(file), int64(len(file)), edit)
+		p, err := planXMPEdit(bytes.NewReader(file), int64(len(file)), edit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -254,7 +254,7 @@ func FuzzPlanXMPEdit(f *testing.F) {
 	edit := xmpEdits[0].edit
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
-			p, err := PlanXMPEdit(bytes.NewReader(data), int64(len(data)), edit)
+			p, err := planXMPEdit(bytes.NewReader(data), int64(len(data)), edit)
 			if err != nil {
 				return
 			}
@@ -280,7 +280,7 @@ func FuzzPlanXMPEdit(f *testing.F) {
 					}
 				}
 			}
-			again, err := PlanXMPEdit(bytes.NewReader(out), int64(len(out)), edit)
+			again, err := planXMPEdit(bytes.NewReader(out), int64(len(out)), edit)
 			if err != nil {
 				t.Fatalf("the edited file can't be edited again: %v", err)
 			}

@@ -68,8 +68,8 @@ intact.
 
 `ReadVideo` reads a movie's recording date, duration, GPS position,
 orientation and size, make and model, and Live Photo content identifier;
-`SetVideoRotation` and `SetVideoOrientation` set its orientation in place;
-`EditVideo` and `PlanVideoEdit` set its recording date and place.
+`SetRotation` and `SetOrientation` set its orientation in place;
+`SetVideoMetadata` and `PlanVideoMetadata` set its recording date and place.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,

@@ -24,7 +24,7 @@ unchanged.
   writers put it. A segment without TIFF data is skipped for the next
   one, as ExifTool does. The fields are read as [exif](exif.md)
   describes.
-- **Writing** (`SetExif`, `PlanExif`, `PlanExifEdit`):
+- **Writing** (`SetExif`, `PlanExif`, `PlanMetadata`):
   - The first Exif segment is written in place when the new TIFF data
     fits, with the rest padded with zeros. The segment's own header bytes
     stay as they were.

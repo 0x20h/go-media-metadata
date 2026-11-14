@@ -36,7 +36,7 @@ against ExifTool on the test movies.
 
 ## Writing the orientation
 
-`SetVideoRotation`, `SetVideoOrientation` and their plans set a movie's
+`SetRotation`, `SetOrientation` and their plans set a movie's
 orientation through each video track's matrix: 36 bytes at a fixed place
 in its track header (`tkhd`).
 
@@ -53,7 +53,7 @@ ExifTool and FFmpeg read the rotations written.
 
 ## Writing the date and place
 
-`EditVideo` and `PlanVideoEdit` take a `VideoEdit`: a recording date
+`SetVideoMetadata` and `PlanVideoMetadata` take a `VideoEdit`: a recording date
 (`Created`), a place (`GPS`), or the place removed (`RemoveGPS`).
 
 Where each value is written:

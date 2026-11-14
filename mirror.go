@@ -7,8 +7,12 @@ import (
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
 
-// SetOrientation writes to dst the HEIF file in src (size bytes) with its
-// primary image shown at o, any of the eight Exif orientations: its irot
+// SetOrientation writes to dst the file in src (size bytes) with its image
+// or video shown at o, any of the eight Exif orientations. Every format
+// this package writes is taken; it's told from the file (see SetRotation
+// for what each format has written).
+//
+// For a HEIF file it's the primary image: its irot
 // and imir properties are set to show it. An imir it already has is kept
 // for a mirrored o (the rotation is chosen for its axis) and dropped for
 // one that isn't. A mirror it needs has the axis Apple's ImageIO writes
@@ -22,18 +26,20 @@ import (
 // follows, as for SetRotation. A JPEG file gets the tag, as SetRotation
 // sets it. On an error nothing useful has been written to dst.
 func SetOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) error {
+	// HEIF is streamed without building a plan.
 	r, err := planOrientation(src, size, o)
-	if err != nil {
-		if e, ok, jerr := jpegOrientation(src, size, o); ok {
-			if jerr != nil {
-				return jerr
-			}
-			_, err := e.write(src, size, dst)
-			return err
-		}
+	if err == nil {
+		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 		return err
 	}
-	_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
+	if detectFormat(src, size) == formatHEIF {
+		return err
+	}
+	p, err := PlanOrientation(src, size, o)
+	if err != nil {
+		return err
+	}
+	_, err = p.WriteTo(dst)
 	return err
 }
 

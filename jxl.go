@@ -3,15 +3,11 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
-
-// ErrNotJXL is returned for a file that isn't a JPEG XL image.
-var ErrNotJXL = errors.New("not a JPEG XL file")
 
 // The JPEG XL container's signature box (ISO/IEC 18181-2), and a bare
 // codestream's signature (ISO/IEC 18181-1).
@@ -43,7 +39,7 @@ type jxlFile struct {
 
 func parseJXL(r io.ReaderAt, size int64) (*jxlFile, error) {
 	if !isJXL(r, size) {
-		return nil, ErrNotJXL
+		return nil, errNotJXL
 	}
 	var head [2]byte
 	if _, err := r.ReadAt(head[:], 0); err != nil {

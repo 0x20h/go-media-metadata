@@ -93,7 +93,7 @@ NEF (D2H) and an ORF (E-450) included.
 
 ## Writing the orientation
 
-`SetRAWOrientation` and `PlanRAWOrientation` change only IFD0's
+`SetOrientation`, `SetRotation` and their plans change only IFD0's
 Orientation value (for a CR3, CMT1's), where it sits: a tag with its
 value in its entry (SHORT, or LONG as some writers have it). Where the
 file's XMP packet has `tiff:Orientation`, as an attribute or an element,

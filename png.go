@@ -4,14 +4,10 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 )
-
-// ErrNotPNG is returned for a file that isn't a PNG.
-var ErrNotPNG = errors.New("not a PNG file")
 
 var pngSignature = []byte("\x89PNG\r\n\x1a\n")
 
@@ -47,7 +43,7 @@ func isPNG(r io.ReaderAt, size int64) bool {
 // pngChunks walks a PNG's chunks up to IEND.
 func pngChunks(r io.ReaderAt, size int64) ([]pngChunk, error) {
 	if !isPNG(r, size) {
-		return nil, ErrNotPNG
+		return nil, errNotPNG
 	}
 	var out []pngChunk
 	for at := int64(8); at < size; {

@@ -8,7 +8,7 @@ import (
 
 // ErrNoRoom is returned when an item can't be added: an id that doesn't
 // fit the boxes' fields, or no iinf box to list it in.
-var ErrNoRoom = fmt.Errorf("no room for another item")
+var ErrNoRoom = fmt.Errorf("mediameta: no room for another item")
 
 // AddItem lists a new item in iinf: an infe (version 2, or 3 for an id
 // past 16 bits) of type typ with an empty name, and for a "mime" item its

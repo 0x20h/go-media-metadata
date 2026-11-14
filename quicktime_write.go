@@ -9,12 +9,12 @@ import (
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
 
-// PlanVideoOrientation is SetVideoOrientation's edit, computed but not
+// planVideoOrientation is setVideoOrientation's edit, computed but not
 // written. It is always in place: each video track's matrix is 36 bytes
 // at a fixed place in its track header, so the plan patches those and
 // nothing else. A track already shown as o is left as it is, so a movie
 // already shown as o gives a plan without patches.
-func PlanVideoOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
+func planVideoOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) {
 	if !o.Valid() {
 		return nil, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
 	}
@@ -46,9 +46,9 @@ func PlanVideoOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, er
 	return &Plan{InPlace: true, Patches: patches, Size: size, NewSize: size, src: src, patches: internal}, nil
 }
 
-// PlanVideoRotation is SetVideoRotation's edit, computed but not written.
-// Like PlanVideoOrientation it is always in place.
-func PlanVideoRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
+// planVideoRotation is setVideoRotation's edit, computed but not written.
+// Like planVideoOrientation it is always in place.
+func planVideoRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 	if degrees%90 != 0 {
 		return nil, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
 	}
@@ -57,40 +57,7 @@ func PlanVideoRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) 
 		return nil, err
 	}
 	mirrored := v.Orientation.Valid() && v.Orientation.Mirrored()
-	return PlanVideoOrientation(src, size, orientationFor(mirrored, degrees))
-}
-
-// SetVideoOrientation writes to dst the QuickTime or MP4 movie in src
-// (size bytes) with every video track shown as o: each track's matrix is
-// set to that rotation or mirroring, with the translation that keeps the
-// turned picture in view. Every other byte is copied as it is, so the
-// media data and the chunk offsets stay valid. A movie whose header has a
-// matrix of its own (not the identity) is refused with ErrUnsupported.
-//
-// On an error nothing useful has been written to dst: write to a
-// temporary file and rename it over the original only on success, or
-// apply PlanVideoOrientation's patches to a copy.
-func SetVideoOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) error {
-	p, err := PlanVideoOrientation(src, size, o)
-	if err != nil {
-		return err
-	}
-	_, err = p.WriteTo(dst)
-	return err
-}
-
-// SetVideoRotation is SetVideoOrientation with the movie rotated degrees
-// clockwise (0, 90, 180 or 270; other multiples of 90 are taken modulo
-// 360), replacing any rotation it had. A mirroring is kept, as
-// SetRotation keeps an image's: a mirrored video turned 90° clockwise is
-// orientation 7.
-func SetVideoRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
-	p, err := PlanVideoRotation(src, size, degrees)
-	if err != nil {
-		return err
-	}
-	_, err = p.WriteTo(dst)
-	return err
+	return planVideoOrientation(src, size, orientationFor(mirrored, degrees))
 }
 
 // videoTrack is where a video track's matrix is, as read.
@@ -105,12 +72,12 @@ type videoTrack struct {
 // the orientation is then theirs and its together.
 func videoTracks(src io.ReaderAt, size int64) ([]videoTrack, error) {
 	if size < 8 {
-		return nil, ErrNotQuickTime
+		return nil, errNotQuickTime
 	}
 	top, err := bmff.ReadBoxes(src, 0, size)
 	if err != nil {
 		if !looksLikeMovie(src, size) {
-			return nil, ErrNotQuickTime
+			return nil, errNotQuickTime
 		}
 		return nil, err
 	}

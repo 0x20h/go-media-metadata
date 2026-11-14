@@ -154,7 +154,7 @@ var corpusEdits = map[string]func(t *testing.T, file []byte, w *corpusWant) []by
 		at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.FixedZone("+03:00", 3*3600))
 		w.Taken, w.OffsetKnown = at.Format(time.RFC3339Nano), true
 		return planOut(t, file, func() (*Plan, error) {
-			return PlanExifEdit(bytes.NewReader(file), int64(len(file)), ExifEdit{DateTimeOriginal: &at, OffsetKnown: true})
+			return planExifEdit(bytes.NewReader(file), int64(len(file)), ExifEdit{DateTimeOriginal: &at, OffsetKnown: true})
 		})
 	},
 	"xmp title": func(t *testing.T, file []byte, w *corpusWant) []byte {
@@ -176,7 +176,7 @@ var corpusEdits = map[string]func(t *testing.T, file []byte, w *corpusWant) []by
 		}
 		w.XMP.Title = "Renamed"
 		return planOut(t, file, func() (*Plan, error) {
-			return PlanXMPEdit(bytes.NewReader(file), int64(len(file)), XMPEdit{Title: ptr("Renamed")})
+			return planXMPEdit(bytes.NewReader(file), int64(len(file)), XMPEdit{Title: ptr("Renamed")})
 		})
 	},
 	"iptc keywords": func(t *testing.T, file []byte, w *corpusWant) []byte {
