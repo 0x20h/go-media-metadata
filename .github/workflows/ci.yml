@@ -6,7 +6,9 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "17 3 * * *"
+    # 02:17 UTC, outside European and American working hours. GitHub may
+    # start a scheduled run hours late, so the run is also capped below.
+    - cron: "17 2 * * *"
   workflow_dispatch:
 jobs:
   test:
@@ -36,6 +38,10 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # The nightly run fuzzes each target for 30 minutes: at most 4 at
+      # once, so pull requests still find free runners. Pull requests and
+      # main run every target at once (2 and 10 minutes).
+      max-parallel: ${{ github.event_name == 'schedule' && 4 || 20 }}
       matrix:
         # One target per line, so that pull requests adding one don't conflict.
         target:
