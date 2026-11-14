@@ -398,6 +398,7 @@ func jpegSeeds(f *testing.F) {
 func FuzzReadExif(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
+	imageIOSeeds(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			x, err := ReadExif(bytes.NewReader(data), int64(len(data)))
