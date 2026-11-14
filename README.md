@@ -89,6 +89,7 @@ change the IPTC-IIM title, keywords and description that mirror them.
   ExifTool, and `EditExif`
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
 - [IPTC](docs/iptc.md): `ParseIPTC`, `EditIPTC`, and a JPEG's IPTC-IIM
+- [Benchmarks](docs/benchmarks.md): against ExifTool, and how to repeat them
 
 ## Guarantees
 
