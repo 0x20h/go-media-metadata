@@ -31,6 +31,12 @@ et iptc-utf8.jpg -charset iptc=UTF8 -IPTC:CodedCharacterSet=UTF8 -IPTC:ObjectNam
 
 et iptc-latin1.jpg -charset iptc=Latin -IPTC:ObjectName=Grün -IPTC:Keywords=Brücke "-IPTC:Caption-Abstract=Am See"
 
+# A position and dates in XMP only: a latitude in DD,MM.mmmm form, an
+# altitude below sea level, a date with a zone and one without.
+et xmp-where-when.jpg -XMP-exif:GPSLatitude=-33.865 -XMP-exif:GPSLongitude=151.2094 \
+  -XMP-exif:GPSAltitude=12 -XMP-exif:GPSAltitudeRef#=1 \
+  "-XMP-photoshop:DateCreated=2019:12:31 23:59:59.5-05:00" "-XMP-xmp:CreateDate=2019:12:31 23:59"
+
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
   -GPSLatitude=48.137 -GPSLatitudeRef=N -GPSLongitude=11.575 -GPSLongitudeRef=E \

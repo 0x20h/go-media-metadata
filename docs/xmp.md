@@ -16,6 +16,15 @@ type XMP struct {
 	HasRating            bool
 	PersonInImage        []string // Iptc4xmpExt:PersonInImage
 	Regions              *Regions // mwg-rs:Regions, nil without any
+	GPS                  *GPS     // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
+	DateCreated          *XMPDate // photoshop:DateCreated
+	CreateDate           *XMPDate // xmp:CreateDate
+}
+
+type XMPDate struct {
+	Time        time.Time
+	OffsetKnown bool          // a time zone was written
+	Precision   DatePrecision // PrecisionYear … PrecisionSecond
 }
 ```
 
@@ -34,6 +43,36 @@ type XMP struct {
   other organisers write them) are each a path whose levels are
   separated by `|`, such as `Places|Europe|Berlin`. They're returned as
   written; splitting them into levels is the caller's.
+
+### Position and dates
+
+Read only: `EditXMP` doesn't write them, and keeps them as they are.
+
+- **GPS.** `exif:GPSLatitude` and `exif:GPSLongitude` are read in the
+  specification's forms, `DDD,MM,SSk` and `DDD,MM.mmk`, where `k` is the
+  direction (N, S, E, W, either case). The decimal degrees some writers
+  use are read too, with a direction (`51.5N`) or a sign (`-0.125`).
+  Minutes and seconds are below 60, a latitude is at most 90° and a
+  longitude 180°, and a direction must belong to its axis; otherwise
+  there is no position. `GPS` needs both coordinates. `exif:GPSAltitude`
+  is a Rational (`71/2`) or a decimal. `exif:GPSAltitudeRef` 1 puts it
+  below sea level, as in Exif.
+- **Dates.** `photoshop:DateCreated` is when the photo was taken, and
+  `xmp:CreateDate` when the file was made. The two are usually the same
+  for a camera's photo, but not for a scan. Every precision of the XMP
+  Date type is read: `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, then `Thh:mm`,
+  `Thh:mm:ss` or `Thh:mm:ss.s…`, with a time zone (`Z`, `±hh:mm`) or
+  without one. `Precision` says how much was written. Parts not written
+  are at their start, so `2025` is 1 January 2025, 00:00. With a zone,
+  `OffsetKnown` is true and `Time` is in a fixed zone of that offset.
+  Without one, `Time` is the clock time in `time.UTC`, as `Exif` reads
+  dates, and is not a UTC time. The Exif layout some writers put in XMP
+  (`2025:05:04 13:14:15`) is read too. A date that doesn't exist
+  (30 February, 24:00, a leap second, year 0) is no date. A fraction
+  finer than nanoseconds is cut there.
+- Where ExifTool reads a value leniently (a latitude past 90°, 30 February),
+  this package reads none. Otherwise the two agree, which the tests check
+  on the ExifTool and ImageIO corpora.
 
 ## Writing: EditXMP
 

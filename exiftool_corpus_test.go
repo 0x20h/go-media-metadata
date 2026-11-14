@@ -22,28 +22,62 @@ type corpusWant struct {
 	Orientation Orientation `json:"orientation"`
 	Taken       string      `json:"taken"`
 	OffsetKnown bool        `json:"offsetKnown"`
-	GPS         *struct {
-		Lat, Lon float64
-		Alt      *float64
-	} `json:"gps"`
-	XMP *struct {
-		Title, Description string
-		Keywords           []string
-		Rating             *int
-		People             []string
-		Regions            *struct {
-			W, H float64
-			Unit string
-			List []struct {
-				Name, Type string
-				X, Y, W, H float64
-			}
-		}
-	} `json:"xmp"`
-	IPTC *struct {
+	GPS         *corpusGPS  `json:"gps"`
+	XMP         *corpusXMP  `json:"xmp"`
+	IPTC        *struct {
 		Title, Description string
 		Keywords           []string
 	} `json:"iptc"`
+}
+
+type corpusGPS struct {
+	Lat, Lon float64
+	Alt      *float64
+}
+
+type corpusXMP struct {
+	Title, Description string
+	Keywords           []string
+	Rating             *int
+	People             []string
+	Regions            *struct {
+		W, H float64
+		Unit string
+		List []struct {
+			Name, Type string
+			X, Y, W, H float64
+		}
+	}
+	// GPS is the XMP's position, and DateCreated and CreateDate its
+	// dates: RFC 3339 with the offset written, without one when none was,
+	// and their precision (see DatePrecision).
+	GPS                     *corpusGPS
+	DateCreated, CreateDate *corpusDate
+}
+
+type corpusDate struct {
+	Time      string
+	Precision DatePrecision
+}
+
+func (w *corpusDate) matches(d *XMPDate) bool {
+	if w == nil || d == nil {
+		return w == nil && d == nil
+	}
+	want, err := time.Parse(time.RFC3339Nano, w.Time)
+	offset := err == nil
+	if err != nil {
+		want, err = time.ParseInLocation("2006-01-02T15:04:05.999999999", w.Time, time.UTC)
+	}
+	return err == nil && d.Time.Equal(want) && d.OffsetKnown == offset && d.Precision == w.Precision
+}
+
+func (w *corpusGPS) matches(g *GPS) bool {
+	if w == nil || g == nil {
+		return w == nil && g == nil
+	}
+	return math.Abs(g.Latitude-w.Lat) <= 1e-6 && math.Abs(g.Longitude-w.Lon) <= 1e-6 &&
+		g.HasAltitude == (w.Alt != nil) && (w.Alt == nil || math.Abs(g.Altitude-*w.Alt) <= 1e-6)
 }
 
 func corpus(t *testing.T) map[string][]byte {
@@ -84,13 +118,8 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 			t.Errorf("%s: taken %v (offset %v), want %v", name, x.DateTimeOriginal, x.OffsetKnown, taken)
 		}
 	}
-	if (x.GPS == nil) != (want.GPS == nil) {
+	if !want.GPS.matches(x.GPS) {
 		t.Errorf("%s: GPS %+v, want %+v", name, x.GPS, want.GPS)
-	} else if g := want.GPS; g != nil {
-		if math.Abs(x.GPS.Latitude-g.Lat) > 1e-6 || math.Abs(x.GPS.Longitude-g.Lon) > 1e-6 ||
-			x.GPS.HasAltitude != (g.Alt != nil) || g.Alt != nil && math.Abs(x.GPS.Altitude-*g.Alt) > 1e-6 {
-			t.Errorf("%s: GPS %+v, want %+v", name, *x.GPS, *g)
-		}
 	}
 	packet, err := ReadXMP(bytes.NewReader(file), int64(len(file)))
 	if err != nil {
@@ -104,6 +133,12 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 		if p.Title != w.Title || p.Description != w.Description || !slices.Equal(p.Keywords, w.Keywords) ||
 			p.HasRating != (w.Rating != nil) || w.Rating != nil && p.Rating != *w.Rating || !slices.Equal(p.PersonInImage, w.People) {
 			t.Errorf("%s: XMP %+v, want %+v", name, p, *w)
+		}
+		if !w.GPS.matches(p.GPS) {
+			t.Errorf("%s: XMP GPS %+v, want %+v", name, p.GPS, w.GPS)
+		}
+		if !w.DateCreated.matches(p.DateCreated) || !w.CreateDate.matches(p.CreateDate) {
+			t.Errorf("%s: XMP dates %+v, %+v, want %+v, %+v", name, p.DateCreated, p.CreateDate, w.DateCreated, w.CreateDate)
 		}
 		if r := w.Regions; r != nil {
 			want := Regions{AppliedTo: Dimensions{W: r.W, H: r.H, Unit: r.Unit}}
@@ -166,20 +201,7 @@ var corpusEdits = map[string]func(t *testing.T, file []byte, w *corpusWant) []by
 	},
 	"xmp title": func(t *testing.T, file []byte, w *corpusWant) []byte {
 		if w.XMP == nil {
-			w.XMP = &struct {
-				Title, Description string
-				Keywords           []string
-				Rating             *int
-				People             []string
-				Regions            *struct {
-					W, H float64
-					Unit string
-					List []struct {
-						Name, Type string
-						X, Y, W, H float64
-					}
-				}
-			}{}
+			w.XMP = &corpusXMP{}
 		}
 		w.XMP.Title = "Renamed"
 		return planOut(t, file, func() (*Plan, error) {

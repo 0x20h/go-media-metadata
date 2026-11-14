@@ -14,6 +14,11 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
 - `iptc-utf8.jpg`: IPTC-IIM in UTF-8 (1:90), with a byline and an IPTC
   digest.
 - `iptc-latin1.jpg`: IPTC-IIM in Latin-1, without a character set.
+- `xmp-where-when.jpg`: a position and two dates in XMP only:
+  `exif:GPSLatitude` and `exif:GPSLongitude` in the `DDD,MM.mmk` form, an
+  altitude below sea level, `photoshop:DateCreated` with a fraction and a
+  time zone, `xmp:CreateDate` to the minute without one. Written with
+  ExifTool 13.55; the other files are unchanged from 13.44.
 - `all.jpg`: Exif, XMP and IPTC together.
 
 `expected.json` holds the values written, as this package's types

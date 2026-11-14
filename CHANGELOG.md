@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `XMP.GPS`: the position in `exif:GPSLatitude`, `exif:GPSLongitude` and
+  `exif:GPSAltitude`/`GPSAltitudeRef`, in the `DDD,MM,SSk` and `DDD,MM.mmk`
+  forms and as decimal degrees.
+- `XMP.DateCreated` (`photoshop:DateCreated`) and `XMP.CreateDate`
+  (`xmp:CreateDate`), as the new `XMPDate`: the time, whether a time zone
+  was written, and how precise the date is (year through fractional
+  seconds). See [docs/xmp.md](docs/xmp.md).
+
 ## v0.1.0 (2026-11-14)
 
 The first tagged release. The API was reviewed before it (#54), and the
