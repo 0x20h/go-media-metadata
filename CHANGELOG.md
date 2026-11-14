@@ -63,6 +63,13 @@ RAF orientations aren't written: `ErrUnsupported`.
   Live Photo content identifier read; orientation, date and place
   written.
 
+### Behaviour worth knowing
+
+- A JPEG's IPTC-IIM is read from its first IPTC resource, and a write
+  keeps only that one. Apple ImageIO's XMP-only JPEGs carry an empty
+  first resource and a second one mirroring the XMP: after an IPTC write
+  the mirror is gone, the XMP keeps the values (see `docs/iptc.md`).
+
 ### Dependencies
 
 Go 1.22, and `github.com/andybalholm/brotli` (pure Go, MIT) for reading

@@ -54,6 +54,13 @@ it.
   otherwise a new segment is written and the old ones aren't copied.
 - **A JPEG without APP13** gets one after its APPn segments, before the
   tables.
+- **Only the first IIM block is kept.** Reading takes the first IPTC
+  resource, as ExifTool does; a write puts the new IIM data in its place
+  and doesn't copy a second one. Apple's ImageIO writes an XMP-only JPEG
+  with an empty IPTC resource and then a second one holding values
+  mirrored from the XMP (see the ImageIO corpus in [jpeg](jpeg.md)): after
+  a write those mirrored values are gone, and ExifTool's warning about the
+  misplaced block with them. The XMP keeps them.
 - **Image resources past one segment's 64 KB** are refused
   (`ErrUnsupported`).
 
