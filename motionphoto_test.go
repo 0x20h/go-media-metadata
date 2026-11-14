@@ -454,7 +454,7 @@ func TestReadEmbeddedMPFSizeZero(t *testing.T) {
 	}
 	// Only the MPF index lists the gain map: the container directory gets
 	// another name of the same length.
-	file := bytes.Replace(m.file, []byte("Container:Directory"), []byte("Container:Directorz"), -1)
+	file := bytes.ReplaceAll(m.file, []byte("Container:Directory"), []byte("Container:Directorz"))
 	x.order.PutUint32(file[x.entries[1].at-4:], 0) // the gain map's size
 	e, err := ReadEmbedded(bytes.NewReader(file), int64(len(file)))
 	if err != nil {
