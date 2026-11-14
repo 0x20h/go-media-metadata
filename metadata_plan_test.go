@@ -158,6 +158,9 @@ func FuzzPlanMetadata(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
+			if iim, err := ReadIPTC(bytes.NewReader(data), int64(len(data))); err == nil && iim != nil {
+				_, _ = ParseIPTC(iim)
+			}
 			for _, e := range edits {
 				p, err := PlanMetadata(bytes.NewReader(data), int64(len(data)), e)
 				if err != nil {

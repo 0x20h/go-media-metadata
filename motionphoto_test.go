@@ -306,8 +306,77 @@ func FuzzReadEmbedded(f *testing.F) {
 					t.Fatal("the video changed")
 				}
 			}
+			// Exif, IPTC and XMP at once: the writes that move what comes
+			// after them most. The MPF images stay where the index says.
+			before := mpfImages(data)
+			d := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+			p, err = PlanMetadata(bytes.NewReader(data), int64(len(data)), MetadataEdit{
+				Exif: &ExifEdit{DateTimeOriginal: &d},
+				XMP:  &XMPEdit{Title: &long},
+				IPTC: &IPTCEdit{Keywords: &[]string{"k", "l"}},
+			})
+			if err != nil {
+				return
+			}
+			checkPlan(t, data, p)
+			got := written(t, p)
+			after := mpfImages(got)
+			if before.ok && !after.ok {
+				t.Fatal("the MPF index no longer reads")
+			}
+			if before.ok {
+				if len(after.images) != len(before.images) {
+					t.Fatalf("%d MPF images, were %d", len(after.images), len(before.images))
+				}
+				for i, im := range before.images {
+					a := after.images[i]
+					if !bytes.Equal(got[a.at:a.at+a.size], data[im.at:im.at+im.size]) {
+						t.Fatalf("MPF image %d isn't where the index says after the write", i+1)
+					}
+				}
+				if before.primaryExact && after.primary != before.primary+int64(len(got)-len(data)) {
+					t.Fatalf("the primary's MPF size %d, was %d, the file grew by %d", after.primary, before.primary, len(got)-len(data))
+				}
+			}
 		})
 	})
+}
+
+// mpfIndex of a file, for the fuzz check: the images after the first that
+// lie inside the file, and the first one's size. primaryExact says that
+// size reaches exactly to the first of them.
+type mpfCheck struct {
+	ok           bool
+	images       []struct{ at, size int64 }
+	primary      int64
+	primaryExact bool
+}
+
+func mpfImages(file []byte) mpfCheck {
+	var c mpfCheck
+	f, err := parseJPEG(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		return c
+	}
+	x, err := f.mpf(bytes.NewReader(file))
+	if err != nil || len(x.entries) < 2 {
+		return c
+	}
+	c.primary = int64(x.entries[0].size)
+	first := int64(-1)
+	for _, e := range x.entries[1:] {
+		at, n := x.base+int64(e.offset), int64(e.size)
+		if e.offset == 0 || n == 0 || at < 0 || at+n > int64(len(file)) {
+			return mpfCheck{}
+		}
+		c.images = append(c.images, struct{ at, size int64 }{at, n})
+		if first < 0 || at < first {
+			first = at
+		}
+	}
+	c.ok = true
+	c.primaryExact = c.primary == first
+	return c
 }
 
 // ExifTool extracts the same video and gain map, before and after every
