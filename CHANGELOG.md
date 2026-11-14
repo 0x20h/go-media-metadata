@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0 (unreleased)
+## v0.1.0 (2026-11-14)
 
 The first tagged release. The API was reviewed before it (#54), and the
 changes below break code written against earlier commits.
