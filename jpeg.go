@@ -239,6 +239,9 @@ func ReadExif(r io.ReaderAt, size int64) (Exif, error) {
 	if isWebP(r, size) {
 		return readWebPExif(r, size)
 	}
+	if isJXL(r, size) {
+		return readJXLExif(r, size)
+	}
 	if x, ok, err := readRAWExif(r, size); ok {
 		return x, err
 	}

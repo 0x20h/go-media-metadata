@@ -125,6 +125,9 @@ func planChunked(src io.ReaderAt, size int64, kind metadataKind, edit func(old [
 	case isWebP(src, size):
 		p, err := planWebPChunk(src, size, kind, edit)
 		return p, true, err
+	case isJXL(src, size):
+		p, err := planJXLBox(src, size, kind, edit)
+		return p, true, err
 	}
 	return nil, false, nil
 }

@@ -199,6 +199,8 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			x, err = readPNGExif(r, size)
 		case isWebP(r, size):
 			x, err = readWebPExif(r, size)
+		case isJXL(r, size):
+			return readJXLOrientation(r, size)
 		default:
 			rx, ok, rerr := readRAWExif(r, size)
 			if !ok {
