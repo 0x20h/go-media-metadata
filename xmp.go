@@ -20,6 +20,10 @@ type XMP struct {
 	Title, Description string
 	// Keywords are dc:subject's items, in order.
 	Keywords []string
+	// HierarchicalKeywords are lr:hierarchicalSubject's items, in order,
+	// as written: each a path whose levels are separated by "|", such as
+	// "Places|Europe|Berlin".
+	HierarchicalKeywords []string
 	// Rating is xmp:Rating, -1 (rejected) or 0 to 5, when HasRating. A
 	// rating that isn't one of those whole numbers reads as none.
 	Rating    int
@@ -41,6 +45,11 @@ type XMPEdit struct {
 	// Keywords sets dc:subject. nil leaves it as it is; an empty list
 	// removes it.
 	Keywords *[]string
+	// HierarchicalKeywords sets lr:hierarchicalSubject, each item as given
+	// (levels separated by "|"). nil leaves it as it is; an empty list
+	// removes it. dc:subject isn't changed with it: set Keywords too to
+	// keep the two in step.
+	HierarchicalKeywords *[]string
 	// Rating sets xmp:Rating (-1 to 5). nil leaves it as it is;
 	// RemoveRating removes it.
 	Rating       *int
@@ -60,8 +69,11 @@ const (
 	nsX     = "adobe:ns:meta/"
 	nsDC    = "http://purl.org/dc/elements/1.1/"
 	nsXMP   = "http://ns.adobe.com/xap/1.0/"
+	nsLR    = "http://ns.adobe.com/lightroom/1.0/"
 	nsXMLNS = "xmlns"
 )
+
+func init() { preferredPrefix[nsLR] = "lr" }
 
 // preferredPrefix is the prefix a namespace gets when this package has to
 // declare it.
@@ -251,6 +263,7 @@ func (d *xmpDoc) fields() XMP {
 	x.Title = d.langAlt(nsDC, "title")
 	x.Description = d.langAlt(nsDC, "description")
 	x.Keywords = d.stringBag(nsDC, "subject")
+	x.HierarchicalKeywords = d.stringBag(nsLR, "hierarchicalSubject")
 	x.PersonInImage = d.stringBag(nsIPTCX, "PersonInImage")
 	x.Regions = d.regions()
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
@@ -288,8 +301,11 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			return nil, fmt.Errorf("mediameta: text that isn't UTF-8")
 		}
 	}
-	if edit.Keywords != nil {
-		for _, k := range *edit.Keywords {
+	for _, list := range []*[]string{edit.Keywords, edit.HierarchicalKeywords} {
+		if list == nil {
+			continue
+		}
+		for _, k := range *list {
 			if !utf8.ValidString(k) {
 				return nil, fmt.Errorf("mediameta: a keyword that isn't UTF-8")
 			}
@@ -321,6 +337,9 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 	}
 	if edit.Keywords != nil {
 		changed = d.setBag(nsDC, "subject", *edit.Keywords) || changed
+	}
+	if edit.HierarchicalKeywords != nil {
+		changed = d.setBag(nsLR, "hierarchicalSubject", *edit.HierarchicalKeywords) || changed
 	}
 	if edit.Rating != nil {
 		changed = d.setSimple(nsXMP, "Rating", strconv.Itoa(*edit.Rating)) || changed

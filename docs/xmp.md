@@ -9,12 +9,13 @@ extended XMP is covered in [jpeg](jpeg.md).
 
 ```go
 type XMP struct {
-	Title, Description string   // dc:title, dc:description
-	Keywords           []string // dc:subject
-	Rating             int      // xmp:Rating, -1 to 5, when HasRating
-	HasRating          bool
-	PersonInImage      []string // Iptc4xmpExt:PersonInImage
-	Regions            *Regions // mwg-rs:Regions, nil without any
+	Title, Description   string   // dc:title, dc:description
+	Keywords             []string // dc:subject
+	HierarchicalKeywords []string // lr:hierarchicalSubject, "A|B|C" as written
+	Rating               int      // xmp:Rating, -1 to 5, when HasRating
+	HasRating            bool
+	PersonInImage        []string // Iptc4xmpExt:PersonInImage
+	Regions              *Regions // mwg-rs:Regions, nil without any
 }
 ```
 
@@ -29,21 +30,30 @@ type XMP struct {
   `<dc:subject>one</dc:subject>`) are read too.
 - A rating is a Real. `3.0` reads as 3; a fractional or out-of-range
   rating reads as none.
+- Hierarchical keywords (`lr:hierarchicalSubject`, as Lightroom and
+  other organisers write them) are each a path whose levels are
+  separated by `|`, such as `Places|Europe|Berlin`. They're returned as
+  written; splitting them into levels is the caller's.
 
 ## Writing: EditXMP
 
 ```go
 type XMPEdit struct {
-	Title, Description *string   // nil leaves; "" removes
-	Keywords           *[]string // nil leaves; empty removes
-	Rating             *int      // -1 to 5
-	RemoveRating       bool
-	PersonInImage      *[]string // nil leaves; empty removes
-	Regions            *Regions  // as a whole; no regions removes
+	Title, Description   *string   // nil leaves; "" removes
+	Keywords             *[]string // nil leaves; empty removes
+	HierarchicalKeywords *[]string // nil leaves; empty removes
+	Rating               *int      // -1 to 5
+	RemoveRating         bool
+	PersonInImage        *[]string // nil leaves; empty removes
+	Regions              *Regions  // as a whole; no regions removes
 }
 ```
 
-`EditXMP` changes those properties and keeps everything else:
+`EditXMP` changes those properties and keeps everything else. Keywords
+and hierarchical keywords are separate properties: setting one leaves the
+other, so a caller that keeps them in step sets both.
+
+It keeps:
 
 - other properties, and a title's other languages;
 - namespaces as declared, comments, whitespace between elements, and
