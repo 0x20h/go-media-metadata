@@ -13,28 +13,33 @@ import (
 )
 
 // ExifEdit is a change to Exif data. A field left at its zero value
-// leaves that part of the data as it is.
+// leaves that part of the data as it is, so the zero ExifEdit changes
+// nothing.
 type ExifEdit struct {
-	// Orientation sets IFD0's Orientation tag (1 to 8).
+	// Orientation sets IFD0's Orientation tag (1 to 8). 0 leaves it as it
+	// is.
 	Orientation Orientation
 
 	// DateTimeOriginal sets the DateTimeOriginal tag to its clock time,
 	// and SubSecTimeOriginal to its fraction of a second (removed for a
 	// whole second). With OffsetKnown, OffsetTimeOriginal is set to its
 	// zone's offset; without, an OffsetTimeOriginal tag is removed, so no
-	// stale offset is read with the new time.
+	// stale offset is read with the new time. nil leaves the date as it
+	// is.
 	DateTimeOriginal *time.Time
 	OffsetKnown      bool
 
 	// DateTimeDigitized sets the DateTimeDigitized tag (ExifTool's
 	// CreateDate) as DateTimeOriginal sets its own: SubSecTimeDigitized,
-	// and OffsetTimeDigitized with OffsetKnown, removed otherwise.
+	// and OffsetTimeDigitized with OffsetKnown, removed otherwise. nil
+	// leaves the date as it is.
 	DateTimeDigitized *time.Time
 
 	// GPS sets the position: latitude and longitude with their
 	// references, and the altitude with its reference when HasAltitude
-	// (an altitude without one is removed). RemoveGPS removes those tags
-	// instead; the GPS IFD's other tags stay.
+	// (an altitude without one is removed). nil leaves the position as it
+	// is; RemoveGPS removes those tags instead (the GPS IFD's other tags
+	// stay).
 	GPS       *GPS
 	RemoveGPS bool
 
@@ -44,8 +49,8 @@ type ExifEdit struct {
 	// XPTitle tag (Windows' title): UTF-16 little-endian in BYTE data,
 	// NUL-terminated, a character past U+FFFF as a surrogate pair, as
 	// Windows reads it (ExifTool reads and writes UCS-2: it keeps such a
-	// character's low 16 bits). "" removes the tag. Text with a NUL, or that isn't
-	// UTF-8, is refused.
+	// character's low 16 bits). nil leaves the tag as it is; "" removes
+	// it. Text with a NUL, or that isn't UTF-8, is refused.
 	ImageDescription, XPTitle *string
 }
 

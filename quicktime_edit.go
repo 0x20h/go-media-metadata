@@ -12,18 +12,20 @@ import (
 )
 
 // VideoEdit is a change to a movie's recording date and place. A field
-// left at its zero value leaves that part as it is.
+// left at its zero value leaves that part as it is, so the zero VideoEdit
+// changes nothing.
 type VideoEdit struct {
 	// Created sets the recording date: the Keys entry
 	// com.apple.quicktime.creationdate, as the time with its zone's
 	// offset; the user data's ©day where the movie has one; and the movie
-	// header's creation time, in UTC, where its field can hold it.
+	// header's creation time, in UTC, where its field can hold it. nil
+	// leaves the date as it is.
 	Created *time.Time
 
 	// GPS sets the place: the Keys entry
 	// com.apple.quicktime.location.ISO6709, and the user data's ©xyz
 	// where the movie has one. The altitude is written when HasAltitude.
-	// RemoveGPS removes both instead.
+	// nil leaves the place as it is; RemoveGPS removes both instead.
 	GPS       *GPS
 	RemoveGPS bool
 }
