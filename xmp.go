@@ -36,26 +36,29 @@ type XMP struct {
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
-// as it is.
+// as it is, so the zero XMPEdit changes nothing.
 type XMPEdit struct {
 	// Title and Description set dc:title and dc:description's default
-	// language, keeping their other languages; "" removes the property.
+	// language, keeping their other languages. nil leaves the property as
+	// it is; "" removes it.
 	Title, Description *string
-	// Keywords sets dc:subject; an empty list removes it.
+	// Keywords sets dc:subject. nil leaves it as it is; an empty list
+	// removes it.
 	Keywords *[]string
 	// HierarchicalKeywords sets lr:hierarchicalSubject, each item as given
 	// (levels separated by "|"). nil leaves it as it is; an empty list
 	// removes it. dc:subject isn't changed with it: set Keywords too to
 	// keep the two in step.
 	HierarchicalKeywords *[]string
-	// Rating sets xmp:Rating (-1 to 5); RemoveRating removes it.
+	// Rating sets xmp:Rating (-1 to 5). nil leaves it as it is;
+	// RemoveRating removes it.
 	Rating       *int
 	RemoveRating bool
-	// PersonInImage sets Iptc4xmpExt:PersonInImage; an empty list removes
-	// it.
+	// PersonInImage sets Iptc4xmpExt:PersonInImage. nil leaves it as it
+	// is; an empty list removes it.
 	PersonInImage *[]string
-	// Regions sets mwg-rs:Regions as a whole; one without regions removes
-	// it. Fields of the old regions that Region doesn't model (a region's
+	// Regions sets mwg-rs:Regions as a whole. nil leaves it as it is; one
+	// without regions removes it. Fields of the old regions that Region doesn't model (a region's
 	// rotation, extensions) aren't kept.
 	Regions *Regions
 }
