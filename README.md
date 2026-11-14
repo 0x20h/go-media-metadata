@@ -56,6 +56,7 @@ Early, and growing format by format.
 | JPEG | read, write (Exif tag) | read, write, edit | read, write, edit, extended XMP |
 | PNG, WebP | read, write (Exif tag) | read, write, edit | read, write, edit |
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2; RAF read only) | read, write in place | read | read |
+| JPEG XL | read (codestream) | read, write, edit | read, write, edit |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 
 `ReadPreviews` finds the JPEG previews a camera RAW embeds, with their
@@ -82,8 +83,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
   errors
 - Formats, covering where each value lives and how it's written:
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
-  [PNG and WebP](docs/png-webp.md), [Camera RAW](docs/raw.md),
-  [QuickTime and MP4](docs/quicktime.md)
+  [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
+  [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md)
 - [Exif](docs/exif.md): the fields, writers' quirks compared with
   ExifTool, and `EditExif`
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`

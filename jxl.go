@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
-	"github.com/andybalholm/brotli"
 )
 
 // ErrNotJXL is returned for a file that isn't a JPEG XL image.
@@ -109,14 +108,7 @@ func (f *jxlFile) content(r io.ReaderAt, i int) ([]byte, error) {
 	if b.Type != bmff.T("brob") {
 		return p, nil
 	}
-	out, err := io.ReadAll(io.LimitReader(brotli.NewReader(bytes.NewReader(p[4:])), maxJXLMetadata+1))
-	if err != nil {
-		return nil, fmt.Errorf("%w: a brob box that doesn't decompress: %v", ErrMalformed, err)
-	}
-	if len(out) > maxJXLMetadata {
-		return nil, fmt.Errorf("%w: a brob box past %d bytes", ErrUnsupported, maxJXLMetadata)
-	}
-	return out, nil
+	return unbrob(p[4:])
 }
 
 // readJXLBox is the content of the first box holding kind, nil without
