@@ -146,6 +146,7 @@ func TestPlanMetadataIPTCOnlyInJPEG(t *testing.T) {
 func FuzzPlanMetadata(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
+	imageIOSeeds(f)
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}

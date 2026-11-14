@@ -156,3 +156,11 @@ checks that the change reads back, the rest stays and the image data is
 untouched. Where exiftool is installed, it also checks that ExifTool's
 validation adds no warning and the IPTC digest stays current. The files
 are also seeds for the JPEG fuzz targets.
+
+A second corpus, `testdata/imageio-corpus`, holds JPEG and HEIC files
+whose metadata Apple's ImageIO wrote (its `make.swift` regenerates them
+on macOS). ImageIO lays metadata out differently: merging XMP rewrites
+the IPTC from it, a HEIC always gets an XMP item, and an XMP-only JPEG
+gets an empty IPTC block followed by a second one. The same reads and
+writes are checked on it, with ExifTool's validation allowed to lose a
+warning but not gain one. Its files seed the JPEG and HEIF fuzz targets.

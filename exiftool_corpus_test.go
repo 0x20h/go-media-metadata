@@ -117,6 +117,13 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 	} else if packet != nil && want.IPTC == nil {
 		t.Errorf("%s: XMP where none was written", name)
 	}
+	// IPTC-IIM is read and written in JPEG only.
+	if !isJPEG(bytes.NewReader(file), int64(len(file))) {
+		if want.IPTC != nil {
+			t.Errorf("%s: IPTC expected in a file that isn't a JPEG", name)
+		}
+		return
+	}
 	iim, err := ReadIPTC(bytes.NewReader(file), int64(len(file)))
 	if err != nil {
 		t.Fatal(err)

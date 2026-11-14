@@ -19,6 +19,14 @@ testdata/imageio/b-orientation6.heic
     Made for this project by its authors. Dedicated to the public domain
     under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
+testdata/imageio-corpus/*.jpg
+testdata/imageio-corpus/*.heic
+    A synthetic 64x48 image (a gradient with a red square, drawn with
+    Core Graphics; no photograph), written as JPEG and HEIC by Apple
+    ImageIO on macOS 26.6 with the metadata make.swift sets. Made for
+    this project by its authors. Dedicated to the public domain under
+    CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
 testdata/iphone/grid-gainmap-orientation6.heic
     A photo taken with an iPhone 12 Pro on iOS 27.2, as the camera wrote
     it: a grid of tiles, a thumbnail and an HDR gain map sharing one irot
