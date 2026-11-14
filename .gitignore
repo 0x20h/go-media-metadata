@@ -3,3 +3,6 @@
 *.out
 /testdata/fuzz/*/cache/
 coverage.*
+
+# Camera RAW samples, downloaded by scripts/fetch-raw-samples.sh
+/testdata/raw-samples/

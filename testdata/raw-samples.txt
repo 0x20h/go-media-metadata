@@ -1,0 +1,15 @@
+# Camera RAW samples from https://raw.pixls.us, each released by its
+# uploader under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+# Not committed: scripts/fetch-raw-samples.sh downloads them into
+# testdata/raw-samples/ (git-ignored) and checks these SHA-256 sums.
+# name  sha256  url
+arw.arw  a35ebb2fbec929daa5beb20d1ce5c15a8aac7b1a7a231455387f3df8a7442e07  https://raw.pixls.us/getfile.php/1582/nice/Sony%20-%20ILCE-7S%20-%2014bit%2014bit%20compressed%20%283:2%29.ARW
+cr2.cr2  4b47ba27c0090efa091aaf99babc76d9a3e6f6f121b443d6c58c3ce7275cd770  https://raw.pixls.us/getfile.php/1230/nice/Canon%20-%20EOS%20Digital%20Rebel%20XT%20-%20RAW%20%283:2%29.CR2
+cr3.cr3  74abb0a113d075ad9887a058082f40dd2a938c4813a08474d82356f11a027778  https://raw.pixls.us/getfile.php/4659/nice/Canon%20-%20EOS%20R6%20-%203:2.CR3
+dng-camera.dng  80ae0b8fdce3f58286fc194513c6ec0080ab07caca753408b00ca72c90e5ad0c  https://raw.pixls.us/getfile.php/7280/nice/Sigma%20-%20fp%20-%208bit%20%2816:9%29.DNG
+dng-iphone.dng  845fee4f09c832af3728778737f5ae9b99124debb821b6e2066b94aed1daa91c  https://raw.pixls.us/getfile.php/915/nice/Apple%20-%20iPhone%206s%20Plus%20-%2016bit%20%284:3%29.DNG
+dng-phone.dng  f1793dd915e12a7c7c0a8a83cab269f05ae99cc6155e81dc913feed57e6ce8a5  https://raw.pixls.us/getfile.php/3662/nice/Xiaomi%20-%20MI%208%20-%2016bit%20%2816:9%29.dng
+nef.nef  155edb938f884ea7372ce98d4ff5f965c3e413b43b95bc9923da6e92082cf914  https://raw.pixls.us/getfile.php/5227/nice/Nikon%20-%20D2H%20-%2012bit%2012bit%20compressed%20%28Lossy%20%28type%201%29%29%20%283:2%29.NEF
+orf.orf  2bfdade72439017a60a47aad1e5bbcb1aca36f2be7a21e94a4257a678fb6f4da  https://raw.pixls.us/getfile.php/5424/nice/Olympus%20-%20E-10%20-%2016bit%20%284:3%29.ORF
+raf.raf  dabd5e74521a6980156be9fd4b88d0c37b0fe4d0e0e6f5c12db8cffff1b76297  https://raw.pixls.us/getfile.php/2726/nice/Fujifilm%20-%20FinePix%20S5000%20-%204:3.RAF
+rw2.rw2  d142a23aca836053ed53e9ce3cb3ed2d434541d734d71a94a6eefadcd08bd31b  https://raw.pixls.us/getfile.php/7008/nice/Panasonic%20-%20DMC-LX7%20-%201:1.RW2
