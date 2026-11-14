@@ -98,15 +98,14 @@ removes them. Setting the same regions again changes nothing.
 of a sample laid out as Lightroom and other writers do, and the ones
 `EditXMP` writes, as `ParseXMP` does.
 
-## Editing a file's packet: PlanXMPEdit
+## Editing a file's packet: PlanMetadata
 
 ```go
-func PlanXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error)
-func EditFileXMP(src io.ReaderAt, size int64, dst io.Writer, edit XMPEdit) error
+p, err := mediameta.PlanMetadata(src, size, mediameta.MetadataEdit{XMP: &edit})
 ```
 
-`PlanXMPEdit` edits the XMP packet of a JPEG, HEIF, PNG or WebP file in
-three steps:
+`PlanMetadata`'s XMP part edits the XMP packet of a JPEG, HEIF, PNG, WebP
+or JPEG XL file in three steps:
 
 1. It reads the packet as `ReadXMP` does, with a JPEG's extended XMP
    merged in.
@@ -118,7 +117,7 @@ in place: a HEIF item's data, a JPEG's XMP segment, or a PNG or WebP
 chunk. A longer one goes where `SetXMP` puts it, and the old one doesn't
 stay in the file. A file without XMP gets a new packet holding the edit.
 A packet this package can't parse is refused with `EditXMP`'s error
-rather than replaced, since the rest of it would be lost. `EditFileXMP`
+rather than replaced, since the rest of it would be lost. `SetMetadata`
 streams the same edit to a writer.
 
 ## Parsing untrusted XML

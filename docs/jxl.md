@@ -21,7 +21,7 @@ signature box `JXL `. Metadata lives only in a container.
 
 ## Writing
 
-`PlanExif`, `PlanXMP`, `PlanExifEdit`, `PlanXMPEdit`, `PlanMetadata` and
+`PlanExif`, `PlanXMP`, `PlanMetadata` and
 their `Set` forms write the Exif and XMP boxes. The codestream is copied
 byte for byte.
 

@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-// ErrOrientationInExif is returned by planExifEdit for an edit that sets
+// ErrOrientationInExif is returned by PlanMetadata for an Exif part that sets
 // the Orientation tag: a HEIF image is shown by its irot and imir
 // properties, so the tag alone would only disagree with them. Use
 // SetOrientation, which sets both.

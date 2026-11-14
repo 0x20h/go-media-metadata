@@ -161,8 +161,8 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 	return orientationOf(t), nil
 }
 
-// ReadOrientation returns how the image in the HEIF or JPEG file in r
-// (size bytes) is shown.
+// ReadOrientation returns how the image or video in r (size bytes) is
+// shown.
 //
 // For HEIF it's the primary image's irot and imir properties as an
 // Orientation, 1 when it has neither. The Exif Orientation tag isn't
@@ -172,7 +172,13 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 // tag, 1 without one (or with a value outside 1 to 8, which readers
 // ignore).
 //
-// A file of none of these formats gives an error that is errNotHEIF.
+// For PNG and WebP it's the Exif Orientation tag too, and for a RAF the
+// tag in its embedded JPEG. For JPEG XL it's the codestream header's
+// orientation, which decoders apply. For QuickTime and MP4 it's the first
+// video track's matrix: ErrUnsupported for a movie without a video track,
+// or with a matrix that is no rotation or mirroring.
+//
+// A file of none of these formats gives ErrUnknownFormat.
 func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	f, err := parseHEIF(r, size)
 	if err != nil {
@@ -200,7 +206,12 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 		default:
 			rx, ok, rerr := readRAWExif(r, size)
 			if !ok {
-				return 0, err
+				// The HEIF parser's error says what's wrong with an ISO
+				// base media file; anything else is no format of ours.
+				if startsWithFtyp(r, size) {
+					return 0, err
+				}
+				return 0, ErrUnknownFormat
 			}
 			x, err = rx, rerr
 		}
@@ -215,9 +226,13 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	return f.orientation()
 }
 
-// SetRotation writes to dst the HEIF file in src (size bytes) with its
-// primary image rotated degrees clockwise (0, 90, 180 or 270; other
-// multiples of 90 are taken modulo 360): its irot property is set so the
+// SetRotation writes to dst the file in src (size bytes) with its image or
+// video rotated degrees clockwise (0, 90, 180 or 270; other multiples of
+// 90 are taken modulo 360), replacing any rotation it had and keeping a
+// mirroring. Every format this package writes is taken; it's told from
+// the file.
+//
+// For a HEIF file it's the primary image: its irot property is set so the
 // image shows that, replacing any rotation it had. A mirroring (imir) is
 // kept, and comes first as in the Exif numbering: a mirrored image
 // rotated 90 shows orientation 7, Orientation.Degrees() of what it
@@ -240,17 +255,29 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 // EditExif, which adds the entry to IFD0 and keeps every other byte's
 // offset.
 //
+// The other formats, for SetRotation and SetOrientation alike:
+//
+//   - PNG and WebP: the Exif Orientation tag, in the eXIf or EXIF chunk.
+//   - Camera RAW (TIFF-based, CR3): IFD0's Orientation value where it
+//     is, and an XMP packet's tiff:Orientation, in place. A file without
+//     the tag, and a RAF, are refused (ErrUnsupported).
+//   - QuickTime and MP4: each video track's matrix, in place.
+//   - JPEG XL: refused (ErrUnsupported); its orientation is in the
+//     codestream header.
+//
+// A file of no format this package reads gives ErrUnknownFormat.
+//
 // On an error nothing useful has been written to dst: write to a
 // temporary file and rename it over the original only on success.
 // PlanRotation computes the same edit and can apply it in place.
 func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error {
-	if detectFormat(src, size) == formatHEIF {
-		// Streamed without building a plan.
-		r, err := planRotation(src, size, degrees)
-		if err != nil {
-			return err
-		}
+	// HEIF is streamed without building a plan.
+	r, err := planRotation(src, size, degrees)
+	if err == nil {
 		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
+		return err
+	}
+	if detectFormat(src, size) == formatHEIF {
 		return err
 	}
 	p, err := PlanRotation(src, size, degrees)

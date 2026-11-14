@@ -51,12 +51,12 @@ type Plan struct {
 // changed ones and still make one patch: fewer, longer writes.
 const patchMergeGap = 8
 
-// PlanRotation is SetRotation's edit, computed but not written: the HEIF
-// file in src (size bytes) with its primary image rotated degrees
-// clockwise. It reads the boxes before the image data and the head of the
-// Exif item, never the image data.
+// PlanRotation is SetRotation's edit, computed but not written: the file
+// in src (size bytes), of any format SetRotation takes, rotated degrees
+// clockwise. It reads the metadata, never the image or media data. A
+// camera RAW's and a movie's edit is always in place.
 //
-// The edit is in place when the meta box keeps its size: in the usual
+// For a HEIF file the edit is in place when the meta box keeps its size: in the usual
 // case (an irot only the rotated images use, as in iPhone and ImageIO
 // files) one byte of it and the two bytes of the Exif Orientation tag.
 // An appended irot, a widened ipma, or item offsets that move change the
@@ -66,13 +66,15 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 	if degrees%90 != 0 {
 		return nil, fmt.Errorf("mediameta: rotation of %d°: not a multiple of 90", degrees)
 	}
+	// HEIF first, at no extra cost; the format is looked at only when
+	// that fails.
+	r, herr := planRotation(src, size, degrees)
+	if herr == nil {
+		return r.plan(src, size), nil
+	}
 	switch detectFormat(src, size) {
 	case formatHEIF:
-		r, err := planRotation(src, size, degrees)
-		if err != nil {
-			return nil, err
-		}
-		return r.plan(src, size), nil
+		return nil, herr
 	case formatJPEG:
 		e, _, err := jpegRotation(src, size, degrees)
 		if err != nil {
@@ -92,7 +94,7 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 }
 
 // PlanOrientation is SetOrientation's edit, computed but not written, as
-// PlanRotation is SetRotation's. It is in place when the meta box keeps
+// PlanRotation is SetRotation's. For a HEIF file it is in place when the meta box keeps
 // its size: a rotation that keeps the mirroring (or its absence) changes
 // the irot byte as PlanRotation does; adding or removing a mirror changes
 // an association, and with it the size.
@@ -100,13 +102,13 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 	if !o.Valid() {
 		return nil, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
 	}
+	r, herr := planOrientation(src, size, o)
+	if herr == nil {
+		return r.plan(src, size), nil
+	}
 	switch detectFormat(src, size) {
 	case formatHEIF:
-		r, err := planOrientation(src, size, o)
-		if err != nil {
-			return nil, err
-		}
-		return r.plan(src, size), nil
+		return nil, herr
 	case formatJPEG:
 		e, _, err := jpegOrientation(src, size, o)
 		if err != nil {
