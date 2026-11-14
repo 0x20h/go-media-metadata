@@ -271,6 +271,7 @@ func TestEditXMPEscapes(t *testing.T) {
 
 func FuzzEditXMP(f *testing.F) {
 	f.Add([]byte(lightroomXMP))
+	f.Add([]byte(hierarchicalXMP))
 	f.Add([]byte(regionsXMP))
 	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description/></rdf:RDF>`))
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -280,7 +281,8 @@ func FuzzEditXMP(f *testing.F) {
 				return
 			}
 			regions := Regions{AppliedTo: Dimensions{W: 640, H: 480}, List: []Region{{Name: "N", X: 0.5, Y: 0.5, W: 0.25, H: 0.25}}}
-			out, err := EditXMP(data, XMPEdit{Title: ptr("T"), Keywords: &[]string{"k"}, Rating: ptr(3), PersonInImage: &[]string{"N"}, Regions: &regions})
+			out, err := EditXMP(data, XMPEdit{Title: ptr("T"), Keywords: &[]string{"k"}, HierarchicalKeywords: &[]string{"a|b"},
+				Rating: ptr(3), PersonInImage: &[]string{"N"}, Regions: &regions})
 			if err != nil {
 				t.Fatalf("EditXMP of a packet ParseXMP reads: %v", err)
 			}
@@ -288,7 +290,7 @@ func FuzzEditXMP(f *testing.F) {
 			if err != nil {
 				t.Fatalf("EditXMP wrote a packet that doesn't parse: %v\n%s", err, out)
 			}
-			if after.Title != "T" || !slices.Equal(after.Keywords, []string{"k"}) || after.Rating != 3 ||
+			if after.Title != "T" || !slices.Equal(after.Keywords, []string{"k"}) || !slices.Equal(after.HierarchicalKeywords, []string{"a|b"}) || after.Rating != 3 ||
 				!slices.Equal(after.PersonInImage, []string{"N"}) || after.Regions == nil || !sameRegions(after.Regions, &regions) {
 				t.Fatalf("got %+v", after)
 			}

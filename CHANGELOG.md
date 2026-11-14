@@ -59,6 +59,9 @@ RAF orientations aren't written: `ErrUnsupported`.
 - Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2; RAF read only): Exif,
   XMP and orientation read, the orientation written in place; embedded
   JPEG previews located.
+- XMP fields, in every format with XMP: title, description, keywords,
+  hierarchical keywords (`lr:hierarchicalSubject`, as written: levels
+  separated by `|`), rating, people shown and MWG face regions.
 - QuickTime and MP4: date, place, orientation, size, make, model and the
   Live Photo content identifier read; orientation, date and place
   written.
