@@ -60,6 +60,10 @@ et date-modify.jpg "-EXIF:ModifyDate=2020:10:11 12:13:14" -EXIF:SubSecTime=5 -EX
 # Extensions, a focus circle in pixels, a bar code.
 et regions-full.jpg '-XMP-mwg-rs:RegionInfo={AppliedToDimensions={W=64,H=48,Unit=pixel},RegionList=[{Area={X=0.25,Y=0.33,W=0.25,H=0.33,Unit=normalized},Name=Ada,Type=Face,Description=left,Rotation=0.5,Extensions={XMP-dc:Title=detector 7}},{Area={X=40,Y=30,D=8,Unit=pixel},Type=Focus,FocusUsage#=EvaluatedUsed},{Area={X=0.9,Y=0.1,W=0.1,H=0.1,Unit=normalized},Type=BarCode,BarCodeValue=4006381333931}]}'
 
+# Windows' XP tags (UTF-16LE in IFD0), non-ASCII text among them.
+et xp-tags.jpg "-EXIF:XPTitle=Grüner See" "-EXIF:XPComment=Am Morgen, 6 Uhr" "-EXIF:XPAuthor=Zoë" \
+  "-EXIF:XPKeywords=See;Brücke;雪" "-EXIF:XPSubject=Landschaft"
+
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
   -GPSLatitude=48.137 -GPSLatitudeRef=N -GPSLongitude=11.575 -GPSLongitudeRef=E \

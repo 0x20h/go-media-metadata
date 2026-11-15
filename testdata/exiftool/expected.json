@@ -42,6 +42,7 @@
       ] }
     }
   },
+  "xp-tags.jpg": { "orientation": 1 },
   "iptc-utf8.jpg": {
     "orientation": 1,
     "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" }

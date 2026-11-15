@@ -33,6 +33,9 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
 - `regions-full.jpg`: MWG regions with every field. A rotated face with
   a description and Extensions, a focus circle in pixels, and a bar
   code. Written with ExifTool 13.55.
+- `xp-tags.jpg`: Windows' XP tags in IFD0 (title, comment, author,
+  keywords, subject), UTF-16LE, non-ASCII text among them. Written with
+  ExifTool 13.55.
 - `all.jpg`: Exif, XMP and IPTC together.
 
 `expected.json` holds the values written, as this package's types
