@@ -632,7 +632,8 @@ func (f *heifFile) fileRange(cm uint8, at, n uint64) (start, end uint64, ok bool
 // extended XMP merged in, as one packet, where the file has all of it), a
 // HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP " chunk, a
 // JPEG XL file's xml box (or its brob-compressed form), a TIFF-based RAW's
-// XMLPacket tag, a CR3's XMP box. Nil without one.
+// XMLPacket tag, a CR3's XMP box, a QuickTime or MP4 movie's XMP (a
+// top-level uuid box, or the user data's XMP_). Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	switch {
 	case isJPEG(r, size):
@@ -648,6 +649,9 @@ func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	if err != nil {
 		if b, ok, rerr := readRAWXMP(r, size); ok {
 			return b, rerr
+		}
+		if detectFormat(r, size) == formatMovie {
+			return readMovieXMP(r, size)
 		}
 		return nil, err
 	}
