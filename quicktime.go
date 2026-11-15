@@ -32,6 +32,13 @@ type Video struct {
 	Created     time.Time
 	OffsetKnown bool
 
+	// MovieCreated is the movie header's (mvhd) creation time on its own,
+	// in UTC, as ExifTool's QuickTime:CreateDate gives it: zero when the
+	// header has none (0). It's Created's last resort; a caller that dates
+	// videos by the movie header reads it here even when Keys or ©day give
+	// another date.
+	MovieCreated time.Time
+
 	// Duration is the movie header's duration.
 	Duration time.Duration
 
@@ -150,6 +157,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 				return v, err
 			}
 			mvhdCreated, v.Duration = parseMvhd(b)
+			v.MovieCreated = mvhdCreated
 			movieTurned = !mvhdIdentity(b)
 		case bmff.T("trak"):
 			if video {

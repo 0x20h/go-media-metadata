@@ -410,6 +410,12 @@ func FuzzReadExif(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	imageIOSeeds(f)
+	// IFD0's XP tags (UTF-16LE), IFD0's DateTime with its offset.
+	for _, name := range []string{"xp-tags.jpg", "date-modify.jpg"} {
+		if b, err := os.ReadFile(filepath.Join("testdata/exiftool", name)); err == nil {
+			f.Add(b)
+		}
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			x, err := ReadExif(bytes.NewReader(data), int64(len(data)))
