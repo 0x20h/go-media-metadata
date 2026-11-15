@@ -60,3 +60,15 @@ testdata/m2ts/plain.ts
     (see testdata/m2ts/make.sh and splice.go.txt). Made for this project
     by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/gif-bmp/plain.gif
+testdata/gif-bmp/comment-xmp.gif
+testdata/gif-bmp/bottom-up.bmp
+testdata/gif-bmp/top-down.bmp
+testdata/gif-bmp/core.bmp
+    Synthetic images (a checkerboard of flat colours, and a byte pattern;
+    no photograph): the GIF written by Go's image/gif, the BMPs built
+    byte by byte (see testdata/gif-bmp/make.go.txt); comment-xmp.gif is
+    plain.gif with a comment and XMP added by ExifTool. Made for this
+    project by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/

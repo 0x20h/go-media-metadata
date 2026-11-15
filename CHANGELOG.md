@@ -18,6 +18,10 @@
 - `Video.MovieCreated`: the movie header's creation time on its own
   (ExifTool's QuickTime:CreateDate), next to `Created`, which prefers
   Keys and `©day`.
+- GIF and BMP, read only: `ReadImageSize` gives a GIF's logical screen
+  size and a BMP's (a top-down image's too); `ReadXMP` reads a GIF's XMP
+  application extension; the new `ReadComment` returns a GIF's comment
+  extensions. See [docs/gif-bmp.md](docs/gif-bmp.md).
 - Video reads: the place from 3GPP `loci`, and the date and place from
   the movie's XMP (an MP4's `uuid` box, a QuickTime movie's `XMP_`) when
   Keys and the user data have none. `Video.Shown()` gives the size as
@@ -61,7 +65,9 @@
 - `Exif.DateTimeDigitized` and `Exif.DigitizedOffsetKnown` (ExifTool's
   CreateDate, with its sub-seconds and offset), `XMP.DateTimeOriginal`
   (exif:DateTimeOriginal) and `IPTC.DateCreated` (2:55 and 2:60).
-
+- `Exif.ContentIdentifier`: the Apple maker note's ContentIdentifier, the
+  still half of a Live Photo's pairing (`Video.ContentIdentifier` is the
+  movie's), from HEIC and JPEG. See [docs/exif.md](docs/exif.md).
 - `XMP.GPS`: the position in `exif:GPSLatitude`, `exif:GPSLongitude` and
   `exif:GPSAltitude`/`GPSAltitudeRef`, in the `DDD,MM,SSk` and `DDD,MM.mmk`
   forms and as decimal degrees.

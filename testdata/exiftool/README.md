@@ -37,6 +37,11 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
   keywords, subject), UTF-16LE, non-ASCII text among them. Written with
   ExifTool 13.55.
 - `all.jpg`: Exif, XMP and IPTC together.
+- `apple-makernote.jpg`: a synthetic Apple maker note (as an iPhone writes
+  it: "Apple iOS", version 1, a big-endian IFD whose offsets count from the
+  note's start) with a ContentIdentifier, and a date with its offset.
+  Written with ExifTool 13.55 (`-MakerNoteApple<=`, from bytes `make.sh`
+  prints).
 
 `expected.json` holds the values written, as this package's types
 read them.

@@ -7,6 +7,10 @@
     "orientation": 8, "taken": "2019-12-31T23:59:59-05:00", "offsetKnown": true,
     "gps": { "lat": -33.865, "lon": 151.2094, "alt": -12 }
   },
+  "apple-makernote.jpg": {
+    "orientation": 1, "taken": "2024-06-01T18:20:00+02:00", "offsetKnown": true,
+    "contentIdentifier": "0D5B4E2C-7A41-4F7E-9C3B-2E8F6A1D9B07"
+  },
   "xmp.jpg": {
     "orientation": 1,
     "xmp": {
