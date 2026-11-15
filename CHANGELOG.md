@@ -16,6 +16,12 @@
   file and is 2.5 to 5 times faster than them. See [docs/api.md](docs/api.md).
 - `ReadOrientation` reads GIF and BMP as 1 (they keep no orientation), as
   `ReadImageSize` reads their size.
+- Matroska and WebM, read only: `ReadVideo` reads the duration, the
+  recording date (`DateUTC`), the title (Info's, else the file's `TITLE`
+  tag), the first video track's size and its rotation (a projection's
+  roll). It reads only the SeekHead, Info, Tracks and Tags, never the
+  Clusters. `ReadImageSize` and `ReadOrientation` take them too. See
+  [docs/matroska.md](docs/matroska.md).
 - Windows' XP tags: `Exif.XPComment`, `XPAuthor`, `XPKeywords` and
   `XPSubject` (UTF-16LE in IFD0), read as `XPTitle` is. Read only.
 - `Exif.DateTime` (IFD0's DateTime, ExifTool's ModifyDate) with

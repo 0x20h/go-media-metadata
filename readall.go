@@ -12,8 +12,8 @@ import (
 // what the summary leaves out.
 type Metadata struct {
 	// Format is the file's format: "JPEG", "HEIF", "PNG", "WebP",
-	// "JPEG XL", "RAW", "GIF", "BMP", "QuickTime" (QuickTime and MP4) or
-	// "MPEG-TS" (TS, MTS, M2TS).
+	// "JPEG XL", "RAW", "GIF", "BMP", "QuickTime" (QuickTime and MP4),
+	// "MPEG-TS" (TS, MTS, M2TS) or "Matroska" (MKV, WebM).
 	Format string
 
 	// Taken is when the photo was taken, and where that was read: as
@@ -143,13 +143,13 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			packet, xmpErr = ReadXMP(r, size)
 			m.Size, m.Errors.Size = ReadImageSize(r, size)
 			m.Orientation, m.Errors.Orientation = ReadOrientation(r, size)
-		case formatMovie, formatTS:
+		case formatMovie, formatTS, formatMatroska:
 			return readAllVideo(r, size)
 		default:
 			if startsWithFtyp(r, size) && errors.Is(herr, ErrMalformed) {
 				return m, herr
 			}
-			return m, formatError("JPEG, HEIF, PNG, WebP, JPEG XL, camera RAW, GIF, BMP, QuickTime, MP4 or MPEG-TS file")
+			return m, formatError("JPEG, HEIF, PNG, WebP, JPEG XL, camera RAW, GIF, BMP, QuickTime, MP4, MPEG-TS or Matroska file")
 		}
 	}
 	if m.Size.Width > 0 && m.Errors.Size == nil {
@@ -215,8 +215,11 @@ func (m *Metadata) summarize() {
 // readAllVideo is ReadAll of a movie or a transport stream: ReadVideo's.
 func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
 	m := Metadata{Format: "QuickTime"}
-	if detectFormat(r, size) == formatTS {
+	switch detectFormat(r, size) {
+	case formatTS:
 		m.Format = "MPEG-TS"
+	case formatMatroska:
+		m.Format = "Matroska"
 	}
 	v, err := ReadVideo(r, size)
 	if err != nil {
