@@ -40,8 +40,9 @@ import (
 //   - QuickTime, MP4 and Canon CR3: the chunks of each video and sound
 //     track, in track order, then in chunk-offset order.
 //
-// A file of none of these formats gives an error that is
-// ErrUnknownFormat. A file without image data writes nothing, with no
+// A transport stream (MTS, M2TS) gives an error that is ErrUnsupported:
+// ExifTool gives no ImageDataHash for one either. A file of none of these
+// formats gives an error that is ErrUnknownFormat. A file without image data writes nothing, with no
 // error; ExifTool gives no ImageDataHash then.
 func HashImageData(r io.ReaderAt, size int64, w io.Writer) (int64, error) {
 	h := &rangeWriter{r: r, size: size, w: w}
@@ -62,6 +63,9 @@ func HashImageData(r io.ReaderAt, size int64, w io.Writer) (int64, error) {
 			err = h.raw()
 		case formatMovie:
 			err = h.movie()
+		case formatTS:
+			// ExifTool gives no ImageDataHash for a transport stream either.
+			return 0, fmt.Errorf("%w: no image data hash for a transport stream", ErrUnsupported)
 		default:
 			if startsWithFtyp(r, size) {
 				// A brand this package doesn't take as HEIF or a movie.
