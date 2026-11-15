@@ -64,21 +64,18 @@ func (e VideoEdit) check() error {
 	if r := e.Rating; r != nil && (*r < -1 || *r > 5) {
 		return fmt.Errorf("mediameta: rating %d: not -1 to 5", *r)
 	}
-	texts := []*string{e.Title, e.Description}
-	if e.Keywords != nil {
-		for i := range *e.Keywords {
-			texts = append(texts, &(*e.Keywords)[i])
-		}
-	}
-	for _, t := range texts {
-		if t != nil && (!utf8.ValidString(*t) || len(*t) > maxLeafBox/2) {
+	// No slice is built here: an edit without text must cost what it did
+	// before text could be set (the bench gate counts allocations).
+	badText := func(t string) bool { return !utf8.ValidString(t) || len(t) > maxLeafBox/2 }
+	for _, t := range [...]*string{e.Title, e.Description} {
+		if t != nil && badText(*t) {
 			return fmt.Errorf("mediameta: %q: text that isn't UTF-8, or too long", *t)
 		}
 	}
 	if e.Keywords != nil {
 		for _, k := range *e.Keywords {
-			if strings.TrimSpace(k) == "" || strings.Contains(k, ",") {
-				return fmt.Errorf("mediameta: keyword %q: empty, or with a comma", k)
+			if badText(k) || strings.TrimSpace(k) == "" || strings.Contains(k, ",") {
+				return fmt.Errorf("mediameta: keyword %q: not UTF-8, too long, empty, or with a comma", k)
 			}
 		}
 	}
@@ -393,8 +390,11 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 			removeKids(udta, bmff.T("\xa9xyz"))
 		}
 	}
+	if !edit.textChange() {
+		return nil
+	}
 	items := itemList(udta)
-	for _, f := range []struct {
+	for _, f := range [...]struct {
 		v               *string
 		key, udta, item string
 	}{
