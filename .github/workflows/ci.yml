@@ -69,6 +69,22 @@ jobs:
       # A failing input is minimized for at most 10 s: left unbounded, the
       # minimizing can take the rest of the run, which then looks stalled.
       - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime ${{ github.event_name == 'pull_request' && '2m' || github.event_name == 'schedule' && '30m' || '10m' }} -fuzzminimizetime 10s .
+      # A failing input is written under testdata/fuzz/<target>/: keep the
+      # new ones, so the failure can be reproduced (go test -run
+      # <target>/<name>) and the input committed as a regression test.
+      - name: Collect new failing inputs
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/fuzz-inputs"
+          git ls-files --others --exclude-standard -z -- 'testdata/fuzz/${{ matrix.target }}/' |
+            xargs -0 -r cp --parents -t "$RUNNER_TEMP/fuzz-inputs"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-failing-input-${{ matrix.target }}
+          path: ${{ runner.temp }}/fuzz-inputs/
+          if-no-files-found: ignore
+          retention-days: 30
   bench:
     # Compares the benchmarks of the pull request against its base, run
     # interleaved on one runner, and fails on a clear regression (see
