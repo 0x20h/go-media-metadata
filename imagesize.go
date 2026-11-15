@@ -81,7 +81,7 @@ func ReadImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 			s, err = jxlImageSize(r, size)
 		case formatRAW:
 			s, err = rawImageSize(r, size)
-		case formatMovie:
+		case formatMovie, formatTS:
 			v, verr := ReadVideo(r, size)
 			if verr != nil {
 				return ImageSize{}, verr

@@ -83,6 +83,8 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 		return e.plan(src, size), nil
 	case formatMovie:
 		return planVideoRotation(src, size, degrees)
+	case formatTS:
+		return nil, errTSReadOnly
 	case formatUnknown:
 		return nil, ErrUnknownFormat
 	}
@@ -124,6 +126,8 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 		return planRAWOrientation(src, size, o)
 	case formatMovie:
 		return planVideoOrientation(src, size, o)
+	case formatTS:
+		return nil, errTSReadOnly
 	case formatJXL:
 		return nil, fmt.Errorf("%w: a JPEG XL codestream's orientation isn't written", ErrUnsupported)
 	}

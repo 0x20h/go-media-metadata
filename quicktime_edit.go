@@ -106,14 +106,21 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if size < 8 {
 		return nil, errNotQuickTime
 	}
+	isTSOnly := func() bool { return !startsWithFtyp(src, size) && isTS(src, size) }
 	top, err := bmff.ReadBoxes(src, 0, size)
 	if err != nil {
+		if isTSOnly() {
+			return nil, errTSReadOnly
+		}
 		if !looksLikeMovie(src, size) {
 			return nil, errNotQuickTime
 		}
 		return nil, err
 	}
 	if err := checkMovie(src, top); err != nil {
+		if isTSOnly() {
+			return nil, errTSReadOnly
+		}
 		return nil, err
 	}
 	mi := -1

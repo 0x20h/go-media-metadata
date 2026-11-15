@@ -16,6 +16,11 @@
   `.keywords`, `.rating.user`), and in the user data's `©nam` and `©des`
   and an MP4 item list's `©nam`, `desc` and `keyw` where the movie has
   them. See [docs/quicktime.md](docs/quicktime.md).
+- MPEG-2 transport streams (TS, and AVCHD's MTS and M2TS), read only.
+  `ReadVideo` reads the recording date with its offset, the GPS position,
+  make and model from the H.264 stream's MDPM, the size from its SPS, and
+  the duration from the clock references. `ReadImageSize` and
+  `ReadOrientation` take them too. See [docs/m2ts.md](docs/m2ts.md).
 - Face regions at full fidelity. `Region` gains `Unit` (pixel areas were
   left out before), `D` (circles), `Rotation`, `Description`,
   `FocusUsage` and `BarCodeValue`. Fields it doesn't model
