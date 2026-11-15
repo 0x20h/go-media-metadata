@@ -44,6 +44,11 @@ func (k metadataKind) String() string {
 // image by its irot and imir properties (see SetOrientation), so a tag
 // that disagrees with them misleads only readers that use Exif.
 //
+// A PNG's Exif goes in its eXIf chunk, a WebP's in its EXIF chunk and a
+// JPEG XL file's in its Exif box, each set in place where the new data
+// fits (see docs/png-webp.md and docs/jxl.md); a JPEG XL codestream is
+// copied byte for byte.
+//
 // On an error nothing useful has been written to dst.
 func SetExif(src io.ReaderAt, size int64, dst io.Writer, tiff []byte) error {
 	p, err := PlanExif(src, size, tiff)
@@ -65,6 +70,10 @@ func SetExif(src io.ReaderAt, size int64, dst io.Writer, tiff []byte) error {
 // 64 KB is split into a standard and an extended part (XMP Part 3): the
 // largest properties go to the extended part, in chunks after the
 // standard segment. Old extended segments are removed.
+//
+// A PNG's XMP goes in its XML:com.adobe.xmp iTXt chunk, a WebP's in its
+// "XMP " chunk and a JPEG XL file's in its xml box, as SetExif writes
+// theirs.
 func SetXMP(src io.ReaderAt, size int64, dst io.Writer, packet []byte) error {
 	p, err := PlanXMP(src, size, packet)
 	if err != nil {
@@ -82,7 +91,8 @@ func SetXMP(src io.ReaderAt, size int64, dst io.Writer, packet []byte) error {
 // with zeros, so a value removed from the metadata (a GPS position, say)
 // isn't left in the file to be found; the patch of an in-place edit
 // covers the whole old extent. A JPEG's first Exif segment is set as
-// planExifEdit sets it.
+// planExifEdit sets it; a PNG's, WebP's or JPEG XL file's as SetExif
+// says.
 func PlanExif(src io.ReaderAt, size int64, tiff []byte) (*Plan, error) {
 	if _, _, ok := newTIFF(tiff); !ok {
 		return nil, fmt.Errorf("mediameta: Exif data that doesn't start with a TIFF header")
@@ -617,11 +627,12 @@ func (f *heifFile) fileRange(cm uint8, at, n uint64) (start, end uint64, ok bool
 	return base + at, base + at + n, true
 }
 
-// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP or camera
-// RAW file in r (size bytes): a JPEG's XMP APP1 segment (with its
+// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP, JPEG XL or
+// camera RAW file in r (size bytes): a JPEG's XMP APP1 segment (with its
 // extended XMP merged in, as one packet, where the file has all of it), a
 // HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP " chunk, a
-// TIFF-based RAW's XMLPacket tag, a CR3's XMP box. Nil without one.
+// JPEG XL file's xml box (or its brob-compressed form), a TIFF-based RAW's
+// XMLPacket tag, a CR3's XMP box. Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	switch {
 	case isJPEG(r, size):

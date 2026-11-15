@@ -283,8 +283,9 @@ func FuzzReadJXL(f *testing.F) {
 	})
 }
 
-// ExifTool reads what's written, and finds no new problem in the file.
-// Runs where exiftool is installed.
+// ExifTool reads what's written (date and GPS in the Exif box; title,
+// description, keywords and rating in the xml box) on every layout, and
+// finds no new problem in the file. Runs where exiftool is installed.
 func TestJXLExifTool(t *testing.T) {
 	if _, err := exec.LookPath("exiftool"); err != nil {
 		t.Skip("exiftool not installed")
@@ -300,7 +301,8 @@ func TestJXLExifTool(t *testing.T) {
 		file, _ := buildJXL(t, l, 6)
 		p, err := PlanMetadata(bytes.NewReader(file), int64(len(file)), MetadataEdit{
 			Exif: &ExifEdit{DateTimeOriginal: &date, GPS: &GPS{Latitude: 10, Longitude: 20}},
-			XMP:  &XMPEdit{Title: &title},
+			XMP: &XMPEdit{Title: &title, Description: ptr("Lake & mountains"), Keywords: &[]string{"lake", "Öland"},
+				Rating: ptr(4)},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -316,11 +318,12 @@ func TestJXLExifTool(t *testing.T) {
 		if err := os.WriteFile(after, out.Bytes(), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		b, err := exec.Command("exiftool", "-n", "-s3", "-f", "-DateTimeOriginal", "-GPSLatitude", "-GPSLongitude", "-XMP-dc:Title", after).Output()
+		b, err := exec.Command("exiftool", "-n", "-s3", "-f", "-sep", "|", "-DateTimeOriginal", "-GPSLatitude", "-GPSLongitude",
+			"-XMP-dc:Title", "-XMP-dc:Description", "-XMP-dc:Subject", "-XMP-xmp:Rating", after).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "2021:03:04 05:06:07\n10\n20\n" + title + "\n"
+		want := "2021:03:04 05:06:07\n10\n20\n" + title + "\nLake & mountains\nlake|Öland\n4\n"
 		if string(b) != want {
 			t.Errorf("%s: ExifTool reads %q, want %q", l.name, b, want)
 		}
