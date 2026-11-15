@@ -10,6 +10,11 @@
 
 ### Added
 
+- Face regions at full fidelity. `Region` gains `Unit` (pixel areas were
+  left out before), `D` (circles), `Rotation`, `Description`,
+  `FocusUsage` and `BarCodeValue`. Fields it doesn't model
+  (`mwg-rs:Extensions`, `SeeAlso`, others) are kept and written back
+  with their region. See [docs/xmp.md](docs/xmp.md).
 - `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
   time and focal length (also in 35 mm terms), read only, from every format
   `ReadExif` takes. See [docs/exif.md](docs/exif.md).

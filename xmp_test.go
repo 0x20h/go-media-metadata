@@ -273,6 +273,7 @@ func FuzzEditXMP(f *testing.F) {
 	f.Add([]byte(lightroomXMP))
 	f.Add([]byte(hierarchicalXMP))
 	f.Add([]byte(regionsXMP))
+	f.Add([]byte(fullRegionsXMP))
 	f.Add([]byte(whereWhenXMP("51,30N", "0,7.5W", "71/2", "1", "2025-05-04T13:14:15.25", "2025")))
 	f.Add([]byte(whereWhenXMP("51.5", "-0.125", "35.5", "0", "2025-05-04T13:14Z", "2019:12:31 23:59:59.5-05:00")))
 	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description/></rdf:RDF>`))
@@ -300,6 +301,21 @@ func FuzzEditXMP(f *testing.F) {
 				t.Fatalf("description %q became %q", before.Description, after.Description)
 			}
 			checkWhereWhenValid(t, before)
+			// The packet's own regions, one renamed, write back with
+			// everything else they hold.
+			if r := before.Regions; r != nil && len(r.List) > 0 && checkRegions(r) == nil {
+				renamed := *r
+				renamed.List = slices.Clone(r.List)
+				renamed.List[0].Name = "Renamed"
+				out, err := EditXMP(data, XMPEdit{Regions: &renamed})
+				if err != nil {
+					t.Fatalf("EditXMP of the packet's own regions: %v", err)
+				}
+				back, err := ParseXMP(out)
+				if err != nil || back.Regions == nil || !sameRegions(back.Regions, &renamed) {
+					t.Fatalf("regions %+v wrote back as %+v (%v)\n%s", renamed, back.Regions, err, out)
+				}
+			}
 			// The edit doesn't touch the position or the dates.
 			if !sameGPS(before.GPS, after.GPS) || !sameXMPDate(before.DateCreated, after.DateCreated) || !sameXMPDate(before.CreateDate, after.CreateDate) ||
 				!sameXMPDate(before.DateTimeOriginal, after.DateTimeOriginal) {
