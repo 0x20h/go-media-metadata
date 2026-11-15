@@ -15,6 +15,13 @@
   `FocusUsage` and `BarCodeValue`. Fields it doesn't model
   (`mwg-rs:Extensions`, `SeeAlso`, others) are kept and written back
   with their region. See [docs/xmp.md](docs/xmp.md).
+- `HashImageData`: a file's image data without its metadata, written to a
+  hash, equal to ExifTool's ImageDataHash. A write that changes only
+  metadata leaves it as it was. See [docs/api.md](docs/api.md).
+- `ReadImageSize` and `ImageSize.Shown`: an image's width and height as
+  stored (from the frame header, IHDR, VP8X/VP8/VP8L, ispe, the JPEG XL
+  SizeHeader, a RAW's full-size image or a movie's video track) and as
+  shown after its orientation. See [docs/api.md](docs/api.md).
 - `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
   time and focal length (also in 35 mm terms), read only, from every format
   `ReadExif` takes. See [docs/exif.md](docs/exif.md).
