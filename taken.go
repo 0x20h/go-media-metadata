@@ -17,6 +17,7 @@ const (
 	SourceXMPDateCreated                   // XMP photoshop:DateCreated
 	SourceXMPCreateDate                    // XMP xmp:CreateDate
 	SourceIPTCDateCreated                  // IPTC 2:55 Date Created and 2:60 Time Created
+	SourceExifDateTime                     // Exif IFD0 DateTime (ExifTool's ModifyDate), the last resort
 )
 
 func (s DateSource) String() string {
@@ -33,6 +34,8 @@ func (s DateSource) String() string {
 		return "XMP xmp:CreateDate"
 	case SourceIPTCDateCreated:
 		return "IPTC Date Created"
+	case SourceExifDateTime:
+		return "Exif DateTime"
 	}
 	return "none"
 }
@@ -51,7 +54,10 @@ type Taken struct {
 //  3. XMP exif:DateTimeOriginal,
 //  4. XMP photoshop:DateCreated,
 //  5. XMP xmp:CreateDate,
-//  6. IPTC Date Created with Time Created.
+//  6. IPTC Date Created with Time Created,
+//  7. Exif DateTime, IFD0's: when the file was last changed, the one
+//     date a file stripped of the others (as messengers send photos) may
+//     keep.
 //
 // That is the Metadata Working Group's order for the capture date, Exif
 // first, with the creation dates after it: a date that says when the file
@@ -81,6 +87,9 @@ func TakenFrom(e Exif, x XMP, i IPTC) Taken {
 			return Taken{*c.d, c.src}
 		}
 	}
+	if !e.DateTime.IsZero() {
+		return exifDate(e.DateTime, e.DateTimeOffsetKnown, SourceExifDateTime)
+	}
 	return Taken{}
 }
 
@@ -97,7 +106,8 @@ func ReadTaken(r io.ReaderAt, size int64) (Taken, error) {
 	if errors.Is(err, ErrUnknownFormat) {
 		return Taken{}, err
 	}
-	if t := TakenFrom(e, XMP{}, IPTC{}); t.Source != SourceNone {
+	// Exif's capture dates come before XMP and IPTC; its DateTime after.
+	if t := TakenFrom(e, XMP{}, IPTC{}); t.Source == SourceExifDateTimeOriginal || t.Source == SourceExifDateTimeDigitized {
 		return t, nil
 	}
 	first := err

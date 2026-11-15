@@ -158,8 +158,14 @@ func TestGIFBMPAgreeWithExifTool(t *testing.T) {
 	if err != nil {
 		t.Skip("exiftool not installed")
 	}
-	out, err := exec.Command(tool, "-j", "-n", "-q", "-ImageWidth", "-ImageHeight", "-Comment", "-XMP:Title", "-XMP:Subject",
-		filepath.Join("testdata", "gif-bmp")).Output()
+	// The images only: ExifTool reads the directory's make.go.txt too.
+	var paths []string
+	for _, pat := range []string{"*.gif", "*.bmp"} {
+		p, _ := filepath.Glob(filepath.Join("testdata", "gif-bmp", pat))
+		paths = append(paths, p...)
+	}
+	out, err := exec.Command(tool, append([]string{"-j", "-n", "-q", "-ImageWidth", "-ImageHeight", "-Comment", "-XMP:Title", "-XMP:Subject"},
+		paths...)...).Output()
 	if err != nil {
 		t.Fatalf("exiftool: %v", err)
 	}
