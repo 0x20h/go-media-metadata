@@ -77,6 +77,23 @@ func BenchmarkReadOrientation(b *testing.B) {
 	}
 }
 
+func BenchmarkReadImageSize(b *testing.B) {
+	for _, f := range benchFiles(b) {
+		b.Run(f.name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(f.data)}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := ReadImageSize(cr, int64(len(f.data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+		})
+	}
+}
+
 func BenchmarkSetRotation(b *testing.B) {
 	for _, f := range benchFiles(b) {
 		b.Run(f.name, func(b *testing.B) {
