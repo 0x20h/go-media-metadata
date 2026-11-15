@@ -36,6 +36,7 @@ type rawTIFF struct {
 	r     io.ReaderAt
 	size  int64
 	first uint32
+	magic [4]byte // the header's first 4 bytes
 }
 
 // openRAWTIFF reads the header of a TIFF-based file: TIFF's own, or the
@@ -58,8 +59,11 @@ func openRAWTIFF(r io.ReaderAt, size int64) (*rawTIFF, bool) {
 	default:
 		return nil, false
 	}
-	return &rawTIFF{tiffReader: tiffReader{order: order}, r: r, size: size, first: order.Uint32(h[4:])}, true
+	return &rawTIFF{tiffReader: tiffReader{order: order}, r: r, size: size, first: order.Uint32(h[4:]), magic: [4]byte(h[:4])}, true
 }
+
+// rw2 tells whether the file is a Panasonic RW2.
+func (t *rawTIFF) rw2() bool { return string(t.magic[:]) == "IIU\x00" }
 
 // ifd reads the IFD at off as tiffReader.ifd does, values longer than
 // maxRAWValue left out; nil for one outside the file. at maps each tag to
