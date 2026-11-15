@@ -15,6 +15,12 @@
   Keys and the user data have none. `Video.Shown()` gives the size as
   shown. `ReadXMP` takes movies. A video corpus (`testdata/video`) is
   checked against ExifTool. See [docs/quicktime.md](docs/quicktime.md).
+- Video title, description, keywords and rating. `ReadVideo` reads them
+  from Keys, the user data, or an MP4 item list. `VideoEdit` sets or
+  removes them: in Keys (`com.apple.quicktime.title`, `.description`,
+  `.keywords`, `.rating.user`), and in the user data's `©nam` and `©des`
+  and an MP4 item list's `©nam`, `desc` and `keyw` where the movie has
+  them. See [docs/quicktime.md](docs/quicktime.md).
 - MPEG-2 transport streams (TS, and AVCHD's MTS and M2TS), read only.
   `ReadVideo` reads the recording date with its offset, the GPS position,
   make and model from the H.264 stream's MDPM, the size from its SPS, and
@@ -35,6 +41,10 @@
 - `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
   time and focal length (also in 35 mm terms), read only, from every format
   `ReadExif` takes. See [docs/exif.md](docs/exif.md).
+- `MergeXMP`: a file's XMP combined with its sidecar's (`IMG_1.xmp` next
+  to a RAW), in the Metadata Working Group's order: each value the
+  sidecar has wins. `XMP.Orientation` reads `tiff:Orientation`. See
+  [docs/xmp.md](docs/xmp.md).
 - `ReadTaken` and `TakenFrom`: the date a photo was taken, from the first
   of Exif DateTimeOriginal, Exif DateTimeDigitized, XMP
   exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate and IPTC

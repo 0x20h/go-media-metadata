@@ -114,6 +114,9 @@ value in its entry (SHORT, or LONG as some writers have it). Where the
 file's XMP packet has `tiff:Orientation`, as an attribute or an element,
 that digit is changed too, so the two agree.
 
+A sidecar `.xmp` next to the file isn't written. To read one with the
+file's own metadata, see `MergeXMP` in [xmp](xmp.md).
+
 The plan is always in place, and nothing else is written: image data and
 maker notes stay byte for byte. A file without the tag is refused
 (`ErrUnsupported`) rather than restructured, because maker notes hold
