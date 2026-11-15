@@ -10,6 +10,11 @@
 
 ### Added
 
+- MPEG-2 transport streams (TS, and AVCHD's MTS and M2TS), read only.
+  `ReadVideo` reads the recording date with its offset, the GPS position,
+  make and model from the H.264 stream's MDPM, the size from its SPS, and
+  the duration from the clock references. `ReadImageSize` and
+  `ReadOrientation` take them too. See [docs/m2ts.md](docs/m2ts.md).
 - `ReadImageSize` and `ImageSize.Shown`: an image's width and height as
   stored (from the frame header, IHDR, VP8X/VP8/VP8L, ispe, the JPEG XL
   SizeHeader, a RAW's full-size image or a movie's video track) and as

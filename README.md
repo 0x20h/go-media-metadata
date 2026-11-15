@@ -61,6 +61,7 @@ Early, and growing format by format.
 | Camera RAW (DNG, CR2, CR3, NEF, ARW, ORF, RW2; RAF read only) | read, write in place | read | read |
 | JPEG XL | read (codestream) | read, write, edit | read, write, edit |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
+| MPEG-2 TS, MTS, M2TS (AVCHD) | read (always 1) | | |
 
 `ReadPreviews` finds the JPEG previews a camera RAW embeds, with their
 offsets and sizes.
@@ -73,6 +74,9 @@ intact.
 orientation and size, make and model, and Live Photo content identifier;
 `SetRotation` and `SetOrientation` set its orientation in place;
 `SetVideoMetadata` and `PlanVideoMetadata` set its recording date and place.
+It also reads an AVCHD camcorder's MTS or M2TS: the recording date, GPS
+position, make and model from the video stream's MDPM, and the duration
+and size.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,
@@ -88,7 +92,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
 - Formats, covering where each value lives and how it's written:
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
   [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
-  [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md)
+  [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md),
+  [MPEG-2 TS, MTS, M2TS](docs/m2ts.md)
 - [Exif](docs/exif.md): the fields (camera, lens and exposure among
   them), writers' quirks compared with ExifTool, `EditExif`, and
   `ReadTaken`: the date taken from Exif, XMP or IPTC

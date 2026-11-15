@@ -1,0 +1,90 @@
+// Splices an H.264 SEI message of MDPM user data, as AVCHD camcorders
+// write it, into an Annex B stream after its first PPS.
+//
+// Usage: go run splice.go <in.h264> <out.h264> <tz byte> <yyyymmddhhmmss>
+//
+// The MDPM: the recording time (tags 0x18, 0x19), a GPS position 51°30'N
+// 0°7'30"W at 35.5 m (0xb1 to 0xba), the make Sony (0xe0) and a model
+// name (0xe4 to 0xe6).
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"strconv"
+)
+
+func bcd(n int) byte { return byte(n/10<<4 | n%10) }
+
+func main() {
+	in, _ := os.ReadFile(os.Args[1])
+	tz, _ := strconv.ParseUint(os.Args[3], 0, 8)
+	t := os.Args[4]
+	num := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	y, mo, d, h, mi, s := num(t[0:4]), num(t[4:6]), num(t[6:8]), num(t[8:10]), num(t[10:12]), num(t[12:14])
+	rat := func(n, d uint16) []byte { return []byte{byte(n >> 8), byte(n), byte(d >> 8), byte(d)} }
+	entries := []struct {
+		tag  byte
+		data []byte
+	}{
+		{0x18, []byte{byte(tz), bcd(y / 100), bcd(y % 100), bcd(mo)}},
+		{0x19, []byte{bcd(d), bcd(h), bcd(mi), bcd(s)}},
+		{0xb0, []byte{2, 2, 0, 0}},
+		{0xb1, []byte("N\x00\x00\x00")},
+		{0xb2, rat(51, 1)}, {0xb3, rat(30, 1)}, {0xb4, rat(0, 1)},
+		{0xb5, []byte("W\x00\x00\x00")},
+		{0xb6, rat(0, 1)}, {0xb7, rat(7, 1)}, {0xb8, rat(30, 1)},
+		{0xb9, []byte{0, 0, 0, 0}},
+		{0xba, rat(71, 2)},
+		{0xe0, []byte{0x01, 0x08, 0x30, 0x01}},
+		{0xe4, []byte("HDR-")}, {0xe5, []byte("CX40")}, {0xe6, []byte("5\x00\x00\x00")},
+	}
+	msg := []byte("\x17\xee\x8c\x60\xf8\x4d\x11\xd9\x8c\xd6\x08\x00\x20\x0c\x9a\x66MDPM")
+	msg = append(msg, byte(len(entries)))
+	for _, e := range entries {
+		msg = append(append(msg, e.tag), e.data...)
+	}
+	rbsp := []byte{5} // user_data_unregistered
+	n := len(msg)
+	for ; n >= 255; n -= 255 {
+		rbsp = append(rbsp, 255)
+	}
+	rbsp = append(append(rbsp, byte(n)), msg...)
+	rbsp = append(rbsp, 0x80) // rbsp_trailing_bits
+	// Emulation prevention (H.264 7.4.1).
+	nal := []byte{0, 0, 0, 1, 0x06}
+	zeros := 0
+	for _, c := range rbsp {
+		if zeros >= 2 && c <= 3 {
+			nal = append(nal, 3)
+			zeros = 0
+		}
+		nal = append(nal, c)
+		if c == 0 {
+			zeros++
+		} else {
+			zeros = 0
+		}
+	}
+	// After the first PPS (NAL type 8): before the next start code.
+	at := -1
+	for i := 0; i+4 < len(in); i++ {
+		if in[i] == 0 && in[i+1] == 0 && in[i+2] == 1 && in[i+3]&0x1F == 8 {
+			next := bytes.Index(in[i+3:], []byte{0, 0, 1})
+			at = i + 3 + next
+			if at > 0 && in[at-1] == 0 {
+				at-- // a 4-byte start code
+			}
+			break
+		}
+	}
+	if at < 0 {
+		fmt.Fprintln(os.Stderr, "no PPS")
+		os.Exit(1)
+	}
+	out := append(append(append([]byte(nil), in[:at]...), nal...), in[at:]...)
+	if err := os.WriteFile(os.Args[2], out, 0o644); err != nil {
+		panic(err)
+	}
+}

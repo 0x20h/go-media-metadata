@@ -41,3 +41,12 @@ testdata/exiftool/*.jpg
     ExifTool 13.55 (see testdata/exiftool/README.md and make.sh). Made for
     this project by its authors. Dedicated to the public domain under CC0
     1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/m2ts/mdpm.m2ts
+testdata/m2ts/mdpm-west.m2ts
+testdata/m2ts/plain.ts
+    A synthetic test pattern (ffmpeg's testsrc, no recording), encoded by
+    ffmpeg's libx264 and muxed by ffmpeg, with MDPM metadata spliced in
+    (see testdata/m2ts/make.sh and splice.go.txt). Made for this project
+    by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
