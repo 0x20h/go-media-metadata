@@ -8,6 +8,7 @@ import (
 	"math"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -127,5 +128,27 @@ func TestTSAgreesWithExifTool(t *testing.T) {
 				t.Errorf("%s: %d×%d, ffprobe %s", e.SourceFile, v.Width, v.Height, out)
 			}
 		}
+	}
+}
+
+// A stream's duration past 341 s, where ticks × time.Second would overflow:
+// the regression input FuzzReadVideo found, its last PCR 400 s after its
+// first.
+func TestTSLongDuration(t *testing.T) {
+	file := readFile(t, "testdata/fuzz/FuzzReadVideo/ts-pcr-span-400s")
+	// The corpus file's bytes: after the "go test fuzz v1" line, a []byte
+	// literal.
+	lines := strings.SplitN(string(file), "\n", 2)
+	lit := strings.TrimSuffix(strings.TrimSpace(lines[1]), ")")
+	data, err := strconv.Unquote(strings.TrimPrefix(lit, "[]byte("))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := ReadVideo(strings.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Duration < 399*time.Second || v.Duration > 401*time.Second {
+		t.Errorf("duration %v, want about 400 s", v.Duration)
 	}
 }
