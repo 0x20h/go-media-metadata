@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-11-15)
 
 ### Breaking changes
 
@@ -87,6 +87,25 @@
   (`xmp:CreateDate`), as the new `Date`: the time, whether a time zone
   was written, and how precise the date is (year through fractional
   seconds). See [docs/xmp.md](docs/xmp.md).
+
+### Fixed and clarified
+
+- A JPEG write is refused (`ErrUnsupported`) when the file's MPF index
+  puts an image among the marker segments the write changes, rather than
+  leave the index pointing at other bytes. Real Motion Photos and Ultra
+  HDR files keep their images after the primary and are written as
+  before. v0.1.0 moved such an image's offset off its bytes.
+- HEIC orientation: when the Exif Orientation tag disagrees with `irot`
+  and `imir`, the properties win, as Apple's ImageIO shows the image
+  (checked by a test). `Exif.Orientation` gives the tag as written.
+  ExifTool's `Orientation` is that tag; it reports `irot` as
+  `QuickTime:Rotation`. See [docs/heif.md](docs/heif.md).
+- Benchmarks against ExifTool, re-measured for this release: `ReadAll`
+  is 24× faster than ExifTool reading the same tags (69× for HEIC), and
+  writes 5× faster. See [docs/benchmarks.md](docs/benchmarks.md).
+- CI now runs every test that compares this package with ExifTool,
+  against a pinned ExifTool, and keeps a failing fuzz input as an
+  artifact.
 
 ## v0.1.0 (2026-11-14)
 

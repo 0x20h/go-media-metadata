@@ -350,6 +350,7 @@ type sample struct {
 
 type result struct {
 	read, write [2][]sample // [0] this package, [1] ExifTool
+	readAll     [2][]sample // everything ReadAll reads, against ExifTool asked for the same
 	inPlace     map[string][2]int
 }
 
@@ -422,6 +423,8 @@ func runFile(et *exiftool, res *result, dir, outDir, name string, i, round int, 
 		return et.do("-json", "-n", "-fast2", "-Orientation", "-DateTimeOriginal", "-CreationDate", "-GPSLatitude",
 			"-GPSLongitude", "-XMP-dc:Title", "-XMP-dc:Subject", path)
 	}
+	oursReadAll := func() error { return readAllOurs(path) }
+	etReadAll := func() error { return et.do(append(readAllTags, path)...) }
 	oursWrite := func() error {
 		inPlace, err := writeOurs(path, dst, format, t, g, title, kw)
 		if err == nil && round == 0 {
@@ -452,10 +455,12 @@ func runFile(et *exiftool, res *result, dir, outDir, name string, i, round int, 
 	steps := []struct {
 		into *[]sample
 		f    func() error
-	}{{&res.read[0], oursRead}, {&res.read[1], etRead}, {&res.write[0], oursWrite}, {&res.write[1], etWrite}}
+	}{{&res.read[0], oursRead}, {&res.read[1], etRead}, {&res.readAll[0], oursReadAll}, {&res.readAll[1], etReadAll},
+		{&res.write[0], oursWrite}, {&res.write[1], etWrite}}
 	if round%2 == 1 {
 		steps[0], steps[1] = steps[1], steps[0]
 		steps[2], steps[3] = steps[3], steps[2]
+		steps[4], steps[5] = steps[5], steps[4]
 	}
 	for _, st := range steps {
 		if err := timed(st.into, st.f); err != nil {
@@ -463,6 +468,34 @@ func runFile(et *exiftool, res *result, dir, outDir, name string, i, round int, 
 		}
 	}
 	return nil
+}
+
+// readAllTags asks ExifTool for what ReadAll gives: the dates (with
+// sub-seconds and offsets), GPS, camera, lens and exposure, size,
+// orientation (and a HEIF's or movie's rotation), title, description,
+// keywords and rating from XMP, IPTC and Exif, regions and people, the
+// content identifier, and a movie's duration.
+var readAllTags = []string{"-json", "-n", "-fast2", "-struct",
+	"-Orientation", "-Rotation", "-DateTimeOriginal", "-CreateDate", "-ModifyDate", "-SubSecTime*", "-OffsetTime*",
+	"-DateCreated", "-TimeCreated", "-CreationDate", "-GPSLatitude", "-GPSLongitude", "-GPSAltitude", "-GPSAltitudeRef",
+	"-Make", "-Model", "-LensMake", "-LensModel", "-ISO", "-FNumber", "-ExposureTime", "-FocalLength",
+	"-FocalLengthIn35mmFormat", "-ImageWidth", "-ImageHeight", "-Title", "-Description", "-ObjectName",
+	"-Caption-Abstract", "-ImageDescription", "-XP*", "-Subject", "-Keywords", "-Rating", "-RegionInfo",
+	"-PersonInImage", "-ContentIdentifier", "-Duration"}
+
+// readAllOurs reads a file with ReadAll.
+func readAllOurs(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	_, err = mediameta.ReadAll(f, st.Size())
+	return err
 }
 
 func readOurs(path, format string) error {
@@ -548,7 +581,7 @@ func report(r result, n, rounds int, manifest string) string {
 	for _, op := range []struct {
 		name string
 		s    [2][]sample
-	}{{"Read", r.read}, {"Write (a new file)", r.write}} {
+	}{{"Read", r.read}, {"Read everything (ReadAll)", r.readAll}, {"Write (a new file)", r.write}} {
 		fmt.Fprintf(w, "### %s\n\n| Format | Runs | mediameta files/s | p50 | p95 | ExifTool files/s | p50 | p95 | Speed-up |\n|---|---|---|---|---|---|---|---|---|\n", op.name)
 		for _, f := range fl {
 			a, b := pick(op.s[0], f), pick(op.s[1], f)
