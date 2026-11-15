@@ -148,6 +148,11 @@ func readJPEGExif(r io.ReaderAt, size int64) (Exif, error) {
 	if err != nil {
 		return Exif{}, err
 	}
+	return f.exif(r)
+}
+
+// exif reads the Exif of a parsed JPEG: its first Exif segment's.
+func (f *jpegFile) exif(r io.ReaderAt) (Exif, error) {
 	_, payload, ok, err := f.exifSegment(r)
 	if err != nil || !ok {
 		return Exif{}, err
@@ -190,6 +195,12 @@ func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 	if err != nil {
 		return Exif{}, err
 	}
+	return f.exif(r, size)
+}
+
+// exif reads the Exif of a parsed HEIF file: its first Exif item that
+// holds TIFF data, the primary image's first.
+func (f *heifFile) exif(r io.ReaderAt, size int64) (Exif, error) {
 	var oldMeta []byte
 	for _, id := range f.exifItems() {
 		if oldMeta == nil {

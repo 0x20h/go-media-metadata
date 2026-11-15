@@ -176,7 +176,8 @@ func (f *heifFile) itemOrientation(id uint32) (Orientation, error) {
 // tag in its embedded JPEG. For JPEG XL it's the codestream header's
 // orientation, which decoders apply. For QuickTime and MP4 it's the first
 // video track's matrix: ErrUnsupported for a movie without a video track,
-// or with a matrix that is no rotation or mirroring.
+// or with a matrix that is no rotation or mirroring. GIF, BMP and MPEG
+// transport streams keep no orientation: 1.
 //
 // A file of none of these formats gives ErrUnknownFormat.
 func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
@@ -194,6 +195,8 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			x, err = readWebPExif(r, size)
 		case isJXL(r, size):
 			return readJXLOrientation(r, size)
+		case isGIF(r, size), isBMP(r, size):
+			return 1, nil // no orientation: shown as stored
 		case detectFormat(r, size) == formatMovie, detectFormat(r, size) == formatTS, detectFormat(r, size) == formatMatroska:
 			v, err := ReadVideo(r, size)
 			if err != nil {

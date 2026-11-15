@@ -10,6 +10,12 @@
 
 ### Added
 
+- `ReadAll`: everything an importer needs in one call, one parse per
+  container for JPEG, HEIF, PNG and GIF, with each part's error kept
+  apart (`Metadata.Errors`). It equals the separate calls on every corpus
+  file and is 2.5 to 5 times faster than them. See [docs/api.md](docs/api.md).
+- `ReadOrientation` reads GIF and BMP as 1 (they keep no orientation), as
+  `ReadImageSize` reads their size.
 - Matroska and WebM, read only: `ReadVideo` reads the duration, the
   recording date (`DateUTC`), the title (Info's, else the file's `TITLE`
   tag), the first video track's size and its rotation (a projection's

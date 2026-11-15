@@ -660,6 +660,11 @@ func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 		}
 		return nil, err
 	}
+	return f.xmp(r, size)
+}
+
+// xmp reads the XMP item of a parsed HEIF file, nil without one.
+func (f *heifFile) xmp(r io.ReaderAt, size int64) ([]byte, error) {
 	id, found, err := f.metadataItem(kindXMP)
 	if err != nil || !found {
 		return nil, err
