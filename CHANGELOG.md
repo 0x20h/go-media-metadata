@@ -100,6 +100,9 @@
   (checked by a test). `Exif.Orientation` gives the tag as written.
   ExifTool's `Orientation` is that tag; it reports `irot` as
   `QuickTime:Rotation`. See [docs/heif.md](docs/heif.md).
+- Benchmarks against ExifTool, re-measured for this release: `ReadAll`
+  is 24× faster than ExifTool reading the same tags (69× for HEIC), and
+  writes 5× faster. See [docs/benchmarks.md](docs/benchmarks.md).
 - CI now runs every test that compares this package with ExifTool,
   against a pinned ExifTool, and keeps a failing fuzz input as an
   artifact.
