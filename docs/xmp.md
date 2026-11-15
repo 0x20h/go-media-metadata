@@ -14,12 +14,13 @@ type XMP struct {
 	HierarchicalKeywords []string // lr:hierarchicalSubject, "A|B|C" as written
 	Rating               int      // xmp:Rating, -1 to 5, when HasRating
 	HasRating            bool
-	PersonInImage        []string // Iptc4xmpExt:PersonInImage
-	Regions              *Regions // mwg-rs:Regions, nil without any
-	GPS                  *GPS     // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
-	DateCreated          *Date    // photoshop:DateCreated
-	CreateDate           *Date    // xmp:CreateDate
-	DateTimeOriginal     *Date    // exif:DateTimeOriginal
+	PersonInImage        []string    // Iptc4xmpExt:PersonInImage
+	Regions              *Regions    // mwg-rs:Regions, nil without any
+	GPS                  *GPS        // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
+	DateCreated          *Date       // photoshop:DateCreated
+	CreateDate           *Date       // xmp:CreateDate
+	DateTimeOriginal     *Date       // exif:DateTimeOriginal
+	Orientation          Orientation // tiff:Orientation, 0 without a valid one
 }
 
 type Date struct {
@@ -76,6 +77,44 @@ Read only: `EditXMP` doesn't write them, and keeps them as they are.
 - Where ExifTool reads a value leniently (a latitude past 90°, 30 February),
   this package reads none. Otherwise the two agree, which the tests check
   on the ExifTool and ImageIO corpora.
+
+### Orientation
+
+`tiff:Orientation` is the Exif Orientation tag's XMP mirror, 1 to 8. Any
+other value (0, 9, `6.0`, text) reads as 0, no orientation. Sidecars
+carry it when the image was turned after it was taken. `EditXMP` keeps it
+as it is.
+
+## Sidecars: MergeXMP
+
+A sidecar (`IMG_1.xmp` or `IMG_1.CR3.xmp` next to `IMG_1.CR3`) is an XMP
+packet with no wrapper, so `ParseXMP` reads it. `MergeXMP` combines it
+with the file's own XMP:
+
+```go
+merged := mediameta.MergeXMP(fileXMP, sidecarXMP)
+```
+
+The order is the Metadata Working Group's for a camera RAW: the sidecar
+holds what was edited since the photo was taken, so each value it has
+wins, and the file keeps the values it leaves out. A value counts as set
+when it is:
+
+- a title or description that isn't empty;
+- keywords, hierarchical keywords or people that aren't an empty list
+  (lists are taken whole, not joined);
+- a rating (`HasRating`, 0 included), regions, a GPS position or a date;
+- a valid orientation.
+
+Without a sidecar `tiff:Orientation`, the file's orientation applies
+(`ReadOrientation`). The result shares no slices or pointers with its
+inputs. Finding the sidecar on disk is the caller's: this package reads
+no files. A sidecar `ParseXMP` refuses (`ErrMalformed`) is best left out,
+which keeps the file's metadata.
+
+`TestSidecarsAgreeWithExifTool` checks that ExifTool reads the sidecars
+in `testdata/sidecar` (written by ExifTool, as a raw converter writes
+them) as `ParseXMP` does.
 
 ## Writing: EditXMP
 
@@ -208,7 +247,10 @@ streams the same edit to a writer.
   same way `ParseXMP` does, and the properties the edit didn't touch are
   still there.
 - `FuzzEditXMP`: any packet `ParseXMP` reads can be edited, and the
-  result parses back with the edit applied.
+  result parses back with the edit applied, its orientation, position
+  and dates unchanged.
+- `FuzzMergeXMP`: each merged value comes from the sidecar when it has
+  one, else from the file, and an empty sidecar changes nothing.
 - `TestPlanXMPEdit`: every edit, on files of every format with and
   without XMP, meets four conditions:
   - it reads back with the edit, and the rest of the packet as it was;

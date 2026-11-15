@@ -45,6 +45,10 @@ type XMP struct {
 	// mirror (some writers put the date only there), nil without a valid
 	// date.
 	DateTimeOriginal *Date
+	// Orientation is tiff:Orientation, the Exif tag's XMP mirror, 0
+	// without a valid one (1 to 8). Sidecars carry it when the image was
+	// turned after it was taken; see MergeXMP.
+	Orientation Orientation
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
@@ -282,6 +286,7 @@ func (d *xmpDoc) fields() XMP {
 	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
 	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
 	x.DateTimeOriginal = d.xmpDate(nsExif, "DateTimeOriginal")
+	x.Orientation = d.xmpOrientation()
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
 		f, err := strconv.ParseFloat(ps[0].value(), 64)
 		if err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {

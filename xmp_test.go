@@ -277,6 +277,7 @@ func FuzzEditXMP(f *testing.F) {
 	f.Add([]byte(whereWhenXMP("51,30N", "0,7.5W", "71/2", "1", "2025-05-04T13:14:15.25", "2025")))
 	f.Add([]byte(whereWhenXMP("51.5", "-0.125", "35.5", "0", "2025-05-04T13:14Z", "2019:12:31 23:59:59.5-05:00")))
 	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description/></rdf:RDF>`))
+	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/" tiff:Orientation="6"/></rdf:RDF>`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			before, err := ParseXMP(data)
@@ -321,6 +322,10 @@ func FuzzEditXMP(f *testing.F) {
 				!sameXMPDate(before.DateTimeOriginal, after.DateTimeOriginal) {
 				t.Fatalf("position or dates changed: %+v %+v %+v, now %+v %+v %+v",
 					before.GPS, before.DateCreated, before.CreateDate, after.GPS, after.DateCreated, after.CreateDate)
+			}
+			// Nor the orientation, which is always one ParseXMP accepts.
+			if before.Orientation != after.Orientation || before.Orientation != 0 && !before.Orientation.Valid() {
+				t.Fatalf("orientation %d became %d", before.Orientation, after.Orientation)
 			}
 		})
 	})

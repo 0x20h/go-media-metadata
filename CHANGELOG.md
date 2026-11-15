@@ -30,6 +30,10 @@
 - `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
   time and focal length (also in 35 mm terms), read only, from every format
   `ReadExif` takes. See [docs/exif.md](docs/exif.md).
+- `MergeXMP`: a file's XMP combined with its sidecar's (`IMG_1.xmp` next
+  to a RAW), in the Metadata Working Group's order: each value the
+  sidecar has wins. `XMP.Orientation` reads `tiff:Orientation`. See
+  [docs/xmp.md](docs/xmp.md).
 - `ReadTaken` and `TakenFrom`: the date a photo was taken, from the first
   of Exif DateTimeOriginal, Exif DateTimeDigitized, XMP
   exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate and IPTC
