@@ -194,7 +194,7 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			x, err = readWebPExif(r, size)
 		case isJXL(r, size):
 			return readJXLOrientation(r, size)
-		case detectFormat(r, size) == formatMovie:
+		case detectFormat(r, size) == formatMovie, detectFormat(r, size) == formatTS:
 			v, err := ReadVideo(r, size)
 			if err != nil {
 				return 0, err
