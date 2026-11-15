@@ -10,6 +10,10 @@
 
 ### Added
 
+- `MergeXMP`: a file's XMP combined with its sidecar's (`IMG_1.xmp` next
+  to a RAW), in the Metadata Working Group's order: each value the
+  sidecar has wins. `XMP.Orientation` reads `tiff:Orientation`. See
+  [docs/xmp.md](docs/xmp.md).
 - `ReadTaken` and `TakenFrom`: the date a photo was taken, from the first
   of Exif DateTimeOriginal, Exif DateTimeDigitized, XMP
   exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate and IPTC
