@@ -471,12 +471,9 @@ func (w *tiffWalk) ifd(off uint32, name string, depth int) (uint32, error) {
 	}
 	// StripOffsets, but for previews: a CR2's IFD0, and a DNG's JPEG
 	// (compression 7) that isn't the full image, but in SubIFD2.
-	strips := !(w.kind == "CR2" && name == "IFD0") &&
-		!(w.kind == "DNG" && compression == 7 && subfileType != 0 && name != "SubIFD2")
-	if compression == 34892 || compression == 52546 {
-		strips = true
-	}
-	if strips {
+	preview := w.kind == "CR2" && name == "IFD0" ||
+		w.kind == "DNG" && compression == 7 && subfileType != 0 && name != "SubIFD2"
+	if !preview || compression == 34892 || compression == 52546 {
 		if err := w.pairs(m, tagStripOffsets, tagStripByteCounts); err != nil {
 			return 0, err
 		}
@@ -493,7 +490,8 @@ func (w *tiffWalk) ifd(off uint32, name string, depth int) (uint32, error) {
 	}
 	// JPEGInterchangeFormat, but for the thumbnail (IFD1) and an ARW's
 	// preview in IFD0.
-	if name != "IFD1" && !(name == "IFD0" && w.kind == "ARW") {
+	thumbnail := name == "IFD1" || name == "IFD0" && w.kind == "ARW"
+	if !thumbnail {
 		if err := w.pairs(m, tagJPEGInterchange, tagJPEGInterchangeLen); err != nil {
 			return 0, err
 		}
@@ -714,13 +712,6 @@ type sampleTable struct {
 	n     int
 	all   uint32
 	sizes []uint32
-}
-
-func (s sampleTable) at(i int) uint32 {
-	if s.sizes == nil {
-		return s.all
-	}
-	return s.sizes[i]
 }
 
 // sampleSizes reads stsz's sample sizes (one size for all, or a table),
