@@ -10,6 +10,11 @@
 
 ### Added
 
+- Video reads: the place from 3GPP `loci`, and the date and place from
+  the movie's XMP (an MP4's `uuid` box, a QuickTime movie's `XMP_`) when
+  Keys and the user data have none. `Video.Shown()` gives the size as
+  shown. `ReadXMP` takes movies. A video corpus (`testdata/video`) is
+  checked against ExifTool. See [docs/quicktime.md](docs/quicktime.md).
 - Video title, description, keywords and rating. `ReadVideo` reads them
   from Keys, the user data, or an MP4 item list. `VideoEdit` sets or
   removes them: in Keys (`com.apple.quicktime.title`, `.description`,

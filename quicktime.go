@@ -1,6 +1,7 @@
 package mediameta
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -22,8 +23,10 @@ type Video struct {
 	// Created is when the video was recorded. The first of these the file
 	// has: the Keys entry com.apple.quicktime.creationdate (a local time
 	// with its offset, so OffsetKnown is true), the user data's ©day (the
-	// same, when it carries an offset), or the movie header's creation
-	// time (in UTC, OffsetKnown true). Zero without any.
+	// same, when it carries an offset), the movie's XMP (in TakenFrom's
+	// order: exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate;
+	// OffsetKnown as written), or the movie header's creation time (in
+	// UTC, OffsetKnown true). Zero without any.
 	Created     time.Time
 	OffsetKnown bool
 
@@ -31,8 +34,10 @@ type Video struct {
 	Duration time.Duration
 
 	// GPS is where the video was recorded: the Keys entry
-	// com.apple.quicktime.location.ISO6709, else the user data's ©xyz.
-	// Nil without a valid position.
+	// com.apple.quicktime.location.ISO6709, else the user data's ©xyz,
+	// else its 3GPP loci (as 3GP and Android writers put it), else the
+	// movie's XMP (exif:GPSLatitude, exif:GPSLongitude). Nil without a
+	// valid position.
 	GPS *GPS
 
 	// Orientation is how the first video track is shown, from its track
@@ -43,7 +48,7 @@ type Video struct {
 	Orientation Orientation
 
 	// Width and Height are the first video track's size as stored, before
-	// its matrix turns it.
+	// its matrix turns it; Shown gives it as it's shown.
 	Width, Height int
 
 	// Make and Model are the recording device's: the Keys entries
@@ -160,16 +165,27 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		}
 	}
 
+	// The movie's XMP, read only when the fields before it are missing.
+	// Each source parsed once, in order; the movie's XMP read only when
+	// the ones before it have nothing.
+	var x XMP
+	xRead := false
 	if at, ok := parseISO8601(keys.created); ok {
 		v.Created, v.OffsetKnown = at, true
 	} else if at, ok := parseISO8601(udta.created); ok {
 		v.Created, v.OffsetKnown = at, true
+	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
+		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
 		v.Created, v.OffsetKnown = mvhdCreated, true
 	}
 	if g, ok := parseISO6709(keys.location); ok {
 		v.GPS = g
 	} else if g, ok := parseISO6709(udta.location); ok {
+		v.GPS = g
+	} else if udta.loci != nil {
+		v.GPS = udta.loci
+	} else if g := movieXMPOnce(r, size, top, udta, &x, &xRead).GPS; g != nil {
 		v.GPS = g
 	}
 	v.Make = first(keys.make, udta.make)
@@ -191,6 +207,12 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.Orientation = 0
 	}
 	return v, nil
+}
+
+// Shown is the size the video is shown at: Width and Height swapped when
+// Orientation turns it a quarter (5 to 8), as stored otherwise.
+func (v Video) Shown() (width, height int) {
+	return ImageSize{Width: v.Width, Height: v.Height, Orientation: v.Orientation}.Shown()
 }
 
 func first(a, b string) string {
@@ -423,6 +445,8 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	loci                                      *GPS   // 3GPP loci
+	xmp                                       []byte // an XMP packet
 	title, description, rating                string
 	keywords                                  []string
 }
@@ -443,6 +467,12 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
+	}
+	if t.loci == nil {
+		t.loci = o.loci
+	}
+	if t.xmp == nil {
+		t.xmp = o.xmp
 	}
 	if t.title == "" {
 		t.title = o.title
@@ -774,6 +804,24 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case "\xa9mod":
 			dst = &t.model
+		case "loci":
+			if t.loci == nil {
+				b, err := readBox(r, k, maxLeafBox)
+				if err != nil {
+					return t, err
+				}
+				t.loci = parseLoci(b)
+			}
+			continue
+		case "XMP_":
+			if t.xmp == nil {
+				b, err := readBox(r, k, maxXMP)
+				if err != nil {
+					return t, err
+				}
+				t.xmp = b
+			}
+			continue
 		case "\xa9nam":
 			dst = &t.title
 		case "\xa9des":
@@ -947,4 +995,102 @@ func iso6709Angle(s string, degDigits int) (float64, bool) {
 		return 0, false
 	}
 	return sign * deg, true
+}
+
+// parseLoci reads a 3GPP location information box's payload (3GPP TS
+// 26.244 8.10): version and flags, a language, the place's name (UTF-8
+// up to a NUL, or UTF-16 after a byte order mark up to a 16-bit NUL), a
+// role byte, then longitude, latitude and altitude as signed 16.16 fixed
+// point. Nil when it's cut short or out of range.
+func parseLoci(b []byte) *GPS {
+	if len(b) < 6 {
+		return nil
+	}
+	p := b[6:]
+	if len(p) >= 2 && p[0] == 0xFE && p[1] == 0xFF {
+		i := 2
+		for ; i+1 < len(p) && (p[i] != 0 || p[i+1] != 0); i += 2 {
+		}
+		p = p[min(i+2, len(p)):]
+	} else {
+		i := bytes.IndexByte(p, 0)
+		if i < 0 {
+			return nil
+		}
+		p = p[i+1:]
+	}
+	if len(p) < 13 {
+		return nil
+	}
+	fixed := func(b []byte) float64 { return float64(int32(binary.BigEndian.Uint32(b))) / 65536 }
+	g := &GPS{Longitude: fixed(p[1:]), Latitude: fixed(p[5:]), Altitude: fixed(p[9:]), HasAltitude: true}
+	if math.Abs(g.Latitude) > 90 || math.Abs(g.Longitude) > 180 {
+		return nil
+	}
+	return g
+}
+
+// xmpUUID is the uuid box type of an MP4's XMP packet.
+var xmpUUID = []byte{0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC}
+
+// movieXMP reads a movie's XMP packet: a top-level uuid box of xmpUUID (as
+// MP4 files have it), else the user data's XMP_ (QuickTime). Nil without
+// one.
+func movieXMP(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags) ([]byte, error) {
+	for _, b := range top {
+		// The box's header ends with its 16-byte extended type.
+		if b.Type != bmff.T("uuid") || b.HeaderLen < 24 {
+			continue
+		}
+		var id [16]byte
+		if _, err := r.ReadAt(id[:], b.Body()-16); err != nil {
+			return nil, fmt.Errorf("%w: reading uuid: %v", ErrMalformed, err)
+		}
+		if !bytes.Equal(id[:], xmpUUID) {
+			continue
+		}
+		if b.BodyLen() > maxXMP {
+			return nil, fmt.Errorf("%w: XMP of %d bytes", ErrUnsupported, b.BodyLen())
+		}
+		p := make([]byte, b.BodyLen())
+		if _, err := r.ReadAt(p, b.Body()); err != nil {
+			return nil, fmt.Errorf("%w: reading XMP: %v", ErrMalformed, err)
+		}
+		return p, nil
+	}
+	return udta.xmp, nil
+}
+
+// readMovieXMP reads a movie's XMP packet, nil without one.
+func readMovieXMP(r io.ReaderAt, size int64) ([]byte, error) {
+	top, err := bmff.ReadBoxes(r, 0, size)
+	if err != nil {
+		return nil, err
+	}
+	var udta qtTags
+	if moov, ok := bmff.Find(top, bmff.T("moov")); ok {
+		kids, err := bmff.ReadBoxes(r, moov.Body(), moov.End())
+		if err != nil {
+			return nil, err
+		}
+		if u, ok := bmff.Find(kids, bmff.T("udta")); ok {
+			if udta, err = readUdta(r, u); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return movieXMP(r, size, top, udta)
+}
+
+// movieXMPOnce parses a movie's XMP into x the first time it's called
+// (read false), and returns x: empty without a packet, or with one it
+// can't read.
+func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP, read *bool) *XMP {
+	if !*read {
+		*read = true
+		if packet, err := movieXMP(r, size, top, udta); err == nil && packet != nil {
+			*x, _ = ParseXMP(packet)
+		}
+	}
+	return x
 }

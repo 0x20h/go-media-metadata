@@ -3,10 +3,13 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -532,6 +535,49 @@ func TestReadEmbeddedMPFSizeZero(t *testing.T) {
 	for _, img := range e.Images {
 		if img.Length <= 0 {
 			t.Errorf("an image of %d bytes: %+v", img.Length, img)
+		}
+	}
+}
+
+// An MPF image that starts among the marker segments (as only a broken
+// index has it) can't be kept by a write that changes or moves bytes
+// before it: the write is refused rather than leave the index pointing
+// at other bytes. FuzzReadEmbedded found such a file; a real Motion Photo,
+// its images after the primary, still takes every write.
+func TestMPFImageAmongSegments(t *testing.T) {
+	raw := readFile(t, "testdata/fuzz/FuzzReadEmbedded/50cefc9717e16423")
+	lines := strings.SplitN(string(raw), "\n", 2)
+	lit := strings.TrimSuffix(strings.TrimSpace(lines[1]), ")")
+	s, err := strconv.Unquote(strings.TrimPrefix(lit, "[]byte("))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := []byte(s)
+	edit := MetadataEdit{IPTC: &IPTCEdit{Keywords: &[]string{"k"}}}
+	if _, err := PlanMetadata(bytes.NewReader(broken), int64(len(broken)), edit); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("an image among the segments: %v, want ErrUnsupported", err)
+	}
+	d := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	long := strings.Repeat("x", 300)
+	for _, v := range motionVariants {
+		file := buildMotionPhoto(t, v.o).file
+		before := mpfImages(file)
+		p, err := PlanMetadata(bytes.NewReader(file), int64(len(file)), MetadataEdit{
+			Exif: &ExifEdit{DateTimeOriginal: &d}, XMP: &XMPEdit{Title: &long}, IPTC: &IPTCEdit{Keywords: &[]string{"k"}},
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", v.name, err)
+		}
+		got := written(t, p)
+		after := mpfImages(got)
+		if before.ok != after.ok || len(before.images) != len(after.images) {
+			t.Fatalf("%s: MPF %+v, was %+v", v.name, after, before)
+		}
+		for i, im := range before.images {
+			a := after.images[i]
+			if !bytes.Equal(got[a.at:a.at+a.size], file[im.at:im.at+im.size]) {
+				t.Errorf("%s: MPF image %d moved off its bytes", v.name, i+1)
+			}
 		}
 	}
 }

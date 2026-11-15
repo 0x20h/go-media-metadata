@@ -19,7 +19,6 @@ import (
 const (
 	tsPacket    = 188
 	tsSync      = 0x47
-	pcrHz       = 27_000_000
 	maxTSScan   = 16 << 20 // read from the start for the video headers and MDPM
 	maxTSBack   = 512_000  // read from the end for the last PCR
 	maxPESBytes = 1 << 20  // video stream bytes kept for the headers
@@ -173,7 +172,9 @@ func readTSVideo(r io.ReaderAt, size int64) (Video, error) {
 		if lastPCR < startPCR {
 			lastPCR += 1 << 33 * 300 // the 33-bit base wrapped
 		}
-		v.Duration = time.Duration(lastPCR-startPCR) * time.Second / pcrHz
+		// 27 MHz ticks to nanoseconds: ×1000/27. (Ticks × time.Second
+		// overflows past about 341 s of stream.)
+		v.Duration = time.Duration((lastPCR - startPCR) * 1000 / 27)
 	}
 	if videoPID < 0 {
 		return v, fmt.Errorf("%w: a transport stream without an H.264 video stream", ErrUnsupported)
