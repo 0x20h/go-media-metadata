@@ -62,6 +62,7 @@ Early, and growing format by format.
 | JPEG XL | read (codestream) | read, write, edit | read, write, edit |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 | MPEG-2 TS, MTS, M2TS (AVCHD) | read (always 1) | | |
+| Matroska (MKV), WebM | read (projection roll) | | |
 | GIF | | | read |
 | BMP | | | |
 
@@ -80,7 +81,8 @@ title, description, keywords and rating;
 place, title, description, keywords and rating.
 It also reads an AVCHD camcorder's MTS or M2TS: the recording date, GPS
 position, make and model from the video stream's MDPM, and the duration
-and size.
+and size; and a Matroska or WebM file's duration, recording date, title,
+size and rotation.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,
@@ -98,7 +100,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
   [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
   [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md),
-  [MPEG-2 TS, MTS, M2TS](docs/m2ts.md), [GIF and BMP](docs/gif-bmp.md)
+  [MPEG-2 TS, MTS, M2TS](docs/m2ts.md), [Matroska and WebM](docs/matroska.md),
+  [GIF and BMP](docs/gif-bmp.md)
 - [Exif](docs/exif.md): the fields (camera, lens and exposure among
   them), writers' quirks compared with ExifTool, `EditExif`, and
   `ReadTaken`: the date taken from Exif, XMP or IPTC
