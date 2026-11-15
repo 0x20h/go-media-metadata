@@ -44,8 +44,9 @@ type corpusXMP struct {
 		W, H float64
 		Unit string
 		List []struct {
-			Name, Type string
-			X, Y, W, H float64
+			Name, Type, Description, FocusUsage, BarCodeValue string
+			X, Y, W, H, D, Rotation                           float64
+			Unit                                              string
 		}
 	}
 	// GPS is the XMP's position, and DateCreated and CreateDate its
@@ -144,7 +145,8 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 		if r := w.Regions; r != nil {
 			want := Regions{AppliedTo: Dimensions{W: r.W, H: r.H, Unit: r.Unit}}
 			for _, g := range r.List {
-				want.List = append(want.List, Region{Name: g.Name, Type: g.Type, X: g.X, Y: g.Y, W: g.W, H: g.H})
+				want.List = append(want.List, Region{Name: g.Name, Type: g.Type, Description: g.Description, FocusUsage: g.FocusUsage,
+					BarCodeValue: g.BarCodeValue, X: g.X, Y: g.Y, W: g.W, H: g.H, D: g.D, Rotation: g.Rotation, Unit: g.Unit})
 			}
 			if p.Regions == nil || !sameRegions(p.Regions, &want) {
 				t.Errorf("%s: regions %+v, want %+v", name, p.Regions, want)

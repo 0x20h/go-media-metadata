@@ -31,6 +31,16 @@
     "orientation": 1,
     "xmp": { "dateTimeOriginal": { "time": "2021-06-07T08:09:10+01:00", "precision": 5 } }
   },
+  "regions-full.jpg": {
+    "orientation": 1,
+    "xmp": {
+      "regions": { "w": 64, "h": 48, "unit": "pixel", "list": [
+        { "name": "Ada", "type": "Face", "description": "left", "rotation": 0.5, "x": 0.25, "y": 0.33, "w": 0.25, "h": 0.33, "unit": "normalized" },
+        { "type": "Focus", "focusUsage": "EvaluatedUsed", "x": 40, "y": 30, "d": 8, "unit": "pixel" },
+        { "type": "BarCode", "barCodeValue": "4006381333931", "x": 0.9, "y": 0.1, "w": 0.1, "h": 0.1, "unit": "normalized" }
+      ] }
+    }
+  },
   "iptc-utf8.jpg": {
     "orientation": 1,
     "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" }

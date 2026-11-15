@@ -54,6 +54,10 @@ et date-digitized.jpg "-EXIF:CreateDate=2023:03:04 05:06:07" -EXIF:SubSecTimeDig
 et date-iptc.jpg -IPTC:DateCreated=2022:01:02 -IPTC:TimeCreated=10:20:30+05:30
 et date-xmp.jpg "-XMP-exif:DateTimeOriginal=2021:06:07 08:09:10+01:00"
 
+# Regions with every MWG field: a rotated face with a description and
+# Extensions, a focus circle in pixels, a bar code.
+et regions-full.jpg '-XMP-mwg-rs:RegionInfo={AppliedToDimensions={W=64,H=48,Unit=pixel},RegionList=[{Area={X=0.25,Y=0.33,W=0.25,H=0.33,Unit=normalized},Name=Ada,Type=Face,Description=left,Rotation=0.5,Extensions={XMP-dc:Title=detector 7}},{Area={X=40,Y=30,D=8,Unit=pixel},Type=Focus,FocusUsage#=EvaluatedUsed},{Area={X=0.9,Y=0.1,W=0.1,H=0.1,Unit=normalized},Type=BarCode,BarCodeValue=4006381333931}]}'
+
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
   -GPSLatitude=48.137 -GPSLatitudeRef=N -GPSLongitude=11.575 -GPSLongitudeRef=E \
