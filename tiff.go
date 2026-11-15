@@ -46,6 +46,9 @@ type Exif struct {
 	// GPS is where the photo was taken, nil without a valid position.
 	GPS *GPS
 
+	// Camera is the camera, lens and exposure, read only.
+	Camera Camera
+
 	// ImageDescription is IFD0's ImageDescription tag, as its bytes are
 	// (writers put UTF-8 there, ExifTool among them), up to its NUL.
 	ImageDescription string
@@ -285,13 +288,15 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 	if f, ok := ifd0[tagXPTitle]; ok && (f.typ == typeByte || f.typ == typeUndef) {
 		x.XPTitle = utf16LE(f.value)
 	}
+	var exif map[uint16]field
 	if f, ok := ifd0[tagExifIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
-			exif := ifd(off)
+			exif = ifd(off)
 			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
 			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
 		}
 	}
+	x.Camera = t.camera(ifd0, exif)
 	if f, ok := ifd0[tagGPSIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
 			x.GPS = t.gps(ifd(off))

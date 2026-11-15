@@ -26,6 +26,9 @@ info, _ := in.Stat()
 o, err := mediameta.ReadOrientation(in, info.Size())
 fmt.Println(o) // e.g. "rotated 90° clockwise"
 
+s, err := mediameta.ReadImageSize(in, info.Size())
+fmt.Println(s.Shown()) // e.g. 3024 4032
+
 x, err := mediameta.ReadExif(in, info.Size())
 fmt.Println(x.DateTimeOriginal, x.OffsetKnown, x.GPS)
 
@@ -87,9 +90,9 @@ change the IPTC-IIM title, keywords and description that mirror them.
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
   [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
   [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md)
-- [Exif](docs/exif.md): the fields, writers' quirks compared with
-  ExifTool, `EditExif`, and `ReadTaken`: the date taken from Exif, XMP
-  or IPTC
+- [Exif](docs/exif.md): the fields (camera, lens and exposure among
+  them), writers' quirks compared with ExifTool, `EditExif`, and
+  `ReadTaken`: the date taken from Exif, XMP or IPTC
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
 - [IPTC](docs/iptc.md): `ParseIPTC`, `EditIPTC`, and a JPEG's IPTC-IIM
 - [Benchmarks](docs/benchmarks.md): against ExifTool, and how to repeat them
@@ -97,7 +100,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
 ## Guarantees
 
 - **Lossless:** image data is never decoded or re-encoded. Tests check
-  that it is byte-identical after every write.
+  that it is byte-identical after every write. `HashImageData` gives the
+  same hash as ExifTool's ImageDataHash, so you can check it yourself.
 - **Safe on hostile input:** every parser is fuzzed. Lengths are checked,
   counts are bounded by the bytes available, and nesting is capped.
   Malformed input gives an error, never a panic or an endless loop.

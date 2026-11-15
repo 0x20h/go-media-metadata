@@ -121,9 +121,34 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 		withinDeadline(t, func() {
 			r := func() *bytes.Reader { return bytes.NewReader(data) }
 			n := int64(len(data))
+			hash, hashErr := imageDataMD5(t, data)
+			sameHash := func(out []byte) {
+				if hashErr != nil {
+					return
+				}
+				if after, err := imageDataMD5(t, out); after != hash {
+					t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+				}
+			}
 			_, readErr := ReadOrientation(r(), n)
 			if readErr != nil && !sentinel(readErr) {
 				t.Fatalf("ReadOrientation: an error that is none of the sentinels: %v", readErr)
+			}
+			sz, szErr := ReadImageSize(r(), n)
+			if szErr != nil && !sentinel(szErr) {
+				t.Fatalf("ReadImageSize: an error that is none of the sentinels: %v", szErr)
+			}
+			if szErr == nil && (sz.Width <= 0 || sz.Height <= 0) {
+				t.Fatalf("ReadImageSize: %+v", sz)
+			}
+			// An orientation write leaves the stored size.
+			sameSize := func(out []byte) {
+				if szErr != nil {
+					return
+				}
+				if got, err := ReadImageSize(bytes.NewReader(out), int64(len(out))); err != nil || got.Width != sz.Width || got.Height != sz.Height {
+					t.Fatalf("size %+v became %+v (%v)", sz, got, err)
+				}
 			}
 			for _, o := range []Orientation{1, 6, 7} {
 				p, err := PlanOrientation(r(), n, o)
@@ -135,6 +160,8 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 				}
 				checkPlan(t, data, p)
 				out := written(t, p)
+				sameSize(out)
+				sameHash(out)
 				var set bytes.Buffer
 				if err := SetOrientation(r(), n, &set, o); err != nil || !bytes.Equal(set.Bytes(), out) {
 					t.Fatalf("SetOrientation(%d) differs from the plan (%v)", o, err)
@@ -154,6 +181,8 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 			}
 			checkPlan(t, data, p)
 			out := written(t, p)
+			sameSize(out)
+			sameHash(out)
 			var set bytes.Buffer
 			if err := SetRotation(r(), n, &set, 90); err != nil || !bytes.Equal(set.Bytes(), out) {
 				t.Fatalf("SetRotation differs from the plan (%v)", err)
