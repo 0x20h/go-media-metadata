@@ -48,7 +48,9 @@
 - `Exif.DateTimeDigitized` and `Exif.DigitizedOffsetKnown` (ExifTool's
   CreateDate, with its sub-seconds and offset), `XMP.DateTimeOriginal`
   (exif:DateTimeOriginal) and `IPTC.DateCreated` (2:55 and 2:60).
-
+- `Exif.ContentIdentifier`: the Apple maker note's ContentIdentifier, the
+  still half of a Live Photo's pairing (`Video.ContentIdentifier` is the
+  movie's), from HEIC and JPEG. See [docs/exif.md](docs/exif.md).
 - `XMP.GPS`: the position in `exif:GPSLatitude`, `exif:GPSLongitude` and
   `exif:GPSAltitude`/`GPSAltitudeRef`, in the `DDD,MM,SSk` and `DDD,MM.mmk`
   forms and as decimal degrees.
