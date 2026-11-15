@@ -44,6 +44,40 @@ The tests check every corpus file and the RAW samples against ExifTool's
 composite `ImageSize`. An orientation write leaves the stored size as it
 was, which the dispatch fuzz target checks.
 
+## Image data hash: HashImageData
+
+`HashImageData(r, size, w)` writes the file's image data, without its
+metadata, to `w`. With `w` a hash, the sum is what ExifTool gives as
+ImageDataHash with the same `-api ImageHashType` (MD5, SHA256, SHA512):
+
+```go
+h := sha256.New()
+_, err := mediameta.HashImageData(f, size, h)
+// ExifTool: -ImageDataHash -api ImageHashType=SHA256
+```
+
+A metadata write leaves the sum as it was, so comparing it before and
+after a write shows the image is unchanged. Two files with the same sum
+hold the same image whatever their metadata.
+
+| Format | Image data |
+|---|---|
+| JPEG | the scans, from the first SOS marker to EOI, leaving out the segments between scans. A scan's data after its last RST marker or stuffed 0xFF is left out when a segment, not the next scan, follows it. ExifTool does the same. |
+| PNG | the IDAT chunks' data (and a JNG's JDAT, JDAA) |
+| WebP | the VP8, VP8L, ALPH, ANIM and ANMF chunks' data, with padding |
+| HEIF | every coded image item (av01, avc1, hvc1, lhv1, hvt1), tiles, thumbnails and auxiliary images included, by item id |
+| JPEG XL | the jxlc and jxlp payloads (jxlp's with its part index); a bare codestream is the whole file |
+| TIFF-based RAW | the strips and tiles of each IFD and SubIFD, a SubIFD's before its parent's. Previews are left out: a CR2's IFD0, a DNG's reduced JPEG, the thumbnail in IFD1, an ARW's preview in IFD0. A Panasonic RW2's raw data, to the end of the file. |
+| RAF | the raw data blocks the header points to |
+| QuickTime, MP4, CR3 | each video and sound track's chunks, in chunk-offset order |
+
+ExifTool gives no ImageDataHash for an Olympus ORF, whose header isn't
+TIFF's. This package hashes the ORF's strips. The tests compare the sum
+with ExifTool's on every corpus file, the RAW samples, every JPEG XL
+layout, and progressive and restart-marker JPEGs, WebP files and movies
+made with jpegtran, cwebp and ffmpeg. The fuzz targets check that every
+metadata, orientation and rotation write leaves it as it was.
+
 ## Writing
 
 One naming scheme covers every write:
