@@ -161,6 +161,7 @@ func FuzzPlanMetadata(f *testing.F) {
 			if iim, err := ReadIPTC(bytes.NewReader(data), int64(len(data))); err == nil && iim != nil {
 				_, _ = ParseIPTC(iim)
 			}
+			hash, hashErr := imageDataMD5(t, data)
 			for _, e := range edits {
 				p, err := PlanMetadata(bytes.NewReader(data), int64(len(data)), e)
 				if err != nil {
@@ -168,6 +169,12 @@ func FuzzPlanMetadata(f *testing.F) {
 				}
 				checkPlan(t, data, p)
 				out := written(t, p)
+				// A metadata write leaves the image data.
+				if hashErr == nil {
+					if after, err := imageDataMD5(t, out); after != hash {
+						t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+					}
+				}
 				if want := sequential(t, data, e); !bytes.Equal(out, want) {
 					t.Fatalf("%d bytes, the parts one after another %d", len(out), len(want))
 				}

@@ -94,6 +94,24 @@ func BenchmarkReadImageSize(b *testing.B) {
 	}
 }
 
+// BenchmarkHashImageData writes to io.Discard: the cost of finding and
+// reading the image data, without a hash's.
+func BenchmarkHashImageData(b *testing.B) {
+	for _, f := range benchFiles(b) {
+		b.Run(f.name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(f.data)}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := HashImageData(cr, int64(len(f.data)), io.Discard); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+		})
+	}
+}
+
 func BenchmarkSetRotation(b *testing.B) {
 	for _, f := range benchFiles(b) {
 		b.Run(f.name, func(b *testing.B) {

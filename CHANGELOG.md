@@ -10,6 +10,9 @@
 
 ### Added
 
+- `HashImageData`: a file's image data without its metadata, written to a
+  hash, equal to ExifTool's ImageDataHash. A write that changes only
+  metadata leaves it as it was. See [docs/api.md](docs/api.md).
 - `ReadImageSize` and `ImageSize.Shown`: an image's width and height as
   stored (from the frame header, IHDR, VP8X/VP8/VP8L, ispe, the JPEG XL
   SizeHeader, a RAW's full-size image or a movie's video track) and as
