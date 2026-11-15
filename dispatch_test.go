@@ -84,9 +84,12 @@ func TestOrientationRefusals(t *testing.T) {
 	if _, err := PlanRotation(bytes.NewReader(raf), int64(len(raf)), 90); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("RAF: %v, want ErrUnsupported", err)
 	}
+	// A GIF keeps no orientation: it reads as 1, and nothing writes one.
 	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
+	if o, err := ReadOrientation(bytes.NewReader(gif), int64(len(gif))); err != nil || o != 1 {
+		t.Errorf("ReadOrientation(GIF): %v, %v; want 1", o, err)
+	}
 	for name, err := range map[string]error{
-		"ReadOrientation": func() error { _, err := ReadOrientation(bytes.NewReader(gif), int64(len(gif))); return err }(),
 		"PlanOrientation": func() error { _, err := PlanOrientation(bytes.NewReader(gif), int64(len(gif)), 1); return err }(),
 		"PlanRotation":    func() error { _, err := PlanRotation(bytes.NewReader(gif), int64(len(gif)), 90); return err }(),
 		"ReadExif":        func() error { _, err := ReadExif(bytes.NewReader(gif), int64(len(gif))); return err }(),

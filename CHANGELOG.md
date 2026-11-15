@@ -10,6 +10,12 @@
 
 ### Added
 
+- `ReadAll`: everything an importer needs in one call, one parse per
+  container for JPEG, HEIF, PNG and GIF, with each part's error kept
+  apart (`Metadata.Errors`). It equals the separate calls on every corpus
+  file and is 2.5 to 5 times faster than them. See [docs/api.md](docs/api.md).
+- `ReadOrientation` reads GIF and BMP as 1 (they keep no orientation), as
+  `ReadImageSize` reads their size.
 - Windows' XP tags: `Exif.XPComment`, `XPAuthor`, `XPKeywords` and
   `XPSubject` (UTF-16LE in IFD0), read as `XPTitle` is. Read only.
 - `Exif.DateTime` (IFD0's DateTime, ExifTool's ModifyDate) with

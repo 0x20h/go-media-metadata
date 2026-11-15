@@ -24,6 +24,38 @@ The format is recognised from the file's first bytes. HEIF is tried
 first, so reading a HEIF file costs the same as it did before the other
 formats existed.
 
+## Everything at once: ReadAll
+
+`ReadAll(r, size)` reads everything this package reads from a file in one
+call. It tells the format once and parses JPEG, HEIF, PNG and GIF files
+once for all their parts; the other formats read each part as its own
+function does. The result equals the separate calls' (`ReadExif`,
+`ReadXMP` with `ParseXMP`, `ReadIPTC` with `ParseIPTC`, `ReadImageSize`,
+`ReadOrientation`, `TakenFrom`, `ReadVideo`). `TestReadAllEqualsSeparateCalls`
+checks that on every corpus file, and those functions are checked against
+ExifTool.
+
+`Metadata` holds:
+
+- **A summary.** `Taken` (with its source), `GPS`, `Camera`, `Size`,
+  `Orientation`, `Title`, `Description`, `Keywords`, `Rating`,
+  `Regions`, `PersonInImage` and `ContentIdentifier`. Each field comes
+  from the first part that has it: XMP, then IPTC, then Exif
+  (`XPTitle`; `ImageDescription`, `XPComment`, `XPSubject`;
+  `XPKeywords` split at `;`). A GIF's comment is the description's last
+  resort. A movie's summary is its `Video`'s, and `Taken.Source` is
+  `SourceMovie`.
+- **The parsed parts.** `Exif`, `XMP`, `IPTC`, and `Video` for a movie, for
+  whatever the summary leaves out.
+- **`Errors`.** Each part's own error. A broken XMP packet doesn't lose the
+  Exif. `Errors.Err()` joins them. The call itself fails only for a file of
+  no format this package reads (`ErrUnknownFormat`).
+
+On the benchmark files (HEIC), `ReadAll` takes 2.5 to 5 times less time
+than the separate calls an importer would make. It reads 2.5 to 5 times
+fewer bytes (6 to 9 read calls instead of 40 to 46) and makes 3 to 5 times
+fewer allocations (`BenchmarkReadAll`).
+
 ## Image size: ReadImageSize
 
 `ReadImageSize` returns the image's width and height as stored, and the
