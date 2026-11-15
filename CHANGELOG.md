@@ -10,6 +10,10 @@
 
 ### Added
 
+- GIF and BMP, read only: `ReadImageSize` gives a GIF's logical screen
+  size and a BMP's (a top-down image's too); `ReadXMP` reads a GIF's XMP
+  application extension; the new `ReadComment` returns a GIF's comment
+  extensions. See [docs/gif-bmp.md](docs/gif-bmp.md).
 - Video reads: the place from 3GPP `loci`, and the date and place from
   the movie's XMP (an MP4's `uuid` box, a QuickTime movie's `XMP_`) when
   Keys and the user data have none. `Video.Shown()` gives the size as

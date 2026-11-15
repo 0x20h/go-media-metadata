@@ -18,6 +18,7 @@ never the image data.
 | `ReadExif` | orientation, date taken (with fraction and offset), GPS |
 | `ReadXMP` | the XMP packet's bytes, nil without one |
 | `ParseXMP` | title, description, keywords and rating of a packet |
+| `ReadComment` | a GIF's comment extensions |
 
 The format is recognised from the file's first bytes. HEIF is tried
 first, so reading a HEIF file costs the same as it did before the other
@@ -39,6 +40,8 @@ format's size comes from the image itself, not from metadata about it:
 | JPEG XL | the codestream's SizeHeader |
 | Camera RAW | the full-size image; see [raw](raw.md) |
 | QuickTime, MP4 | the first video track's size, its matrix as the orientation |
+| GIF | the logical screen |
+| BMP | the info header (a top-down image's negative height as its absolute value) |
 
 The tests check every corpus file and the RAW samples against ExifTool's
 composite `ImageSize`. An orientation write leaves the stored size as it

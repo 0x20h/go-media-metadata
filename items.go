@@ -627,13 +627,14 @@ func (f *heifFile) fileRange(cm uint8, at, n uint64) (start, end uint64, ok bool
 	return base + at, base + at + n, true
 }
 
-// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP, JPEG XL or
-// camera RAW file in r (size bytes): a JPEG's XMP APP1 segment (with its
-// extended XMP merged in, as one packet, where the file has all of it), a
-// HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP " chunk, a
-// JPEG XL file's xml box (or its brob-compressed form), a TIFF-based RAW's
-// XMLPacket tag, a CR3's XMP box, a QuickTime or MP4 movie's XMP (a
-// top-level uuid box, or the user data's XMP_). Nil without one.
+// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP, JPEG XL,
+// GIF or camera RAW file in r (size bytes): a JPEG's XMP APP1 segment
+// (with its extended XMP merged in, as one packet, where the file has all
+// of it), a HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP "
+// chunk, a JPEG XL file's xml box (or its brob-compressed form), a GIF's
+// "XMP DataXMP" application extension, a TIFF-based RAW's XMLPacket tag, a
+// CR3's XMP box, a QuickTime or MP4 movie's XMP (a top-level uuid box, or
+// the user data's XMP_). Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	switch {
 	case isJPEG(r, size):
@@ -650,8 +651,12 @@ func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 		if b, ok, rerr := readRAWXMP(r, size); ok {
 			return b, rerr
 		}
-		if detectFormat(r, size) == formatMovie {
+		switch detectFormat(r, size) {
+		case formatMovie:
 			return readMovieXMP(r, size)
+		case formatGIF:
+			// After HEIF, so a HEIF read costs what it did.
+			return readGIFXMPPacket(r, size)
 		}
 		return nil, err
 	}
