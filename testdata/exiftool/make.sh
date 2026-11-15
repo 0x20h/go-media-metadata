@@ -65,4 +65,18 @@ et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:
   -charset iptc=UTF8 -IPTC:CodedCharacterSet=UTF8 -IPTC:ObjectName=Morning -IPTC:Keywords=summer \
   "-IPTC:Caption-Abstract=Breakfast outside" -IPTCDigest=new
 
+# An Apple maker note as an iPhone writes it ("Apple iOS", version 1,
+# a big-endian IFD whose offsets count from the note's start), with a
+# MakerNoteVersion and a ContentIdentifier: synthetic, written into the
+# Exif as Apple's maker note.
+NOTE="$OUT/.apple-note"
+{
+  printf 'Apple iOS\000\000\001MM\000\002\000\001\000\011\000\000\000\001\000\000\000\016'
+  printf '\000\021\000\002\000\000\000\045\000\000\000,\000\000\000\000'
+  printf '0D5B4E2C-7A41-4F7E-9C3B-2E8F6A1D9B07\000'
+} > "$NOTE"
+et apple-makernote.jpg "-EXIF:DateTimeOriginal=2024:06:01 18:20:00" -EXIF:OffsetTimeOriginal=+02:00 \
+  "-MakerNoteApple<=$NOTE"
+rm -f "$NOTE"
+
 rm -f "$ARGS"
