@@ -18,9 +18,9 @@ func init() {
 	preferredPrefix[nsPhotoshop] = "photoshop"
 }
 
-// XMPDate is a date as XMP writes it: as precise as its writer made it, with
-// or without a time zone.
-type XMPDate struct {
+// Date is a date as XMP and IPTC write it: as precise as its writer made
+// it, with or without a time zone.
+type Date struct {
 	// Time is the date and time written. Parts not written are at their
 	// start: "2025" is 1 January 2025, 00:00. With a time zone, OffsetKnown
 	// is true and Time is in a fixed zone of that offset. Without one, Time
@@ -158,7 +158,7 @@ func parseXMPRational(s string) (float64, bool) {
 }
 
 // xmpDate reads the date property ns:local, nil without a valid one.
-func (d *xmpDoc) xmpDate(ns, local string) *XMPDate {
+func (d *xmpDoc) xmpDate(ns, local string) *Date {
 	ps := d.props(ns, local)
 	if len(ps) == 0 {
 		return nil
@@ -175,7 +175,7 @@ func (d *xmpDoc) xmpDate(ns, local string) *XMPDate {
 // XMP: ":" between the date's parts, a space before the time. A date that
 // doesn't exist (30 February, 24:00, a leap second) or year 0 is no date;
 // a fraction past nanoseconds is cut there.
-func parseXMPDate(s string) (XMPDate, bool) {
+func parseXMPDate(s string) (Date, bool) {
 	s = strings.TrimSpace(s)
 	digits := func(s string, n int) (int, bool) {
 		if len(s) < n {
@@ -190,24 +190,24 @@ func parseXMPDate(s string) (XMPDate, bool) {
 		}
 		return v, true
 	}
-	var at XMPDate
+	var at Date
 	f := [6]int{0, 1, 1} // year, month, day, hour, minute, second
 	var ok bool
 	if f[0], ok = digits(s, 4); !ok || f[0] == 0 {
-		return XMPDate{}, false
+		return Date{}, false
 	}
 	at.Precision, s = PrecisionYear, s[4:]
 	var sep byte
 	if len(s) > 0 && (s[0] == '-' || s[0] == ':') {
 		sep = s[0]
 		if f[1], ok = digits(s[1:], 2); !ok {
-			return XMPDate{}, false
+			return Date{}, false
 		}
 		at.Precision, s = PrecisionMonth, s[3:]
 	}
 	if at.Precision == PrecisionMonth && len(s) > 0 && s[0] == sep {
 		if f[2], ok = digits(s[1:], 2); !ok {
-			return XMPDate{}, false
+			return Date{}, false
 		}
 		at.Precision, s = PrecisionDay, s[3:]
 	}
@@ -215,17 +215,17 @@ func parseXMPDate(s string) (XMPDate, bool) {
 	zone := time.UTC
 	if at.Precision == PrecisionDay && len(s) > 0 && (s[0] == 'T' || s[0] == ' ') {
 		if len(s) < 6 || s[3] != ':' {
-			return XMPDate{}, false
+			return Date{}, false
 		}
 		h, ok1 := digits(s[1:], 2)
 		m, ok2 := digits(s[4:], 2)
 		if !ok1 || !ok2 {
-			return XMPDate{}, false
+			return Date{}, false
 		}
 		f[3], f[4], at.Precision, s = h, m, PrecisionMinute, s[6:]
 		if len(s) > 0 && s[0] == ':' {
 			if f[5], ok = digits(s[1:], 2); !ok {
-				return XMPDate{}, false
+				return Date{}, false
 			}
 			at.Precision, s = PrecisionSecond, s[3:]
 			if len(s) > 0 && s[0] == '.' {
@@ -237,7 +237,7 @@ func parseXMPDate(s string) (XMPDate, bool) {
 					n++
 				}
 				if n == 1 {
-					return XMPDate{}, false
+					return Date{}, false
 				}
 				s = s[n:]
 			}
@@ -245,18 +245,18 @@ func parseXMPDate(s string) (XMPDate, bool) {
 		if s != "" {
 			secs, ok := parseOffset(s)
 			if !ok {
-				return XMPDate{}, false
+				return Date{}, false
 			}
 			zone, at.OffsetKnown, s = time.FixedZone(s, secs), true, ""
 		}
 	}
 	if s != "" {
-		return XMPDate{}, false
+		return Date{}, false
 	}
 	t := time.Date(f[0], time.Month(f[1]), f[2], f[3], f[4], f[5], nanos, time.UTC)
 	// time.Date carries 24:00 or 30 February into another day.
 	if t.Year() != f[0] || int(t.Month()) != f[1] || t.Day() != f[2] || t.Hour() != f[3] || t.Minute() != f[4] || t.Second() != f[5] {
-		return XMPDate{}, false
+		return Date{}, false
 	}
 	at.Time = time.Date(f[0], time.Month(f[1]), f[2], f[3], f[4], f[5], nanos, zone)
 	return at, true

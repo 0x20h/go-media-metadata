@@ -298,7 +298,8 @@ func (c *cr3) exif() Exif {
 	if data, _, ok := c.tiff("CMT2"); ok {
 		if t, first, ok := newTIFF(data); ok {
 			exif := t.ifd(first)
-			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(exif)
+			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
+			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
 			mk, model := x.Camera.Make, x.Camera.Model
 			x.Camera = t.camera(nil, exif)
 			x.Camera.Make, x.Camera.Model = mk, model

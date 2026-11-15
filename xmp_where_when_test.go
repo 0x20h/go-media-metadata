@@ -186,7 +186,7 @@ func checkWhereWhen(t *testing.T, name string, x XMP, e map[string]any) {
 	}
 	for _, c := range []struct {
 		tag string
-		d   *XMPDate
+		d   *Date
 	}{{"DateCreated", x.DateCreated}, {"CreateDate", x.CreateDate}} {
 		want := exifToolDate(e[c.tag])
 		if got := formatXMPDateAsExifTool(c.d); got != want {
@@ -209,7 +209,7 @@ func exifToolDate(v any) string {
 
 // formatXMPDateAsExifTool writes d as ExifTool prints a date: "YYYY:MM:DD
 // hh:mm:ss.s+hh:mm", as much as was written.
-func formatXMPDateAsExifTool(d *XMPDate) string {
+func formatXMPDateAsExifTool(d *Date) string {
 	if d == nil {
 		return ""
 	}
@@ -275,7 +275,7 @@ func checkWhereWhenValid(t *testing.T, x XMP) {
 		g.HasAltitude && (math.IsNaN(g.Altitude) || math.IsInf(g.Altitude, 0)) || !g.HasAltitude && g.Altitude != 0) {
 		t.Fatalf("GPS %+v", *g)
 	}
-	for _, d := range []*XMPDate{x.DateCreated, x.CreateDate} {
+	for _, d := range []*Date{x.DateCreated, x.CreateDate, x.DateTimeOriginal} {
 		if d == nil {
 			continue
 		}
@@ -303,7 +303,7 @@ func sameGPS(a, b *GPS) bool {
 	return *a == *b
 }
 
-func sameXMPDate(a, b *XMPDate) bool {
+func sameXMPDate(a, b *Date) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

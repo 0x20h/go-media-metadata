@@ -53,6 +53,7 @@ type corpusXMP struct {
 	// and their precision (see DatePrecision).
 	GPS                     *corpusGPS
 	DateCreated, CreateDate *corpusDate
+	DateTimeOriginal        *corpusDate
 }
 
 type corpusDate struct {
@@ -60,7 +61,7 @@ type corpusDate struct {
 	Precision DatePrecision
 }
 
-func (w *corpusDate) matches(d *XMPDate) bool {
+func (w *corpusDate) matches(d *Date) bool {
 	if w == nil || d == nil {
 		return w == nil && d == nil
 	}
@@ -137,7 +138,7 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 		if !w.GPS.matches(p.GPS) {
 			t.Errorf("%s: XMP GPS %+v, want %+v", name, p.GPS, w.GPS)
 		}
-		if !w.DateCreated.matches(p.DateCreated) || !w.CreateDate.matches(p.CreateDate) {
+		if !w.DateCreated.matches(p.DateCreated) || !w.CreateDate.matches(p.CreateDate) || !w.DateTimeOriginal.matches(p.DateTimeOriginal) {
 			t.Errorf("%s: XMP dates %+v, %+v, want %+v, %+v", name, p.DateCreated, p.CreateDate, w.DateCreated, w.CreateDate)
 		}
 		if r := w.Regions; r != nil {
