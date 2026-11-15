@@ -70,9 +70,11 @@ Photo's video, an Ultra HDR gain map), and every JPEG write keeps it
 intact.
 
 `ReadVideo` reads a movie's recording date, duration, GPS position,
-orientation and size, make and model, and Live Photo content identifier;
+orientation and size, make and model, Live Photo content identifier, and
+title, description, keywords and rating;
 `SetRotation` and `SetOrientation` set its orientation in place;
-`SetVideoMetadata` and `PlanVideoMetadata` set its recording date and place.
+`SetVideoMetadata` and `PlanVideoMetadata` set its recording date and
+place, title, description, keywords and rating.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,

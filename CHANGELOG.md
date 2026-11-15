@@ -10,6 +10,12 @@
 
 ### Added
 
+- Video title, description, keywords and rating. `ReadVideo` reads them
+  from Keys, the user data, or an MP4 item list. `VideoEdit` sets or
+  removes them: in Keys (`com.apple.quicktime.title`, `.description`,
+  `.keywords`, `.rating.user`), and in the user data's `©nam` and `©des`
+  and an MP4 item list's `©nam`, `desc` and `keyw` where the movie has
+  them. See [docs/quicktime.md](docs/quicktime.md).
 - `ReadImageSize` and `ImageSize.Shown`: an image's width and height as
   stored (from the frame header, IHDR, VP8X/VP8/VP8L, ispe, the JPEG XL
   SizeHeader, a RAW's full-size image or a movie's video track) and as
