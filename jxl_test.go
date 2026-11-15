@@ -340,12 +340,24 @@ func TestJXLExifTool(t *testing.T) {
 		if string(b) != want {
 			t.Errorf("%s: ExifTool reads %q, want %q", l.name, b, want)
 		}
-		warnings := func(p string) string {
+		// Every warning of the written file the source had too: a write may
+		// take one away (an ExifTool without Brotli warns it can't read a
+		// brob box, which the write replaces by a plain one), never add one.
+		warnings := func(p string) map[string]bool {
 			b, _ := exec.Command("exiftool", "-validate", "-warning", "-error", "-a", "-s3", p).Output()
-			return string(b)
+			set := map[string]bool{}
+			for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				if l != "" && l != "OK" && !strings.HasSuffix(l, "Warning") && !strings.HasSuffix(l, "Warnings") {
+					set[l] = true
+				}
+			}
+			return set
 		}
-		if w0, w1 := warnings(before), warnings(after); w0 != w1 {
-			t.Errorf("%s: ExifTool's validation changed:\nbefore: %s\nafter: %s", l.name, w0, w1)
+		w0 := warnings(before)
+		for w := range warnings(after) {
+			if !w0[w] {
+				t.Errorf("%s: ExifTool warns %q, which its source didn't", l.name, w)
+			}
 		}
 	}
 }
