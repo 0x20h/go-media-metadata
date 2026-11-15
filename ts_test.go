@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"os/exec"
 	"path/filepath"
@@ -58,6 +59,7 @@ func TestReadTSVideo(t *testing.T) {
 			"PlanOrientation":   second(PlanOrientation(bytes.NewReader(file), int64(len(file)), 6)),
 			"PlanRotation":      second(PlanRotation(bytes.NewReader(file), int64(len(file)), 90)),
 			"PlanVideoMetadata": second(PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), VideoEdit{RemoveGPS: true})),
+			"HashImageData":     second(HashImageData(bytes.NewReader(file), int64(len(file)), io.Discard)),
 		} {
 			if !errors.Is(err, ErrUnsupported) {
 				t.Errorf("%s: %s: %v, want ErrUnsupported", c.file, name, err)

@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -423,6 +424,7 @@ func FuzzReadExif(f *testing.F) {
 			if c.ISO < 0 || c.FocalLengthIn35mm < 0 {
 				t.Errorf("camera %+v", c)
 			}
+			_, _ = HashImageData(bytes.NewReader(data), int64(len(data)), io.Discard)
 			o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
 			if isJPEG(bytes.NewReader(data), int64(len(data))) && (err != nil || !o.Valid()) {
 				t.Errorf("ReadExif read the JPEG, ReadOrientation: %v, %v", o, err)

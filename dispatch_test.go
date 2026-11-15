@@ -121,6 +121,15 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 		withinDeadline(t, func() {
 			r := func() *bytes.Reader { return bytes.NewReader(data) }
 			n := int64(len(data))
+			hash, hashErr := imageDataMD5(t, data)
+			sameHash := func(out []byte) {
+				if hashErr != nil {
+					return
+				}
+				if after, err := imageDataMD5(t, out); after != hash {
+					t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+				}
+			}
 			_, readErr := ReadOrientation(r(), n)
 			if readErr != nil && !sentinel(readErr) {
 				t.Fatalf("ReadOrientation: an error that is none of the sentinels: %v", readErr)
@@ -152,6 +161,7 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 				checkPlan(t, data, p)
 				out := written(t, p)
 				sameSize(out)
+				sameHash(out)
 				var set bytes.Buffer
 				if err := SetOrientation(r(), n, &set, o); err != nil || !bytes.Equal(set.Bytes(), out) {
 					t.Fatalf("SetOrientation(%d) differs from the plan (%v)", o, err)
@@ -172,6 +182,7 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 			checkPlan(t, data, p)
 			out := written(t, p)
 			sameSize(out)
+			sameHash(out)
 			var set bytes.Buffer
 			if err := SetRotation(r(), n, &set, 90); err != nil || !bytes.Equal(set.Bytes(), out) {
 				t.Fatalf("SetRotation differs from the plan (%v)", err)

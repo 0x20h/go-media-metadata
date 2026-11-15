@@ -104,7 +104,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
 ## Guarantees
 
 - **Lossless:** image data is never decoded or re-encoded. Tests check
-  that it is byte-identical after every write.
+  that it is byte-identical after every write. `HashImageData` gives the
+  same hash as ExifTool's ImageDataHash, so you can check it yourself.
 - **Safe on hostile input:** every parser is fuzzed. Lengths are checked,
   counts are bounded by the bytes available, and nesting is capped.
   Malformed input gives an error, never a panic or an endless loop.
