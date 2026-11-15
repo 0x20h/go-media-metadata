@@ -411,6 +411,15 @@ func FuzzReadExif(f *testing.F) {
 			if g := x.GPS; g != nil && (math.Abs(g.Latitude) > 90 || math.Abs(g.Longitude) > 180 || math.IsNaN(g.Altitude)) {
 				t.Errorf("position %+v", *g)
 			}
+			c := x.Camera
+			for _, v := range []float64{c.FNumber, c.ExposureTime, c.FocalLength} {
+				if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+					t.Errorf("camera %+v", c)
+				}
+			}
+			if c.ISO < 0 || c.FocalLengthIn35mm < 0 {
+				t.Errorf("camera %+v", c)
+			}
 			o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
 			if isJPEG(bytes.NewReader(data), int64(len(data))) && (err != nil || !o.Valid()) {
 				t.Errorf("ReadExif read the JPEG, ReadOrientation: %v, %v", o, err)

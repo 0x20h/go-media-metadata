@@ -37,6 +37,16 @@ et xmp-where-when.jpg -XMP-exif:GPSLatitude=-33.865 -XMP-exif:GPSLongitude=151.2
   -XMP-exif:GPSAltitude=12 -XMP-exif:GPSAltitudeRef#=1 \
   "-XMP-photoshop:DateCreated=2019:12:31 23:59:59.5-05:00" "-XMP-xmp:CreateDate=2019:12:31 23:59"
 
+# Camera, lens and exposure, in each byte order; camera-mm.jpg's ISO is
+# past 65535, so it's in RecommendedExposureIndex.
+et camera-ii.jpg -ExifByteOrder#=II -EXIF:Make=Canon "-EXIF:Model=Canon EOS R6" -EXIF:LensMake=Canon \
+  "-EXIF:LensModel=RF70-200mm F2.8 L IS USM" -EXIF:ISO=400 -EXIF:FNumber=2.8 -EXIF:ExposureTime=1/250 \
+  -EXIF:FocalLength=135 -EXIF:FocalLengthIn35mmFormat=135
+et camera-mm.jpg -ExifByteOrder#=MM -EXIF:Make=Apple "-EXIF:Model=iPhone 12 Pro" \
+  "-EXIF:LensModel=iPhone 12 Pro back triple camera 4.2mm f/1.6" -EXIF:ISO=65535 -EXIF:SensitivityType#=2 \
+  -EXIF:RecommendedExposureIndex=102400 -EXIF:FNumber=1.6 -EXIF:ExposureTime=0.0588235294 -EXIF:FocalLength=4.2 \
+  -EXIF:FocalLengthIn35mmFormat=26
+
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
   -GPSLatitude=48.137 -GPSLatitudeRef=N -GPSLongitude=11.575 -GPSLongitudeRef=E \

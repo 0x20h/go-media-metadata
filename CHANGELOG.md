@@ -4,6 +4,10 @@
 
 ### Added
 
+- `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
+  time and focal length (also in 35 mm terms), read only, from every format
+  `ReadExif` takes. See [docs/exif.md](docs/exif.md).
+
 - `XMP.GPS`: the position in `exif:GPSLatitude`, `exif:GPSLongitude` and
   `exif:GPSAltitude`/`GPSAltitudeRef`, in the `DDD,MM,SSk` and `DDD,MM.mmk`
   forms and as decimal degrees.

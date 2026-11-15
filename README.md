@@ -86,8 +86,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
   [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
   [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md)
-- [Exif](docs/exif.md): the fields, writers' quirks compared with
-  ExifTool, and `EditExif`
+- [Exif](docs/exif.md): the fields (camera, lens and exposure among
+  them), writers' quirks compared with ExifTool, and `EditExif`
 - [XMP](docs/xmp.md): `ParseXMP` and `EditXMP`
 - [IPTC](docs/iptc.md): `ParseIPTC`, `EditIPTC`, and a JPEG's IPTC-IIM
 - [Benchmarks](docs/benchmarks.md): against ExifTool, and how to repeat them
