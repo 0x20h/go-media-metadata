@@ -118,7 +118,7 @@ func TestAppleContentIdentifierIPhone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, _ := f.Stat()
 	x, err := ReadExif(f, info.Size())
 	if err != nil {
