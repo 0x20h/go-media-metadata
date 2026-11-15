@@ -10,6 +10,11 @@
 
 ### Added
 
+- Face regions at full fidelity. `Region` gains `Unit` (pixel areas were
+  left out before), `D` (circles), `Rotation`, `Description`,
+  `FocusUsage` and `BarCodeValue`. Fields it doesn't model
+  (`mwg-rs:Extensions`, `SeeAlso`, others) are kept and written back
+  with their region. See [docs/xmp.md](docs/xmp.md).
 - `HashImageData`: a file's image data without its metadata, written to a
   hash, equal to ExifTool's ImageDataHash. A write that changes only
   metadata leaves it as it was. See [docs/api.md](docs/api.md).
