@@ -19,6 +19,10 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
   altitude below sea level, `photoshop:DateCreated` with a fraction and a
   time zone, `xmp:CreateDate` to the minute without one. Written with
   ExifTool 13.55; the other files are unchanged from 13.44.
+- `camera-ii.jpg`, `camera-mm.jpg`: make, model, lens, ISO, f-number,
+  exposure time and focal length in each byte order. `camera-mm.jpg`'s
+  ISO is 65535 with the real value in RecommendedExposureIndex. Written
+  with ExifTool 13.55.
 - `date-digitized.jpg`, `date-iptc.jpg`, `date-xmp.jpg`: a date taken
   in one place each: Exif DateTimeDigitized with its fraction and
   offset, IPTC Date and Time Created with an offset, XMP

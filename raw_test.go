@@ -304,7 +304,9 @@ func FuzzReadRAW(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			r := bytes.NewReader(data)
-			_, _ = ReadExif(r, int64(len(data)))
+			if x, err := ReadExif(r, int64(len(data))); err == nil && (x.Camera.ISO < 0 || x.Camera.FNumber < 0 || x.Camera.ExposureTime < 0) {
+				t.Errorf("camera %+v", x.Camera)
+			}
 			_, _ = ReadOrientation(r, int64(len(data)))
 			_, _ = ReadXMP(r, int64(len(data)))
 			if p, err := planRAWOrientation(r, int64(len(data)), 3); err == nil {

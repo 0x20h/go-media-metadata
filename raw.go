@@ -115,13 +115,23 @@ func (t *rawTIFF) ifd(off uint32) map[uint16]field {
 
 // readRAWTIFFExif reads the Exif of a TIFF-based file. A Panasonic RW2,
 // whose IFD0 points to no Exif IFD, has its Exif in the JPEG it embeds.
+// One whose IFD0 points to a short Exif IFD has the camera fields that
+// one lacks (ISO, say) in that JPEG's, as ExifTool reads them.
 func readRAWTIFFExif(t *rawTIFF) (Exif, error) {
 	x := t.exif(t.ifd, t.first)
 	ifd0 := t.ifd(t.first)
 	if ifd0 == nil {
 		return Exif{}, fmt.Errorf("%w: IFD0 at %d outside the file", ErrMalformed, t.first)
 	}
-	if _, ok := ifd0[tagExifIFD]; !ok {
+	if _, ok := ifd0[tagExifIFD]; ok {
+		if x.Camera.incomplete() {
+			if j, ok := t.jpgFromRaw(); ok {
+				if jx, err := readJPEGExif(j, j.Size()); err == nil {
+					x.Camera.fill(jx.Camera)
+				}
+			}
+		}
+	} else {
 		if j, ok := t.jpgFromRaw(); ok {
 			if jx, err := readJPEGExif(j, j.Size()); err == nil {
 				o := x.Orientation
@@ -274,18 +284,25 @@ func (c *cr3) exif() Exif {
 	var x Exif
 	if data, _, ok := c.tiff("CMT1"); ok {
 		if t, first, ok := newTIFF(data); ok {
-			if f, ok := t.ifd(first)[tagOrientation]; ok {
+			ifd0 := t.ifd(first)
+			if f, ok := ifd0[tagOrientation]; ok {
 				if v, ok := t.uint(f); ok && v <= 8 && Orientation(v).Valid() {
 					x.Orientation = Orientation(v)
 				}
 			}
+			x.Camera = t.camera(ifd0, nil)
 		}
 	}
+	// CMT2 is the Exif IFD, a TIFF of its own: its byte order may differ
+	// from CMT1's.
 	if data, _, ok := c.tiff("CMT2"); ok {
 		if t, first, ok := newTIFF(data); ok {
 			exif := t.ifd(first)
 			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
 			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
+			mk, model := x.Camera.Make, x.Camera.Model
+			x.Camera = t.camera(nil, exif)
+			x.Camera.Make, x.Camera.Model = mk, model
 		}
 	}
 	if data, _, ok := c.tiff("CMT4"); ok {

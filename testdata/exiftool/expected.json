@@ -23,6 +23,8 @@
       "createDate": { "time": "2019-12-31T23:59:00", "precision": 4 }
     }
   },
+  "camera-ii.jpg": { "orientation": 1 },
+  "camera-mm.jpg": { "orientation": 1 },
   "date-digitized.jpg": { "orientation": 1 },
   "date-iptc.jpg": { "orientation": 1, "iptc": {} },
   "date-xmp.jpg": {

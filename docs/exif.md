@@ -22,6 +22,21 @@ pages).
   the same time; for a scan it's when it was scanned.
 - **`GPS`:** latitude and longitude in signed decimal degrees, and the
   altitude when there is one. Nil without a valid position.
+- **`Camera`:** the camera, lens and exposure, read only (this package
+  writes no capture data):
+  - `Make` and `Model` from IFD0, `LensMake` and `LensModel` from the Exif
+    IFD. Each is the text as written, placeholders such as `----`
+    included.
+  - `ISO` is PhotographicSensitivity (ISOSpeedRatings), its first value.
+    When that is 65535 (Exif's "65535 or more"), the
+    RecommendedExposureIndex or ISOSpeed that SensitivityType names is
+    used instead.
+  - `FNumber` (2.8 for f/2.8), `ExposureTime` in seconds and `FocalLength`
+    in mm, each positive or 0, and `FocalLengthIn35mm`.
+  - In a CR3 they come from CMT1 and CMT2. An RW2 whose own Exif IFD
+    lacks some has them from the JPEG it embeds, as ExifTool reads them.
+  - The tests compare every field with ExifTool's EXIF values on the
+    corpora and the RAW samples.
 - **`ImageDescription`:** IFD0's ImageDescription, its bytes as they are
   up to the NUL. Writers put UTF-8 there, ExifTool among them.
 - **`XPTitle`:** IFD0's XPTitle, Windows' title: UTF-16 little-endian,

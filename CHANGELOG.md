@@ -10,6 +10,9 @@
 
 ### Added
 
+- `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
+  time and focal length (also in 35 mm terms), read only, from every format
+  `ReadExif` takes. See [docs/exif.md](docs/exif.md).
 - `ReadTaken` and `TakenFrom`: the date a photo was taken, from the first
   of Exif DateTimeOriginal, Exif DateTimeDigitized, XMP
   exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate and IPTC
