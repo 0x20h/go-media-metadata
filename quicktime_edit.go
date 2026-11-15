@@ -112,6 +112,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 		if isTSOnly() {
 			return nil, errTSReadOnly
 		}
+		if isMatroska(src, size) {
+			return nil, errMatroskaReadOnly
+		}
 		if !looksLikeMovie(src, size) {
 			return nil, errNotQuickTime
 		}
@@ -120,6 +123,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if err := checkMovie(src, top); err != nil {
 		if isTSOnly() {
 			return nil, errTSReadOnly
+		}
+		if isMatroska(src, size) {
+			return nil, errMatroskaReadOnly
 		}
 		return nil, err
 	}

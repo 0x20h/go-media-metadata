@@ -40,6 +40,7 @@ format's size comes from the image itself, not from metadata about it:
 | JPEG XL | the codestream's SizeHeader |
 | Camera RAW | the full-size image; see [raw](raw.md) |
 | QuickTime, MP4 | the first video track's size, its matrix as the orientation |
+| Matroska, WebM | the first video track's PixelWidth and PixelHeight; see [matroska](matroska.md) |
 | GIF | the logical screen |
 | BMP | the info header (a top-down image's negative height as its absolute value) |
 

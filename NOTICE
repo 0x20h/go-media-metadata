@@ -72,3 +72,12 @@ testdata/gif-bmp/core.bmp
     plain.gif with a comment and XMP added by ExifTool. Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/matroska/title-date.mkv
+testdata/matroska/vp9.webm
+testdata/matroska/streamed.webm
+    A synthetic test pattern (ffmpeg's testsrc, no recording), encoded by
+    ffmpeg's libx264, libvpx-vp9 and libvpx and muxed by ffmpeg (see
+    testdata/matroska/make.sh). Made for this project by its authors.
+    Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/

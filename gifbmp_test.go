@@ -158,7 +158,7 @@ func TestGIFBMPAgreeWithExifTool(t *testing.T) {
 	if err != nil {
 		t.Skip("exiftool not installed")
 	}
-	out, err := exec.Command(tool, "-j", "-n", "-q", "-ImageWidth", "-ImageHeight", "-Comment", "-XMP:Title", "-XMP:Subject",
+	out, err := exec.Command(tool, "-j", "-n", "-q", "-ImageWidth", "-ImageHeight", "-Comment", "-XMP:Title", "-XMP:Subject", "-ext", "gif", "-ext", "bmp",
 		filepath.Join("testdata", "gif-bmp")).Output()
 	if err != nil {
 		t.Fatalf("exiftool: %v", err)

@@ -10,6 +10,12 @@
 
 ### Added
 
+- Matroska and WebM, read only: `ReadVideo` reads the duration, the
+  recording date (`DateUTC`), the title (Info's, else the file's `TITLE`
+  tag), the first video track's size and its rotation (a projection's
+  roll). It reads only the SeekHead, Info, Tracks and Tags, never the
+  Clusters. `ReadImageSize` and `ReadOrientation` take them too. See
+  [docs/matroska.md](docs/matroska.md).
 - GIF and BMP, read only: `ReadImageSize` gives a GIF's logical screen
   size and a BMP's (a top-down image's too); `ReadXMP` reads a GIF's XMP
   application extension; the new `ReadComment` returns a GIF's comment
