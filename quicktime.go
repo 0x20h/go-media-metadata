@@ -173,8 +173,11 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	if v.Keywords == nil {
 		v.Keywords = udta.keywords
 	}
-	if f, err := strconv.ParseFloat(first(keys.rating, udta.rating), 64); err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
-		v.Rating, v.HasRating = int(f), true
+	// (Parsed only when there's a rating: ParseFloat's error allocates.)
+	if r := first(keys.rating, udta.rating); r != "" {
+		if f, err := strconv.ParseFloat(r, 64); err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
+			v.Rating, v.HasRating = int(f), true
+		}
 	}
 	if movieTurned {
 		v.Orientation = 0
