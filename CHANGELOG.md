@@ -10,6 +10,14 @@
 
 ### Added
 
+- Windows' XP tags: `Exif.XPComment`, `XPAuthor`, `XPKeywords` and
+  `XPSubject` (UTF-16LE in IFD0), read as `XPTitle` is. Read only.
+- `Exif.DateTime` (IFD0's DateTime, ExifTool's ModifyDate) with
+  SubSecTime and OffsetTime. It is `ReadTaken`'s last source
+  (`SourceExifDateTime`), after IPTC, for files stripped of the others.
+- `Video.MovieCreated`: the movie header's creation time on its own
+  (ExifTool's QuickTime:CreateDate), next to `Created`, which prefers
+  Keys and `©day`.
 - GIF and BMP, read only: `ReadImageSize` gives a GIF's logical screen
   size and a BMP's (a top-down image's too); `ReadXMP` reads a GIF's XMP
   application extension; the new `ReadComment` returns a GIF's comment
