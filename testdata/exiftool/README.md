@@ -27,6 +27,9 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
   in one place each: Exif DateTimeDigitized with its fraction and
   offset, IPTC Date and Time Created with an offset, XMP
   `exif:DateTimeOriginal`. Written with ExifTool 13.55.
+- `regions-full.jpg`: MWG regions with every field. A rotated face with
+  a description and Extensions, a focus circle in pixels, and a bar
+  code. Written with ExifTool 13.55.
 - `all.jpg`: Exif, XMP and IPTC together.
 
 `expected.json` holds the values written, as this package's types
