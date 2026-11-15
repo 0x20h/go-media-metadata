@@ -151,7 +151,6 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 				}
 				checkPlan(t, data, p)
 				out := written(t, p)
-			sameSize(out)
 				sameSize(out)
 				var set bytes.Buffer
 				if err := SetOrientation(r(), n, &set, o); err != nil || !bytes.Equal(set.Bytes(), out) {
@@ -172,6 +171,7 @@ func FuzzOrientationAnyFormat(f *testing.F) {
 			}
 			checkPlan(t, data, p)
 			out := written(t, p)
+			sameSize(out)
 			var set bytes.Buffer
 			if err := SetRotation(r(), n, &set, 90); err != nil || !bytes.Equal(set.Bytes(), out) {
 				t.Fatalf("SetRotation differs from the plan (%v)", err)
