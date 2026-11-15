@@ -10,8 +10,8 @@ import (
 
 // IPTC is what this package reads from IPTC-IIM data (IPTC Information
 // Interchange Model 4.2, the Application Record): the fields that mirror
-// XMP's dc:title, dc:subject and dc:description, as the IPTC Photo
-// Metadata Standard maps them.
+// XMP's dc:title, dc:subject, dc:description and photoshop:DateCreated,
+// as the IPTC Photo Metadata Standard maps them.
 type IPTC struct {
 	// Title is 2:05 Object Name.
 	Title string
@@ -19,6 +19,9 @@ type IPTC struct {
 	Keywords []string
 	// Description is 2:120 Caption/Abstract.
 	Description string
+	// DateCreated is 2:55 Date Created with 2:60 Time Created: nil without
+	// a valid date. It's read only; see parseIIMDate for the forms.
+	DateCreated *Date
 }
 
 // IPTCEdit is a change to IPTC-IIM data. A nil field leaves that dataset
@@ -39,6 +42,8 @@ var (
 	iimTitle       = [2]byte{2, 5}
 	iimKeywords    = [2]byte{2, 25}
 	iimDescription = [2]byte{2, 120}
+	iimDateCreated = [2]byte{2, 55}
+	iimTimeCreated = [2]byte{2, 60}
 )
 
 // The longest value IIM allows for each dataset written, in bytes.
@@ -169,6 +174,7 @@ func ParseIPTC(iim []byte) (IPTC, error) {
 	}
 	isUTF8 := iimIsUTF8(ds)
 	var x IPTC
+	var date, clock []byte
 	for _, d := range ds {
 		switch d.tag {
 		case iimTitle:
@@ -183,9 +189,73 @@ func ParseIPTC(iim []byte) (IPTC, error) {
 			if k := strings.TrimSpace(iimText(d.value, isUTF8)); k != "" {
 				x.Keywords = append(x.Keywords, k)
 			}
+		case iimDateCreated:
+			if date == nil {
+				date = d.value
+			}
+		case iimTimeCreated:
+			if clock == nil {
+				clock = d.value
+			}
+		}
+	}
+	if date != nil {
+		if at, ok := parseIIMDate(string(date), string(clock)); ok {
+			x.DateCreated = &at
 		}
 	}
 	return x, nil
+}
+
+// parseIIMDate reads 2:55 Date Created, "CCYYMMDD", with 2:60 Time
+// Created, "HHMMSS±HHMM", when there is one. IIM allows 00 for a month or
+// day that isn't known: the date is then as precise as what is. A time
+// without its offset (as some writers give it), or with one that isn't
+// valid, is read as a clock time without one; a time that isn't valid
+// leaves the date alone. A date that doesn't exist is no date.
+func parseIIMDate(date, clock string) (Date, bool) {
+	// Only ASCII padding is trimmed: the values are digits, and other
+	// space (Latin-1's 0xA0, say) would read differently once re-encoded.
+	date = strings.Trim(date, " \x00")
+	if len(date) != 8 {
+		return Date{}, false
+	}
+	for _, c := range []byte(date) {
+		if c < '0' || c > '9' {
+			return Date{}, false
+		}
+	}
+	s := date[:4]
+	switch {
+	case date[4:6] == "00":
+	case date[6:8] == "00":
+		s += "-" + date[4:6]
+	default:
+		s += "-" + date[4:6] + "-" + date[6:8]
+	}
+	at, ok := parseXMPDate(s)
+	if !ok || at.Precision != PrecisionDay {
+		return at, ok
+	}
+	clock = strings.Trim(clock, " \x00")
+	if len(clock) < 6 {
+		return at, true
+	}
+	for _, c := range []byte(clock[:6]) {
+		if c < '0' || c > '9' {
+			return at, true
+		}
+	}
+	t := s + "T" + clock[0:2] + ":" + clock[2:4] + ":" + clock[4:6]
+	if z := clock[6:]; len(z) == 5 && (z[0] == '+' || z[0] == '-') {
+		if withZone, ok := parseXMPDate(t + z[:3] + ":" + z[3:]); ok {
+			return withZone, true
+		}
+	}
+	if withTime, ok := parseXMPDate(t); ok {
+		return withTime, true
+	}
+	return at, true
 }
 
 // clip cuts s to at most n bytes at a character boundary.

@@ -17,11 +17,12 @@ type XMP struct {
 	PersonInImage        []string // Iptc4xmpExt:PersonInImage
 	Regions              *Regions // mwg-rs:Regions, nil without any
 	GPS                  *GPS     // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
-	DateCreated          *XMPDate // photoshop:DateCreated
-	CreateDate           *XMPDate // xmp:CreateDate
+	DateCreated          *Date    // photoshop:DateCreated
+	CreateDate           *Date    // xmp:CreateDate
+	DateTimeOriginal     *Date    // exif:DateTimeOriginal
 }
 
-type XMPDate struct {
+type Date struct {
 	Time        time.Time
 	OffsetKnown bool          // a time zone was written
 	Precision   DatePrecision // PrecisionYear … PrecisionSecond
@@ -57,7 +58,9 @@ Read only: `EditXMP` doesn't write them, and keeps them as they are.
   there is no position. `GPS` needs both coordinates. `exif:GPSAltitude`
   is a Rational (`71/2`) or a decimal. `exif:GPSAltitudeRef` 1 puts it
   below sea level, as in Exif.
-- **Dates.** `photoshop:DateCreated` is when the photo was taken, and
+- **Dates.** `exif:DateTimeOriginal` (the Exif tag's mirror, which some
+  writers use alone) and `photoshop:DateCreated` are when the photo was
+  taken, and
   `xmp:CreateDate` when the file was made. The two are usually the same
   for a camera's photo, but not for a scan. Every precision of the XMP
   Date type is read: `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, then `Thh:mm`,

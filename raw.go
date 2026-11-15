@@ -283,7 +283,9 @@ func (c *cr3) exif() Exif {
 	}
 	if data, _, ok := c.tiff("CMT2"); ok {
 		if t, first, ok := newTIFF(data); ok {
-			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(t.ifd(first))
+			exif := t.ifd(first)
+			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
+			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
 		}
 	}
 	if data, _, ok := c.tiff("CMT4"); ok {

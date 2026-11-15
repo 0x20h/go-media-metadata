@@ -16,6 +16,10 @@ pages).
   is in a fixed zone of that offset. Without either, it is the camera's
   clock time, returned in `time.UTC` with `OffsetKnown` false. That is
   not a UTC time.
+- **`DateTimeDigitized`:** the tag ExifTool calls CreateDate, with
+  `SubSecTimeDigitized` and `OffsetTimeDigitized`, read the same way, its
+  offset flag `DigitizedOffsetKnown`. For a camera's photo it is usually
+  the same time; for a scan it's when it was scanned.
 - **`GPS`:** latitude and longitude in signed decimal degrees, and the
   altitude when there is one. Nil without a valid position.
 - **`ImageDescription`:** IFD0's ImageDescription, its bytes as they are
@@ -69,6 +73,28 @@ These differ from ExifTool on purpose, and each is pinned in a test
 `TestExifAgreesWithExifTool` compares every field with ExifTool on the
 synthetic files, the quirk files where the two agree, and the HEIF
 samples. It runs where `exiftool` is installed.
+
+## The date taken: ReadTaken
+
+A photo's date can be in several places, and some files have it in only
+one. `ReadTaken` (or `TakenFrom`, given what was read already) returns
+the first of these, with the source it came from:
+
+1. Exif `DateTimeOriginal`
+2. Exif `DateTimeDigitized` (CreateDate)
+3. XMP `exif:DateTimeOriginal`
+4. XMP `photoshop:DateCreated`
+5. XMP `xmp:CreateDate`
+6. IPTC 2:55 Date Created with 2:60 Time Created
+
+This follows the Metadata Working Group's order for the capture date,
+Exif first, with the creation dates after it: a date that says when the
+file was made is a better guess than none. The result is a `Date` with its
+precision and whether an offset was known. Each date is taken as its source
+gives it, so a later source doesn't add an offset an earlier one lacks.
+`ReadTaken` stops at the Exif when that has a date. A file without any
+date gives `SourceNone` and no error. The tests check the result against
+ExifTool's values on every corpus file.
 
 ## Writing: EditExif
 

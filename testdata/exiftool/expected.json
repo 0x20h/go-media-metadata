@@ -23,6 +23,12 @@
       "createDate": { "time": "2019-12-31T23:59:00", "precision": 4 }
     }
   },
+  "date-digitized.jpg": { "orientation": 1 },
+  "date-iptc.jpg": { "orientation": 1, "iptc": {} },
+  "date-xmp.jpg": {
+    "orientation": 1,
+    "xmp": { "dateTimeOriginal": { "time": "2021-06-07T08:09:10+01:00", "precision": 5 } }
+  },
   "iptc-utf8.jpg": {
     "orientation": 1,
     "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" }

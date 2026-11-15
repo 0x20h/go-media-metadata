@@ -2,13 +2,28 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- `XMPDate` is now `Date`, since IPTC dates use it too. It was added
+  after v0.1.0, so only code built on a commit after that tag is
+  affected.
+
 ### Added
+
+- `ReadTaken` and `TakenFrom`: the date a photo was taken, from the first
+  of Exif DateTimeOriginal, Exif DateTimeDigitized, XMP
+  exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate and IPTC
+  Date/Time Created, with the source it came from. See
+  [docs/exif.md](docs/exif.md).
+- `Exif.DateTimeDigitized` and `Exif.DigitizedOffsetKnown` (ExifTool's
+  CreateDate, with its sub-seconds and offset), `XMP.DateTimeOriginal`
+  (exif:DateTimeOriginal) and `IPTC.DateCreated` (2:55 and 2:60).
 
 - `XMP.GPS`: the position in `exif:GPSLatitude`, `exif:GPSLongitude` and
   `exif:GPSAltitude`/`GPSAltitudeRef`, in the `DDD,MM,SSk` and `DDD,MM.mmk`
   forms and as decimal degrees.
 - `XMP.DateCreated` (`photoshop:DateCreated`) and `XMP.CreateDate`
-  (`xmp:CreateDate`), as the new `XMPDate`: the time, whether a time zone
+  (`xmp:CreateDate`), as the new `Date`: the time, whether a time zone
   was written, and how precise the date is (year through fractional
   seconds). See [docs/xmp.md](docs/xmp.md).
 
