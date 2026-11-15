@@ -301,7 +301,8 @@ func FuzzEditXMP(f *testing.F) {
 			}
 			checkWhereWhenValid(t, before)
 			// The edit doesn't touch the position or the dates.
-			if !sameGPS(before.GPS, after.GPS) || !sameXMPDate(before.DateCreated, after.DateCreated) || !sameXMPDate(before.CreateDate, after.CreateDate) {
+			if !sameGPS(before.GPS, after.GPS) || !sameXMPDate(before.DateCreated, after.DateCreated) || !sameXMPDate(before.CreateDate, after.CreateDate) ||
+				!sameXMPDate(before.DateTimeOriginal, after.DateTimeOriginal) {
 				t.Fatalf("position or dates changed: %+v %+v %+v, now %+v %+v %+v",
 					before.GPS, before.DateCreated, before.CreateDate, after.GPS, after.DateCreated, after.CreateDate)
 			}

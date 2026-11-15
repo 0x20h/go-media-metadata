@@ -37,6 +37,13 @@ et xmp-where-when.jpg -XMP-exif:GPSLatitude=-33.865 -XMP-exif:GPSLongitude=151.2
   -XMP-exif:GPSAltitude=12 -XMP-exif:GPSAltitudeRef#=1 \
   "-XMP-photoshop:DateCreated=2019:12:31 23:59:59.5-05:00" "-XMP-xmp:CreateDate=2019:12:31 23:59"
 
+# The date taken in one place each: Exif DateTimeDigitized (CreateDate)
+# only, IPTC Date Created and Time Created only, XMP exif:DateTimeOriginal
+# only.
+et date-digitized.jpg "-EXIF:CreateDate=2023:03:04 05:06:07" -EXIF:SubSecTimeDigitized=5 -EXIF:OffsetTimeDigitized=-03:00
+et date-iptc.jpg -IPTC:DateCreated=2022:01:02 -IPTC:TimeCreated=10:20:30+05:30
+et date-xmp.jpg "-XMP-exif:DateTimeOriginal=2021:06:07 08:09:10+01:00"
+
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
   -GPSLatitude=48.137 -GPSLatitudeRef=N -GPSLongitude=11.575 -GPSLongitudeRef=E \

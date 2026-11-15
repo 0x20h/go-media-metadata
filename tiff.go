@@ -34,6 +34,15 @@ type Exif struct {
 	DateTimeOriginal time.Time
 	OffsetKnown      bool
 
+	// DateTimeDigitized is when the image was stored digitally, the tag
+	// ExifTool calls CreateDate: DateTimeDigitized with
+	// SubSecTimeDigitized and OffsetTimeDigitized, read as
+	// DateTimeOriginal is. For a camera's photo it is, as a rule, the same
+	// time; for a scan, when it was scanned. See ReadTaken for the date a
+	// photo was taken whichever tags it has.
+	DateTimeDigitized    time.Time
+	DigitizedOffsetKnown bool
+
 	// GPS is where the photo was taken, nil without a valid position.
 	GPS *GPS
 
@@ -278,7 +287,9 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 	}
 	if f, ok := ifd0[tagExifIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
-			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(ifd(off))
+			exif := ifd(off)
+			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
+			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
 		}
 	}
 	if f, ok := ifd0[tagGPSIFD]; ok {
@@ -292,10 +303,11 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 // exifDateLayout is the layout of Exif date and time tags.
 const exifDateLayout = "2006:01:02 15:04:05"
 
-// dateTimeOriginal reads DateTimeOriginal, SubSecTimeOriginal and
-// OffsetTimeOriginal from the Exif IFD.
-func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
-	s, ok := ascii(exif[tagDateTimeOriginal])
+// exifDate reads a date tag of the Exif IFD with its sub-second and
+// offset tags: DateTimeOriginal, SubSecTimeOriginal and
+// OffsetTimeOriginal, or DateTimeDigitized and its two.
+func (t tiffReader) exifDate(exif map[uint16]field, dateTag, subTag, offTag uint16) (time.Time, bool) {
+	s, ok := ascii(exif[dateTag])
 	if !ok {
 		return time.Time{}, false
 	}
@@ -303,13 +315,13 @@ func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
 	if !ok {
 		return time.Time{}, false
 	}
-	if sub, ok := ascii(exif[tagSubSecTimeOriginal]); ok && sub != "" && len(sub) <= 9 {
+	if sub, ok := ascii(exif[subTag]); ok && sub != "" && len(sub) <= 9 {
 		if n, err := strconv.ParseUint(sub, 10, 32); err == nil {
 			at = at.Add(time.Duration(n) * time.Duration(math.Pow10(9-len(sub))))
 		}
 	}
 	// OffsetTimeOriginal, else an offset some writers put after the time.
-	off, ok := ascii(exif[tagOffsetTimeOriginal])
+	off, ok := ascii(exif[offTag])
 	if !ok || off == "" {
 		off = inline
 	}

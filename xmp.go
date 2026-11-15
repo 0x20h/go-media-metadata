@@ -40,7 +40,11 @@ type XMP struct {
 	// DateCreated is photoshop:DateCreated, when the photo was taken, and
 	// CreateDate xmp:CreateDate, when the file was made (for a photo, as a
 	// rule, the same). nil without a valid date.
-	DateCreated, CreateDate *XMPDate
+	DateCreated, CreateDate *Date
+	// DateTimeOriginal is exif:DateTimeOriginal, the Exif tag's XMP
+	// mirror (some writers put the date only there), nil without a valid
+	// date.
+	DateTimeOriginal *Date
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
@@ -277,6 +281,7 @@ func (d *xmpDoc) fields() XMP {
 	x.GPS = d.xmpGPS()
 	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
 	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
+	x.DateTimeOriginal = d.xmpDate(nsExif, "DateTimeOriginal")
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
 		f, err := strconv.ParseFloat(ps[0].value(), 64)
 		if err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {

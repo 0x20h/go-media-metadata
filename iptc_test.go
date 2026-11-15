@@ -256,6 +256,7 @@ func TestIPTCAgreesWithExifTool(t *testing.T) {
 func FuzzIPTC(f *testing.F) {
 	f.Add(latin1IIM)
 	f.Add(iim(1, 90, "\x1b%G", 2, 5, "Grün"))
+	f.Add(iim(2, 55, "20220102", 2, 60, "102030+0530"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			before, err := ParseIPTC(data)
@@ -270,6 +271,11 @@ func FuzzIPTC(f *testing.F) {
 			if err != nil || after.Title != "T" || !slices.Equal(after.Keywords, []string{"k"}) || after.Description != before.Description {
 				t.Fatalf("got %+v (%v), the description was %q", after, err, before.Description)
 			}
+			// The date isn't edited: it stays, and is a valid one.
+			if !sameXMPDate(before.DateCreated, after.DateCreated) {
+				t.Fatalf("date %+v became %+v", before.DateCreated, after.DateCreated)
+			}
+			checkWhereWhenValid(t, XMP{DateCreated: before.DateCreated})
 			jpg := withSegments(plainJPEG(t), photoshopAPP13(data, true))
 			if p, err := PlanIPTC(bytes.NewReader(jpg), int64(len(jpg)), out); err == nil {
 				checkPlan(t, jpg, p)

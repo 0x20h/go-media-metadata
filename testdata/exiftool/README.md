@@ -19,6 +19,10 @@ red square, no photograph, encoded with Go's `image/jpeg` (`base.go.txt`).
   altitude below sea level, `photoshop:DateCreated` with a fraction and a
   time zone, `xmp:CreateDate` to the minute without one. Written with
   ExifTool 13.55; the other files are unchanged from 13.44.
+- `date-digitized.jpg`, `date-iptc.jpg`, `date-xmp.jpg`: a date taken
+  in one place each: Exif DateTimeDigitized with its fraction and
+  offset, IPTC Date and Time Created with an offset, XMP
+  `exif:DateTimeOriginal`. Written with ExifTool 13.55.
 - `all.jpg`: Exif, XMP and IPTC together.
 
 `expected.json` holds the values written, as this package's types
