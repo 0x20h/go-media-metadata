@@ -25,6 +25,17 @@ Orientation. HEIF readers show the image by the properties, so this
 package reads the orientation only from them. A HEIF file never takes
 the JPEG path, which reads the Exif tag.
 
+**When the two disagree, the properties win.** A HEIC can say 1 in Exif
+and 270° in `irot`, for example after a tool rewrote one and not the
+other. Apple's ImageIO then reports orientation 6 and shows the image
+turned, and so does `ReadOrientation`. `Exif.Orientation` still gives the
+tag as written. ExifTool's `Orientation` is that Exif tag too; it reports
+`irot` separately as `QuickTime:Rotation`. A comparison with ExifTool must
+check a HEIC's orientation against `Rotation` (and `imir`), not
+`Orientation`. `TestHEICIrotOverExif` checks this on
+`testdata/imageio/c-exif1-irot270.heic`. On macOS it also asks ImageIO,
+through a Swift probe (`testdata/imageio/probe.swift.txt`).
+
 ### Writing
 
 - `SetRotation(degrees)` sets the rotation and keeps any mirror. The

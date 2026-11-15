@@ -11,11 +11,14 @@ Sample files, each with its source and licence:
 
 testdata/imageio/a-orientation1.heic
 testdata/imageio/b-orientation6.heic
+testdata/imageio/c-exif1-irot270.heic
     A synthetic 640x480 image (a vertical gradient with a red square in
     the top-left corner, drawn with Core Graphics; no photograph), encoded
     as HEIC by Apple ImageIO (CGImageDestination) on macOS 26.6: a with no
     orientation (ImageIO still writes an irot box of 0 degrees), b with
     orientation 6 (irot 270 degrees anticlockwise, and Exif Orientation 6).
+    c-exif1-irot270.heic is b with its Exif Orientation set to 1 by
+    ExifTool 13.55 (exiftool "-Orientation#=1"), its irot as it was.
     Made for this project by its authors. Dedicated to the public domain
     under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
