@@ -56,6 +56,19 @@ type Video struct {
 	// video with its still image (whose Apple MakerNote has the same
 	// value).
 	ContentIdentifier string
+
+	// Title and Description are the Keys entries
+	// com.apple.quicktime.title and .description, else the user data's
+	// ©nam and ©des, else an MP4 item list's ©nam and desc.
+	Title, Description string
+	// Keywords are the Keys entry com.apple.quicktime.keywords (each data
+	// value one keyword; a value of several, comma-separated, is split),
+	// else an MP4 item list's keyw.
+	Keywords []string
+	// Rating is the Keys entry com.apple.quicktime.rating.user, -1
+	// (rejected) or 0 to 5, when HasRating.
+	Rating    int
+	HasRating bool
 }
 
 // Limits on what a movie read loads into memory: only these small boxes
@@ -162,6 +175,18 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
+	v.Title = first(keys.title, udta.title)
+	v.Description = first(keys.description, udta.description)
+	v.Keywords = keys.keywords
+	if v.Keywords == nil {
+		v.Keywords = udta.keywords
+	}
+	// (Parsed only when there's a rating: ParseFloat's error allocates.)
+	if r := first(keys.rating, udta.rating); r != "" {
+		if f, err := strconv.ParseFloat(r, 64); err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
+			v.Rating, v.HasRating = int(f), true
+		}
+	}
 	if movieTurned {
 		v.Orientation = 0
 	}
@@ -398,6 +423,8 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	title, description, rating                string
+	keywords                                  []string
 }
 
 // merge fills t's empty fields from o.
@@ -416,6 +443,18 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
+	}
+	if t.title == "" {
+		t.title = o.title
+	}
+	if t.description == "" {
+		t.description = o.description
+	}
+	if t.rating == "" {
+		t.rating = o.rating
+	}
+	if t.keywords == nil {
+		t.keywords = o.keywords
 	}
 }
 
@@ -445,6 +484,10 @@ const (
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
 	keyContentID = "com.apple.quicktime.content.identifier"
+	keyTitle     = "com.apple.quicktime.title"
+	keyDesc      = "com.apple.quicktime.description"
+	keyKeywords  = "com.apple.quicktime.keywords"
+	keyRating    = "com.apple.quicktime.rating.user"
 )
 
 // readMetaKeys reads the Keys metadata (handler mdta: keys and ilst) of a
@@ -462,6 +505,9 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 	h, err := readBox(r, hb, maxLeafBox)
 	if err != nil {
 		return t, err
+	}
+	if len(h) >= 12 && string(h[8:12]) == "mdir" {
+		return readItemList(r, kids)
 	}
 	if len(h) < 12 || string(h[8:12]) != "mdta" {
 		return t, nil
@@ -497,6 +543,21 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.model
 		case keyContentID:
 			dst = &t.contentID
+		case keyTitle:
+			dst = &t.title
+		case keyDesc:
+			dst = &t.description
+		case keyRating:
+			dst = &t.rating
+		case keyKeywords:
+			if t.keywords == nil {
+				vs, err := readDataStrings(r, it)
+				if err != nil {
+					return t, err
+				}
+				t.keywords = splitKeywords(vs)
+			}
+			continue
 		default:
 			continue
 		}
@@ -545,6 +606,83 @@ func parseKeys(b []byte) []string {
 
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
+// readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
+// desc and keyw.
+func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
+	var t qtTags
+	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
+	if !ok || ib.BodyLen() > maxKeysIlst {
+		return t, nil
+	}
+	items, err := bmff.ReadBoxes(r, ib.Body(), ib.End())
+	if err != nil {
+		return t, nil
+	}
+	for _, it := range items {
+		switch string(it.Type[:]) {
+		case "\xa9nam", "desc":
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			if string(it.Type[:]) == "desc" {
+				t.description = first(t.description, s)
+			} else {
+				t.title = first(t.title, s)
+			}
+		case "keyw":
+			if t.keywords == nil {
+				vs, err := readDataStrings(r, it)
+				if err != nil {
+					return t, err
+				}
+				t.keywords = splitKeywords(vs)
+			}
+		}
+	}
+	return t, nil
+}
+
+// splitKeywords is the keywords of data values: each one, or several in
+// one value separated by commas, trimmed; nil without any.
+func splitKeywords(vs []string) []string {
+	var out []string
+	for _, v := range vs {
+		for _, k := range strings.Split(v, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				out = append(out, k)
+			}
+		}
+	}
+	return out
+}
+
+// readDataStrings reads every data box of an item list item, as text: a
+// number (types 21, 22: big-endian integers) as its decimal digits.
+func readDataStrings(r io.ReaderAt, item bmff.Box) ([]string, error) {
+	kids, err := bmff.ReadBoxes(r, item.Body(), item.End())
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, db := range kids {
+		if db.Type != bmff.T("data") {
+			continue
+		}
+		b, err := readBox(r, db, maxLeafBox)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) < 8 {
+			continue
+		}
+		if s := qtText(b[8:], binary.BigEndian.Uint32(b)&0xFFFFFF); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func readDataString(r io.ReaderAt, item bmff.Box) (string, error) {
 	kids, err := bmff.ReadBoxes(r, item.Body(), item.End())
 	if err != nil {
@@ -566,9 +704,22 @@ func readDataString(r io.ReaderAt, item bmff.Box) (string, error) {
 	return qtText(b[8:], typ), nil
 }
 
-// qtText decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE).
+// qtText decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE),
+// or a big-endian integer (21 signed, 22 unsigned) as its digits.
 func qtText(b []byte, typ uint32) string {
 	switch typ {
+	case 21, 22:
+		if len(b) == 0 || len(b) > 8 {
+			return ""
+		}
+		var u uint64
+		for _, c := range b {
+			u = u<<8 | uint64(c)
+		}
+		if typ == 21 && b[0]&0x80 != 0 {
+			return strconv.FormatInt(int64(u)-int64(1)<<(8*len(b)), 10)
+		}
+		return strconv.FormatUint(u, 10)
 	case 1:
 		if !utf8.Valid(b) {
 			return ""
@@ -623,6 +774,10 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case "\xa9mod":
 			dst = &t.model
+		case "\xa9nam":
+			dst = &t.title
+		case "\xa9des":
+			dst = &t.description
 		case "meta":
 			m, err := readMetaKeys(r, k)
 			if err != nil {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestPlanVideoOrientation(t *testing.T) {
 					t.Errorf("GPS %+v, was %+v", v.GPS, before.GPS)
 				}
 				before.GPS, v.GPS = nil, nil
-				if before != v {
+				if !reflect.DeepEqual(before, v) {
 					t.Errorf("other fields changed: %+v, was %+v", v, before)
 				}
 			})
