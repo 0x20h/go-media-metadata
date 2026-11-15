@@ -92,14 +92,22 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	if size < 8 {
 		return v, errNotQuickTime
 	}
+	// A transport stream is tried once the file isn't a movie, so a
+	// movie's read costs no more than it did.
 	top, err := bmff.ReadBoxes(r, 0, size)
 	if err != nil {
+		if isTS(r, size) && !looksLikeMovie(r, size) {
+			return readTSVideo(r, size)
+		}
 		if errors.Is(err, bmff.ErrMalformed) && !looksLikeMovie(r, size) {
 			return v, errNotQuickTime
 		}
 		return v, err
 	}
 	if err := checkMovie(r, top); err != nil {
+		if isTS(r, size) && !startsWithFtyp(r, size) {
+			return readTSVideo(r, size)
+		}
 		return v, err
 	}
 	moov, ok := bmff.Find(top, bmff.T("moov"))

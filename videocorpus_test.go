@@ -153,7 +153,7 @@ func TestParseLoci(t *testing.T) {
 	fixed := func(f float64) []byte { return binary.BigEndian.AppendUint32(nil, uint32(int32(f*65536))) }
 	loci := func(name []byte, lat, lon, alt float64) []byte {
 		b := append(make([]byte, 6), name...) // version, flags, language
-		b = append(b, 0)                       // role
+		b = append(b, 0)                      // role
 		b = append(append(append(b, fixed(lon)...), fixed(lat)...), fixed(alt)...)
 		return append(b, "earth\x00\x00"...)
 	}
