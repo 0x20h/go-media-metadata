@@ -137,3 +137,15 @@ change the IPTC-IIM title, keywords and description that mirror them.
 ## Licence
 
 MIT, see [LICENSE](LICENSE). Test data: see [NOTICE](NOTICE).
+
+## AI-Assisted Development
+
+This project is developed with extensive assistance from AI coding agents, primarily Claude Code by Anthropic.
+
+AI agents contribute to implementation, testing, documentation, and maintenance. Their involvement is acknowledged in Git commit metadata.
+
+The project maintainer directs development and is responsible for reviewing contributions, maintaining the project, and addressing reported issues.
+
+AI-generated code is subject to the same licensing and contribution requirements as other code. The use of AI does not establish that generated code is free of third-party intellectual property rights.
+
+The project is distributed under the MIT License. Third-party dependencies and included assets are subject to their respective licenses.
