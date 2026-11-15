@@ -56,7 +56,7 @@ func keepFields(el *xmlNode, in scope, known func(ns, local string) bool) *keptF
 			}
 			need(n.name, false)
 			for _, a := range n.attrs {
-				if !(a.Name.Space == "" && a.Name.Local == "xmlns") {
+				if a.Name.Space != "" || a.Name.Local != "xmlns" {
 					need(a.Name, true)
 				}
 			}
