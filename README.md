@@ -26,6 +26,9 @@ info, _ := in.Stat()
 o, err := mediameta.ReadOrientation(in, info.Size())
 fmt.Println(o) // e.g. "rotated 90° clockwise"
 
+s, err := mediameta.ReadImageSize(in, info.Size())
+fmt.Println(s.Shown()) // e.g. 3024 4032
+
 x, err := mediameta.ReadExif(in, info.Size())
 fmt.Println(x.DateTimeOriginal, x.OffsetKnown, x.GPS)
 

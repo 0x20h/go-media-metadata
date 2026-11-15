@@ -177,25 +177,10 @@ func (f *jxlFile) codestreamAt() (int64, int64, bool) {
 // readJXLOrientation reads the orientation from the codestream's image
 // header, which is what JPEG XL decoders apply: 1 for default metadata.
 func readJXLOrientation(r io.ReaderAt, size int64) (Orientation, error) {
-	f, err := parseJXL(r, size)
+	br, err := jxlHeaderBits(r, size)
 	if err != nil {
 		return 0, err
 	}
-	at, n, ok := f.codestreamAt()
-	if !ok {
-		return 0, fmt.Errorf("%w: no codestream", ErrMalformed)
-	}
-	if n < 0 {
-		n = size - at
-	}
-	head := make([]byte, min(n, 32))
-	if _, err := r.ReadAt(head, at); err != nil && err != io.EOF {
-		return 0, fmt.Errorf("%w: %v", ErrMalformed, err)
-	}
-	if !bytes.HasPrefix(head, jxlCodestream) {
-		return 0, fmt.Errorf("%w: no codestream signature", ErrMalformed)
-	}
-	br := &bitReader{b: head[2:]}
 	// SizeHeader.
 	if br.bit() == 1 {
 		br.bits(5) // ysize_div8_minus1
@@ -217,6 +202,30 @@ func readJXLOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 	}
 	o := Orientation(br.bits(3) + 1)
 	return o, br.err()
+}
+
+// jxlHeaderBits reads the start of the codestream's headers, after its
+// signature: the SizeHeader, then the ImageMetadata.
+func jxlHeaderBits(r io.ReaderAt, size int64) (*bitReader, error) {
+	f, err := parseJXL(r, size)
+	if err != nil {
+		return nil, err
+	}
+	at, n, ok := f.codestreamAt()
+	if !ok {
+		return nil, fmt.Errorf("%w: no codestream", ErrMalformed)
+	}
+	if n < 0 {
+		n = size - at
+	}
+	head := make([]byte, min(n, 32))
+	if _, err := r.ReadAt(head, at); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+	}
+	if !bytes.HasPrefix(head, jxlCodestream) {
+		return nil, fmt.Errorf("%w: no codestream signature", ErrMalformed)
+	}
+	return &bitReader{b: head[2:]}, nil
 }
 
 // bitReader reads a JPEG XL codestream's bits, least significant first.

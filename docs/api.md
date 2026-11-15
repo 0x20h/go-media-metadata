@@ -14,6 +14,7 @@ never the image data.
 | Function | Returns |
 |---|---|
 | `ReadOrientation` | how the image is shown, 1 to 8 |
+| `ReadImageSize` | the size as stored, and with `Shown()` as shown |
 | `ReadExif` | orientation, date taken (with fraction and offset), GPS |
 | `ReadXMP` | the XMP packet's bytes, nil without one |
 | `ParseXMP` | title, description, keywords and rating of a packet |
@@ -21,6 +22,27 @@ never the image data.
 The format is recognised from the file's first bytes. HEIF is tried
 first, so reading a HEIF file costs the same as it did before the other
 formats existed.
+
+## Image size: ReadImageSize
+
+`ReadImageSize` returns the image's width and height as stored, and the
+orientation `ReadOrientation` gives. `Shown()` is the size as the image is
+displayed: swapped for orientations 5 to 8, which turn it a quarter. Each
+format's size comes from the image itself, not from metadata about it:
+
+| Format | Size from |
+|---|---|
+| JPEG | the frame header (SOF), not Exif's PixelXDimension |
+| PNG | IHDR |
+| WebP | VP8X's canvas, else the VP8 or VP8L frame |
+| HEIF | the primary item's `ispe` (a grid's output size), before `clap` |
+| JPEG XL | the codestream's SizeHeader |
+| Camera RAW | the full-size image; see [raw](raw.md) |
+| QuickTime, MP4 | the first video track's size, its matrix as the orientation |
+
+The tests check every corpus file and the RAW samples against ExifTool's
+composite `ImageSize`. An orientation write leaves the stored size as it
+was, which the dispatch fuzz target checks.
 
 ## Image data hash: HashImageData
 
