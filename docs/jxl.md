@@ -57,6 +57,13 @@ the orientation:
 
 Every writer, on every layout, keeps the codestream byte for byte, and
 the values read back. Where exiftool is installed, ExifTool reads the
-values written, and its validation finds nothing new in the files.
+values written on every layout, and its validation finds nothing new in
+the files. The values are the date and GPS position in the Exif box,
+and the title, description, keywords and rating in the xml box.
+
+The codestream byte-for-byte check takes the place of comparing decoded
+pixels: it is the same image data, so a decoder shows the same picture.
+`HashImageData`, ExifTool's ImageDataHash, gives the same sum before and
+after every write, in the tests and in `FuzzReadJXL`.
 `FuzzReadJXL` (the box parser, reads and a write) and `FuzzUnbrob`
 (Brotli streams) are in the CI fuzz matrix.
