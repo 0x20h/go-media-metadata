@@ -10,6 +10,9 @@
 
 ### Added
 
+- `HashImageData`: a file's image data without its metadata, written to a
+  hash, equal to ExifTool's ImageDataHash. A write that changes only
+  metadata leaves it as it was. See [docs/api.md](docs/api.md).
 - `Exif.Camera`: make, model, lens make and model, ISO, f-number, exposure
   time and focal length (also in 35 mm terms), read only, from every format
   `ReadExif` takes. See [docs/exif.md](docs/exif.md).
