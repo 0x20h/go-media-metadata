@@ -84,6 +84,16 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 			}
 		}
 
+		// The movie header's own date: ExifTool's QuickTime:CreateDate
+		// (with QuickTimeUTC, in the local zone; the same instant).
+		if s := str("QuickTime:CreateDate"); s == "" || strings.HasPrefix(s, "0000") {
+			if !v.MovieCreated.IsZero() {
+				t.Errorf("%s: movie created %v, ExifTool none", path, v.MovieCreated)
+			}
+		} else if at, err := time.Parse("2006:01:02 15:04:05-07:00", s); err != nil || !v.MovieCreated.Equal(at) {
+			t.Errorf("%s: movie created %v, ExifTool %q (%v)", path, v.MovieCreated, s, err)
+		}
+
 		// The place: Keys, ©xyz, loci (ExifTool's composite of it), XMP.
 		var lat, lon, alt float64
 		hasGPS, hasAlt, tol := false, false, 1e-6
@@ -173,5 +183,20 @@ func TestParseLoci(t *testing.T) {
 		if (g == nil) != (c.want == nil) || g != nil && *g != *c.want {
 			t.Errorf("%s: %+v, want %+v", c.name, g, c.want)
 		}
+	}
+}
+
+// A movie whose Keys date differs from its movie header's: Created is the
+// Keys date, MovieCreated the header's.
+func TestMovieCreatedApartFromKeys(t *testing.T) {
+	file := readFile(t, "testdata/video/keys-mvhd.mov")
+	v, err := ReadVideo(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := time.Date(2025, 5, 4, 13, 14, 15, 0, time.FixedZone("", 2*3600))
+	mvhd := time.Date(2024, 6, 1, 10, 0, 0, 0, time.UTC)
+	if !v.Created.Equal(keys) || !v.MovieCreated.Equal(mvhd) {
+		t.Errorf("created %v, movie created %v; want %v and %v", v.Created, v.MovieCreated, keys, mvhd)
 	}
 }

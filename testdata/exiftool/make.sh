@@ -53,6 +53,8 @@ et camera-mm.jpg -ExifByteOrder#=MM -EXIF:Make=Apple "-EXIF:Model=iPhone 12 Pro"
 et date-digitized.jpg "-EXIF:CreateDate=2023:03:04 05:06:07" -EXIF:SubSecTimeDigitized=5 -EXIF:OffsetTimeDigitized=-03:00
 et date-iptc.jpg -IPTC:DateCreated=2022:01:02 -IPTC:TimeCreated=10:20:30+05:30
 et date-xmp.jpg "-XMP-exif:DateTimeOriginal=2021:06:07 08:09:10+01:00"
+# Only IFD0's DateTime (ModifyDate), as a messenger leaves a photo.
+et date-modify.jpg "-EXIF:ModifyDate=2020:10:11 12:13:14" -EXIF:SubSecTime=5 -EXIF:OffsetTime=+09:00
 
 # Regions with every MWG field: a rotated face with a description and
 # Extensions, a focus circle in pixels, a bar code.

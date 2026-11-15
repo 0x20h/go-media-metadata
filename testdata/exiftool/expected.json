@@ -27,6 +27,7 @@
   "camera-mm.jpg": { "orientation": 1 },
   "date-digitized.jpg": { "orientation": 1 },
   "date-iptc.jpg": { "orientation": 1, "iptc": {} },
+  "date-modify.jpg": { "orientation": 1 },
   "date-xmp.jpg": {
     "orientation": 1,
     "xmp": { "dateTimeOriginal": { "time": "2021-06-07T08:09:10+01:00", "precision": 5 } }

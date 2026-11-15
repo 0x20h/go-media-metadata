@@ -10,6 +10,14 @@
 
 ### Added
 
+- Windows' XP tags: `Exif.XPComment`, `XPAuthor`, `XPKeywords` and
+  `XPSubject` (UTF-16LE in IFD0), read as `XPTitle` is. Read only.
+- `Exif.DateTime` (IFD0's DateTime, ExifTool's ModifyDate) with
+  SubSecTime and OffsetTime. It is `ReadTaken`'s last source
+  (`SourceExifDateTime`), after IPTC, for files stripped of the others.
+- `Video.MovieCreated`: the movie header's creation time on its own
+  (ExifTool's QuickTime:CreateDate), next to `Created`, which prefers
+  Keys and `©day`.
 - Video reads: the place from 3GPP `loci`, and the date and place from
   the movie's XMP (an MP4's `uuid` box, a QuickTime movie's `XMP_`) when
   Keys and the user data have none. `Video.Shown()` gives the size as
