@@ -177,7 +177,8 @@ func TestReadJXL(t *testing.T) {
 }
 
 // Every writer on every layout: the values read back, the codestream is
-// byte for byte what it was, and the plan is consistent.
+// byte for byte what it was, HashImageData gives the same sum, and the
+// plan is consistent.
 func TestWriteJXL(t *testing.T) {
 	date := time.Date(2021, 3, 4, 5, 6, 7, 0, time.UTC)
 	long := strings.Repeat("a longer title ", 30)
@@ -214,6 +215,11 @@ func TestWriteJXL(t *testing.T) {
 			got := out.Bytes()
 			if !bytes.Equal(jxlCodestreamBytes(t, got), cs) {
 				t.Fatalf("%s: the codestream changed", name)
+			}
+			// And so is the image data hash, as ExifTool's ImageDataHash
+			// would show.
+			if before, after := hashOf(t, file), hashOf(t, got); before != after || before == "" {
+				t.Errorf("%s: image data hash %q became %q", name, before, after)
 			}
 			if w.edit.Exif != nil {
 				x, err := ReadExif(bytes.NewReader(got), int64(len(got)))
@@ -274,11 +280,18 @@ func FuzzReadJXL(f *testing.F) {
 			if !isJXL(bytes.NewReader(data), int64(len(data))) {
 				return
 			}
+			hash, hashErr := imageDataMD5(t, data)
 			p, err := PlanMetadata(bytes.NewReader(data), int64(len(data)), MetadataEdit{XMP: &XMPEdit{Title: &title}})
 			if err != nil {
 				return
 			}
 			checkPlan(t, data, p)
+			// The write leaves the image data.
+			if hashErr == nil {
+				if after, err := imageDataMD5(t, written(t, p)); after != hash {
+					t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+				}
+			}
 		})
 	})
 }
@@ -355,4 +368,14 @@ func FuzzUnbrob(f *testing.F) {
 			}
 		})
 	})
+}
+
+// hashOf is the image data's MD5, "" without image data or on an error.
+func hashOf(t *testing.T, file []byte) string {
+	t.Helper()
+	sum, err := imageDataMD5(t, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
 }

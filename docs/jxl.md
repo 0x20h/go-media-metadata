@@ -63,5 +63,7 @@ and the title, description, keywords and rating in the xml box.
 
 The codestream byte-for-byte check takes the place of comparing decoded
 pixels: it is the same image data, so a decoder shows the same picture.
+`HashImageData`, ExifTool's ImageDataHash, gives the same sum before and
+after every write, in the tests and in `FuzzReadJXL`.
 `FuzzReadJXL` (the box parser, reads and a write) and `FuzzUnbrob`
 (Brotli streams) are in the CI fuzz matrix.
