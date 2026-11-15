@@ -10,6 +10,11 @@
 
 ### Added
 
+- Video reads: the place from 3GPP `loci`, and the date and place from
+  the movie's XMP (an MP4's `uuid` box, a QuickTime movie's `XMP_`) when
+  Keys and the user data have none. `Video.Shown()` gives the size as
+  shown. `ReadXMP` takes movies. A video corpus (`testdata/video`) is
+  checked against ExifTool. See [docs/quicktime.md](docs/quicktime.md).
 - Face regions at full fidelity. `Region` gains `Unit` (pixel areas were
   left out before), `D` (circles), `Rotation`, `Description`,
   `FocusUsage` and `BarCodeValue`. Fields it doesn't model
