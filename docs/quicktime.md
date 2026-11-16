@@ -62,6 +62,23 @@ CC0, made by its `make.sh`. Each holds the metadata in one place:
 - XMP only, in an MP4's `uuid` box and in a MOV's `XMP_`;
 - tracks turned 90° and 270°.
 
+### Movies cut short or with junk at the end
+
+Some movies have a broken layout that ExifTool reads past:
+- a file cut short, so its `mdat` claims more bytes than are there
+- junk after the last box: a partial header, stray bytes, or a header
+  whose size is impossible
+
+`ReadVideo` (and `ReadAll`, `ReadImageSize`, `ReadOrientation`) read
+these too. They keep the boxes before the break, and a last box that runs
+past the end is cut to the file. This applies only when the file starts
+like a movie (`ftyp`, `moov`, `mdat`, `wide`, `free` or `skip`) and holds
+a whole `moov`. A movie whose `moov` itself is cut is still `ErrMalformed`.
+
+A well-formed movie takes the strict path, at the same cost as before.
+Writes always read the boxes strictly, so they refuse these files
+(`ErrMalformed`) rather than write past what's there.
+
 ## Writing the orientation
 
 `SetRotation`, `SetOrientation` and their plans set a movie's

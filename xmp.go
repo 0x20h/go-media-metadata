@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -272,8 +273,18 @@ func (d *xmpDoc) langAlt(ns, local string) string {
 // element, an rdf:RDF one, or either in an xpacket wrapper. Properties in
 // any of the packet's rdf:Description elements count; the first
 // occurrence of each wins.
+//
+// A packet that is malformed only by characters XML doesn't allow reads
+// leniently: ParseXMP returns its fields with ErrXMPRepaired.
 func ParseXMP(packet []byte) (XMP, error) {
 	d, err := parseXMPDoc(packet)
+	if errors.Is(err, ErrMalformed) && len(packet) <= maxXMP {
+		if fixed, changed := repairXML(packet); changed {
+			if d, err2 := parseXMPDoc(fixed); err2 == nil {
+				return d.fields(), ErrXMPRepaired
+			}
+		}
+	}
 	if err != nil {
 		return XMP{}, err
 	}

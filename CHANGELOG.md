@@ -8,6 +8,10 @@
   merged by `MergeXMP`. It's for an importer that falls back to the
   modification date last, as ExifTool's date order does. `TakenFrom`
   doesn't use it.
+- `ReadVideo`, `ReadAll` and the other readers read a movie cut short (an
+  `mdat` past the end) or with junk after its last box, as ExifTool does,
+  as long as its `moov` is whole. Writes still refuse such a file. See
+  [docs/quicktime.md](docs/quicktime.md).
 - AVI and MPEG program streams (`.mpg`, `.vob`), read only. `ReadVideo`
   reads an AVI's recording date (IDIT, else a whole ICRD date), duration
   and size (avih), title, comment and keywords (INFO). For an MPEG program
@@ -15,6 +19,11 @@
   video's first to last PTS, plus a frame). `ReadAll`, `ReadImageSize` and
   `ReadOrientation` take them too; writes are refused. See
   [docs/quicktime.md](docs/quicktime.md).
+- `ParseXMP` reads a packet malformed only by characters XML doesn't
+  allow, as ExifTool does: a control character, bytes that aren't UTF-8, a
+  bare `&`. It returns the fields with the new `ErrXMPRepaired`, which
+  `ReadAll` reports in `Errors.XMP`. Writes still refuse such a packet. See
+  [docs/xmp.md](docs/xmp.md).
 
 ### Fixed
 

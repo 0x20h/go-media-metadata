@@ -106,6 +106,71 @@ func ReadBoxes(r io.ReaderAt, start, end int64) ([]Box, error) {
 	return out, nil
 }
 
+// ReadBoxesLenient reads the sibling boxes in [start, end) as ReadBoxes
+// does, but stops at the first box it can't read instead of failing, as
+// ExifTool reads a file cut short or with junk after its last box: the
+// boxes before stay. The box it stopped at is kept too, cut to end, when
+// it runs past end with a valid header and a printable type (an mdat cut
+// short). cut reports whether anything was left out or cut. For reading
+// only: a write needs the whole structure.
+func ReadBoxesLenient(r io.ReaderAt, start, end int64) (boxes []Box, cut bool) {
+	var out []Box
+	for off := start; off < end && len(out) < MaxBoxes; {
+		var h [16]byte
+		if end-off < 8 {
+			return out, true
+		}
+		if _, err := r.ReadAt(h[:8], off); err != nil {
+			return out, true
+		}
+		b := Box{Offset: off, HeaderLen: 8}
+		copy(b.Type[:], h[4:8])
+		size := int64(binary.BigEndian.Uint32(h[:4]))
+		switch size {
+		case 0:
+			size = end - off
+		case 1:
+			if end-off < 16 {
+				return out, true
+			}
+			if _, err := r.ReadAt(h[8:16], off+8); err != nil {
+				return out, true
+			}
+			large := binary.BigEndian.Uint64(h[8:16])
+			if large > 1<<62 {
+				return out, true
+			}
+			size, b.HeaderLen = int64(large), 16
+		}
+		if b.Type == T("uuid") {
+			b.HeaderLen += 16
+		}
+		if size < b.HeaderLen || !printable(b.Type) {
+			return out, true
+		}
+		if size > end-off {
+			if end-off < b.HeaderLen {
+				return out, true
+			}
+			b.Size = end - off
+			return append(out, b), true
+		}
+		b.Size = size
+		out = append(out, b)
+		off += size
+	}
+	return out, false
+}
+
+func printable(t Type) bool {
+	for _, c := range t {
+		if c < 0x20 || c > 0x7E {
+			return false
+		}
+	}
+	return true
+}
+
 // Find returns the first box of type t.
 func Find(boxes []Box, t Type) (Box, bool) {
 	for _, b := range boxes {
