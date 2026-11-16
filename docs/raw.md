@@ -121,3 +121,37 @@ The plan is always in place, and nothing else is written: image data and
 maker notes stay byte for byte. A file without the tag is refused
 (`ErrUnsupported`) rather than restructured, because maker notes hold
 offsets into the file that a rewrite would break.
+
+## Writing metadata: TIFF and DNG
+
+`PlanMetadata` and `SetMetadata` write the Exif and XMP parts of an edit
+to a TIFF or a DNG. These files are their own Exif: IFD0 with its ExifIFD
+and GPS IFD is the file's, and every offset in them counts from the start
+of the file.
+
+- **Exif part:** `EditExif`'s edit of the whole file.
+- **XMP part:** IFD0's XMLPacket (tag 700), edited with `EditXMP`, or
+  added when the file has none.
+- **IPTC part:** refused (`ErrUnsupported`), as for every format but
+  JPEG.
+
+A value that fits where the old one was is written there, and the rest of
+its space is zeroed. Anything else (a longer value, an IFD with more
+entries) is appended at the end of the file, and the bytes it leaves are
+zeroed. Nothing else moves, so strips, tiles, SubIFDs and a DNG's raw data
+keep their offsets, and `HashImageData` gives the same hash. A plan is in
+place when it appends nothing.
+
+What ExifTool's own write of the same tags gives a TIFF, this does too: a
+new ExifIFD gets the tags EditExif gives one (`ExifVersion`,
+`ComponentsConfiguration`, `ColorSpace`), and a GPS IFD has no
+`GPSProcessingMethod`. ExifTool's `-validate` notes both as it does for its
+own write.
+
+Limits:
+- Standard TIFF headers only (`II*\0`, `MM\0*`). A camera's own RAW (CR2,
+  NEF, ARW: an Exif maker note, with offsets of its own) is refused with
+  `ErrUnsupported`, as are ORF and RW2.
+- DNGs are written: their maker notes live in `DNGPrivateData`, which
+  stays where it is.
+- The edit holds the file in memory. Files over 1 GiB are refused.
