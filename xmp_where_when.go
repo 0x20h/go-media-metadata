@@ -1,6 +1,7 @@
 package mediameta
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -260,4 +261,50 @@ func parseXMPDate(s string) (Date, bool) {
 	}
 	at.Time = time.Date(f[0], time.Month(f[1]), f[2], f[3], f[4], f[5], nanos, zone)
 	return at, true
+}
+
+// checkXMPDate refuses a date XMP can't hold: a year outside 1 to 9999,
+// an unknown precision, an offset that isn't whole minutes or is past
+// ±24 hours. nil, and a zero Time (a removal), pass.
+func checkXMPDate(d *Date) error {
+	if d == nil || d.Time.IsZero() {
+		return nil
+	}
+	if y := d.Time.Year(); y < 1 || y > 9999 {
+		return fmt.Errorf("mediameta: XMP date of year %d", y)
+	}
+	if d.Precision > PrecisionSecond {
+		return fmt.Errorf("mediameta: XMP date precision %d", d.Precision)
+	}
+	if d.OffsetKnown {
+		if _, off := d.Time.Zone(); off%60 != 0 || off <= -24*3600 || off >= 24*3600 {
+			return fmt.Errorf("mediameta: XMP date offset of %d seconds", off)
+		}
+	}
+	return nil
+}
+
+// formatXMPDate writes d as an XMP Date (ISO 8601, as parseXMPDate reads
+// it): to its precision (PrecisionSecond when unset), a fraction when
+// there is one, the offset when known. The time is the clock time of
+// d.Time in its own zone.
+func formatXMPDate(d Date) string {
+	t := d.Time
+	var b []byte
+	switch d.Precision {
+	case PrecisionYear:
+		return t.Format("2006")
+	case PrecisionMonth:
+		return t.Format("2006-01")
+	case PrecisionDay:
+		return t.Format("2006-01-02")
+	case PrecisionMinute:
+		b = t.AppendFormat(b, "2006-01-02T15:04")
+	default:
+		b = t.AppendFormat(b, "2006-01-02T15:04:05.999999999")
+	}
+	if d.OffsetKnown {
+		b = t.AppendFormat(b, "-07:00")
+	}
+	return string(b)
 }

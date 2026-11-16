@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
+  `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
+  `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
+  written to its precision, with its offset when known, or removed. A
+  date corrected in Exif can now be corrected in XMP in the same edit. See
+  [docs/xmp.md](docs/xmp.md).
+
 ## v0.2.1 (2026-11-16)
 
 No breaking changes.
