@@ -4,6 +4,11 @@
 
 ### Added
 
+- `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
+  the date's precision, with its offset when known, or removes them. A
+  date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in
+  the same edit. See [docs/iptc.md](docs/iptc.md).
+
 - `PlanMetadata` and `SetMetadata` write Exif and XMP to TIFF and DNG files,
   which were refused with a misleading error. Values change where they
   fit and are appended where they don't; image data and every offset into
