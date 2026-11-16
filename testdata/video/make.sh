@@ -17,6 +17,11 @@ cp "$TMP/base.mov" "$OUT/keys.mov"
 et "$OUT/keys.mov" "-Keys:CreationDate=2025:05:04 13:14:15+02:00" "-Keys:GPSCoordinates#=51.5 -0.125 35.5" \
   -Keys:Make=Apple "-Keys:Model=iPhone 12 Pro" -Keys:ContentIdentifier=5A7E21BB-FFC6-4275-957A-A864EDD15D84
 
+# The movie header's date (2024-06-01 10:00 UTC, set by ffmpeg) and a
+# Keys date that differs from it.
+ff -i "$TMP/base.mov" -c copy -metadata creation_time=2024-06-01T10:00:00Z "$OUT/keys-mvhd.mov"
+et "$OUT/keys-mvhd.mov" "-Keys:CreationDate=2025:05:04 13:14:15+02:00"
+
 # QuickTime user data: ©day, ©xyz, ©mak, ©mod.
 cp "$TMP/base.mov" "$OUT/udta.mov"
 et "$OUT/udta.mov" "-UserData:ContentCreateDate=2019:12:31 23:59:59-05:00" \

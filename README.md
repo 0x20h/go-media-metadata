@@ -26,6 +26,9 @@ info, _ := in.Stat()
 o, err := mediameta.ReadOrientation(in, info.Size())
 fmt.Println(o) // e.g. "rotated 90° clockwise"
 
+m, err := mediameta.ReadAll(in, info.Size()) // everything at once
+fmt.Println(m.Taken.Time, m.Taken.Source, m.GPS, m.Title, m.Keywords)
+
 s, err := mediameta.ReadImageSize(in, info.Size())
 fmt.Println(s.Shown()) // e.g. 3024 4032
 
@@ -62,6 +65,9 @@ Early, and growing format by format.
 | JPEG XL | read (codestream) | read, write, edit | read, write, edit |
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 | MPEG-2 TS, MTS, M2TS (AVCHD) | read (always 1) | | |
+| Matroska (MKV), WebM | read (projection roll) | | |
+| GIF | | | read |
+| BMP | | | |
 
 `ReadPreviews` finds the JPEG previews a camera RAW embeds, with their
 offsets and sizes.
@@ -78,7 +84,8 @@ title, description, keywords and rating;
 place, title, description, keywords and rating.
 It also reads an AVCHD camcorder's MTS or M2TS: the recording date, GPS
 position, make and model from the video stream's MDPM, and the duration
-and size.
+and size; and a Matroska or WebM file's duration, recording date, title,
+size and rotation.
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,
@@ -96,7 +103,8 @@ change the IPTC-IIM title, keywords and description that mirror them.
   [HEIF](docs/heif.md), [JPEG](docs/jpeg.md),
   [PNG and WebP](docs/png-webp.md), [JPEG XL](docs/jxl.md),
   [Camera RAW](docs/raw.md), [QuickTime and MP4](docs/quicktime.md),
-  [MPEG-2 TS, MTS, M2TS](docs/m2ts.md)
+  [MPEG-2 TS, MTS, M2TS](docs/m2ts.md), [Matroska and WebM](docs/matroska.md),
+  [GIF and BMP](docs/gif-bmp.md)
 - [Exif](docs/exif.md): the fields (camera, lens and exposure among
   them), writers' quirks compared with ExifTool, `EditExif`, and
   `ReadTaken`: the date taken from Exif, XMP or IPTC
@@ -132,3 +140,15 @@ change the IPTC-IIM title, keywords and description that mirror them.
 ## Licence
 
 MIT, see [LICENSE](LICENSE). Test data: see [NOTICE](NOTICE).
+
+## AI-Assisted Development
+
+This project is developed with extensive assistance from AI coding agents, primarily Claude Code by Anthropic.
+
+AI agents contribute to implementation, testing, documentation, and maintenance. Their involvement is acknowledged in Git commit metadata.
+
+The project maintainer directs development and is responsible for reviewing contributions, maintaining the project, and addressing reported issues.
+
+AI-generated code is subject to the same licensing and contribution requirements as other code. The use of AI does not establish that generated code is free of third-party intellectual property rights.
+
+The project is distributed under the MIT License. Third-party dependencies and included assets are subject to their respective licenses.

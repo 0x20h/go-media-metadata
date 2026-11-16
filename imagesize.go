@@ -46,7 +46,7 @@ const (
 )
 
 // imageSizeFormats are the formats ReadImageSize takes.
-const imageSizeFormats = "JPEG, PNG, WebP, HEIF, JPEG XL, camera RAW, QuickTime or MP4 file"
+const imageSizeFormats = "JPEG, PNG, WebP, HEIF, JPEG XL, camera RAW, QuickTime, MP4, GIF or BMP file"
 
 // ReadImageSize reads the size of the image in r (size bytes), and the
 // orientation it's shown in:
@@ -60,7 +60,10 @@ const imageSizeFormats = "JPEG, PNG, WebP, HEIF, JPEG XL, camera RAW, QuickTime 
 //   - JPEG XL: the codestream's SizeHeader;
 //   - camera RAW: the full-size image, as ExifTool's ImageSize gives it (see
 //     docs/raw.md);
-//   - QuickTime and MP4: the first video track's size, as Video has it.
+//   - QuickTime and MP4: the first video track's size, as Video has it;
+//   - GIF: the logical screen;
+//   - BMP: the info header's width and height (a top-down image's height
+//     is negative there: the size is its absolute value).
 //
 // A file of none of these formats gives an error that is ErrUnknownFormat;
 // one without a size it can read, ErrMalformed or ErrUnsupported.
@@ -81,7 +84,11 @@ func ReadImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 			s, err = jxlImageSize(r, size)
 		case formatRAW:
 			s, err = rawImageSize(r, size)
-		case formatMovie, formatTS:
+		case formatGIF:
+			s, err = gifImageSize(r, size)
+		case formatBMP:
+			s, err = bmpImageSize(r, size)
+		case formatMovie, formatTS, formatMatroska:
 			v, verr := ReadVideo(r, size)
 			if verr != nil {
 				return ImageSize{}, verr
@@ -143,6 +150,11 @@ func jpegImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 	if err != nil {
 		return ImageSize{}, err
 	}
+	return f.imageSize(r)
+}
+
+// imageSize reads a parsed JPEG's first frame header.
+func (f *jpegFile) imageSize(r io.ReaderAt) (ImageSize, error) {
 	for _, s := range f.segs {
 		if s.marker < 0xC0 || s.marker > 0xCF || s.marker == 0xC4 || s.marker == 0xC8 || s.marker == 0xCC {
 			continue

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
@@ -364,10 +365,27 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patc
 func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 	var id uint32
 	found := false
+	// XMP: the candidates, kept apart only when there are several (no
+	// allocation for the common one).
+	var xmps []uint32
+	var oneXMP uint32
+	nXMP := 0
 	for i, t := range f.m.ItemTypes {
 		is := kind == kindExif && t == bmff.T("Exif") ||
 			kind == kindXMP && t == bmff.T("mime") && f.m.ContentType(i) == xmpContentType
 		if !is {
+			continue
+		}
+		if kind == kindXMP {
+			nXMP++
+			if nXMP == 1 {
+				oneXMP = i
+			} else {
+				if nXMP == 2 {
+					xmps = append(xmps, oneXMP)
+				}
+				xmps = append(xmps, i)
+			}
 			continue
 		}
 		if found {
@@ -375,12 +393,65 @@ func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 		}
 		id, found = i, true
 	}
+	if kind == kindXMP {
+		switch {
+		case nXMP == 1:
+			id, found = oneXMP, f.isImageXMP(oneXMP)
+		case nXMP > 1:
+			id, found = f.pickXMPItem(xmps)
+		}
+	}
 	if found {
 		if _, ok := f.m.Loc.Item(id); !ok {
 			return 0, false, fmt.Errorf("%w: the %v item has no location", ErrMalformed, kind)
 		}
 	}
 	return id, found, nil
+}
+
+// pickXMPItem is the XMP item that is the image's, of several a file can
+// have (an iPhone's also describes its HDR gain map): the one that
+// describes the primary image (a cdsc reference to it), else the lowest
+// id of those that describe no other item. An item that describes only
+// another image (the gain map, a thumbnail) isn't the image's XMP.
+// (ExifTool reads every XMP item, by item id, and for each property shows
+// the last; for a gain map's packet, which holds none of the properties
+// this package reads, that comes to the same.)
+func (f *heifFile) pickXMPItem(ids []uint32) (uint32, bool) {
+	slices.Sort(ids)
+	describes := map[uint32][]uint32{}
+	for _, ref := range f.m.Refs {
+		if ref.Type == bmff.T("cdsc") {
+			describes[ref.From] = append(describes[ref.From], ref.To...)
+		}
+	}
+	for _, id := range ids {
+		if slices.Contains(describes[id], f.m.Primary) {
+			return id, true
+		}
+	}
+	for _, id := range ids {
+		if len(describes[id]) == 0 {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+// isImageXMP tells whether an XMP item is the image's: it describes the
+// primary, or no item at all (not only another image, such as a gain map).
+func (f *heifFile) isImageXMP(id uint32) bool {
+	describesOther := false
+	for _, ref := range f.m.Refs {
+		if ref.Type != bmff.T("cdsc") || ref.From != id {
+			continue
+		}
+		if slices.Contains(ref.To, f.m.Primary) {
+			return true
+		}
+		describesOther = true
+	}
+	return !describesOther
 }
 
 // addMetadataItem lists a new Exif or XMP item that describes the primary
@@ -627,13 +698,14 @@ func (f *heifFile) fileRange(cm uint8, at, n uint64) (start, end uint64, ok bool
 	return base + at, base + at + n, true
 }
 
-// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP, JPEG XL or
-// camera RAW file in r (size bytes): a JPEG's XMP APP1 segment (with its
-// extended XMP merged in, as one packet, where the file has all of it), a
-// HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP " chunk, a
-// JPEG XL file's xml box (or its brob-compressed form), a TIFF-based RAW's
-// XMLPacket tag, a CR3's XMP box, a QuickTime or MP4 movie's XMP (a
-// top-level uuid box, or the user data's XMP_). Nil without one.
+// ReadXMP returns the XMP packet of the JPEG, HEIF, PNG, WebP, JPEG XL,
+// GIF or camera RAW file in r (size bytes): a JPEG's XMP APP1 segment
+// (with its extended XMP merged in, as one packet, where the file has all
+// of it), a HEIF file's XMP item, a PNG's XMP iTXt chunk, a WebP's "XMP "
+// chunk, a JPEG XL file's xml box (or its brob-compressed form), a GIF's
+// "XMP DataXMP" application extension, a TIFF-based RAW's XMLPacket tag, a
+// CR3's XMP box, a QuickTime or MP4 movie's XMP (a top-level uuid box, or
+// the user data's XMP_). Nil without one.
 func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	switch {
 	case isJPEG(r, size):
@@ -650,11 +722,20 @@ func ReadXMP(r io.ReaderAt, size int64) ([]byte, error) {
 		if b, ok, rerr := readRAWXMP(r, size); ok {
 			return b, rerr
 		}
-		if detectFormat(r, size) == formatMovie {
+		switch detectFormat(r, size) {
+		case formatMovie:
 			return readMovieXMP(r, size)
+		case formatGIF:
+			// After HEIF, so a HEIF read costs what it did.
+			return readGIFXMPPacket(r, size)
 		}
 		return nil, err
 	}
+	return f.xmp(r, size)
+}
+
+// xmp reads the XMP item of a parsed HEIF file, nil without one.
+func (f *heifFile) xmp(r io.ReaderAt, size int64) ([]byte, error) {
 	id, found, err := f.metadataItem(kindXMP)
 	if err != nil || !found {
 		return nil, err

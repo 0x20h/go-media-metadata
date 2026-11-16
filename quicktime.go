@@ -16,7 +16,9 @@ import (
 )
 
 // Video is what this package reads from a QuickTime (MOV) or MP4 movie:
-// the fields a media library sorts, places and shows videos by. A field
+// the fields a media library sorts, places and shows videos by. An MPEG-2
+// transport stream and a Matroska or WebM file fill some of them; see
+// docs/m2ts.md and docs/matroska.md. A field
 // the file doesn't have, or has in a form this package doesn't accept, is
 // left at its zero value.
 type Video struct {
@@ -29,6 +31,13 @@ type Video struct {
 	// UTC, OffsetKnown true). Zero without any.
 	Created     time.Time
 	OffsetKnown bool
+
+	// MovieCreated is the movie header's (mvhd) creation time on its own,
+	// in UTC, as ExifTool's QuickTime:CreateDate gives it: zero when the
+	// header has none (0). It's Created's last resort; a caller that dates
+	// videos by the movie header reads it here even when Keys or ©day give
+	// another date.
+	MovieCreated time.Time
 
 	// Duration is the movie header's duration.
 	Duration time.Duration
@@ -112,6 +121,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		if isTS(r, size) && !looksLikeMovie(r, size) {
 			return readTSVideo(r, size)
 		}
+		if isMatroska(r, size) {
+			return readMatroskaVideo(r, size)
+		}
 		if errors.Is(err, bmff.ErrMalformed) && !looksLikeMovie(r, size) {
 			return v, errNotQuickTime
 		}
@@ -120,6 +132,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	if err := checkMovie(r, top); err != nil {
 		if isTS(r, size) && !startsWithFtyp(r, size) {
 			return readTSVideo(r, size)
+		}
+		if isMatroska(r, size) {
+			return readMatroskaVideo(r, size)
 		}
 		return v, err
 	}
@@ -142,6 +157,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 				return v, err
 			}
 			mvhdCreated, v.Duration = parseMvhd(b)
+			v.MovieCreated = mvhdCreated
 			movieTurned = !mvhdIdentity(b)
 		case bmff.T("trak"):
 			if video {

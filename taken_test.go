@@ -93,6 +93,7 @@ func TestReadTakenAgreesWithExifTool(t *testing.T) {
 		paths = append(paths, p...)
 	}
 	args := append([]string{"-j", "-n", "-q", "-G1", "-Composite:SubSecDateTimeOriginal", "-Composite:SubSecCreateDate", "-EXIF:DateTimeOriginal", "-EXIF:CreateDate",
+		"-Composite:SubSecModifyDate", "-EXIF:ModifyDate",
 		"-XMP-exif:DateTimeOriginal", "-XMP-photoshop:DateCreated", "-XMP-xmp:CreateDate", "-IPTC:DateCreated", "-IPTC:TimeCreated"}, paths...)
 	out, err := exec.Command(tool, args...).Output()
 	if err != nil {
@@ -118,7 +119,7 @@ func TestReadTakenAgreesWithExifTool(t *testing.T) {
 		}
 	}
 	for _, src := range []DateSource{SourceExifDateTimeOriginal, SourceExifDateTimeDigitized, SourceXMPDateTimeOriginal,
-		SourceXMPDateCreated, SourceIPTCDateCreated, SourceNone} {
+		SourceXMPDateCreated, SourceIPTCDateCreated, SourceExifDateTime, SourceNone} {
 		if seen[src] == 0 {
 			t.Errorf("no corpus file dated by %v", src)
 		}
@@ -150,7 +151,8 @@ func exifToolTaken(t *testing.T, e map[string]any) (Date, DateSource) {
 		}
 		return ""
 	}
-	for _, c := range [][2]string{{"Composite:SubSecDateTimeOriginal", "DateTimeOriginal"}, {"Composite:SubSecCreateDate", "CreateDate"}} {
+	for _, c := range [][2]string{{"Composite:SubSecDateTimeOriginal", "DateTimeOriginal"}, {"Composite:SubSecCreateDate", "CreateDate"},
+		{"Composite:SubSecModifyDate", "ModifyDate"}} {
 		if str(c[0]) == "" {
 			e[c[0]] = exifTag(c[1])
 		}
@@ -182,6 +184,13 @@ func exifToolTaken(t *testing.T, e map[string]any) (Date, DateSource) {
 			t.Fatalf("%s: ExifTool's IPTC date %q", e["SourceFile"], s)
 		}
 		return d, SourceIPTCDateCreated
+	}
+	if s := str("Composite:SubSecModifyDate"); s != "" {
+		d, ok := parseXMPDate(asXMP(s))
+		if !ok {
+			t.Fatalf("%s: ExifTool's ModifyDate %q", e["SourceFile"], s)
+		}
+		return d, SourceExifDateTime
 	}
 	return Date{}, SourceNone
 }

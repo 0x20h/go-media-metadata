@@ -20,6 +20,9 @@ const (
 	formatRAW // TIFF-based, CR3 or RAF
 	formatMovie
 	formatTS // an MPEG-2 transport stream: .ts, .mts, .m2ts
+	formatBMP
+	formatGIF
+	formatMatroska // Matroska or WebM
 )
 
 // detectFormat tells a file's format from its first bytes, and for an
@@ -68,6 +71,15 @@ func detectFormat(r io.ReaderAt, size int64) format {
 	}
 	if isTS(r, size) {
 		return formatTS
+	}
+	if isMatroska(r, size) {
+		return formatMatroska
+	}
+	switch {
+	case isGIF(r, size):
+		return formatGIF
+	case isBMP(r, size):
+		return formatBMP
 	}
 	return formatUnknown
 }

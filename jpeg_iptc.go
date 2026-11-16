@@ -122,6 +122,11 @@ func ReadIPTC(r io.ReaderAt, size int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return f.iptc(r)
+}
+
+// iptc reads the IPTC-IIM data of a parsed JPEG, nil without any.
+func (f *jpegFile) iptc(r io.ReaderAt) ([]byte, error) {
 	_, rs, err := f.photoshopSegments(r)
 	if err != nil {
 		return nil, err
