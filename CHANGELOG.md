@@ -4,6 +4,10 @@
 
 ### Added
 
+- `ReadVideo`, `ReadAll` and the other readers read a movie cut short (an
+  `mdat` past the end) or with junk after its last box, as ExifTool does,
+  as long as its `moov` is whole. Writes still refuse such a file. See
+  [docs/quicktime.md](docs/quicktime.md).
 - AVI and MPEG program streams (`.mpg`, `.vob`), read only. `ReadVideo`
   reads an AVI's recording date (IDIT, else a whole ICRD date), duration
   and size (avih), title, comment and keywords (INFO). For an MPEG program
