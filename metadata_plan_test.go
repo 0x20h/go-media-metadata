@@ -2,6 +2,7 @@ package mediameta
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -147,6 +148,8 @@ func FuzzPlanMetadata(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	imageIOSeeds(f)
+	f.Add(metaTIFF(binary.LittleEndian, false))
+	f.Add(metaTIFF(binary.BigEndian, false))
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}

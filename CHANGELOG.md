@@ -4,6 +4,11 @@
 
 ### Added
 
+- `PlanMetadata` and `SetMetadata` write Exif and XMP to TIFF and DNG files,
+  which were refused with a misleading error. Values change where they
+  fit and are appended where they don't; image data and every offset into
+  it stay, so the image data hash doesn't change. Camera RAWs with a maker
+  note (CR2, NEF, ARW) are refused. See [docs/raw.md](docs/raw.md).
 - `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
   `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
   `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
