@@ -106,7 +106,7 @@ func structField(el *xmlNode, in scope, ns, local string) (value string, sub *xm
 		for _, a := range n.attrs {
 			if a.Name.Local == local && a.Name.Space != "" && a.Name.Space != nsXMLNS {
 				if uri, _ := scopes[i].ns(a.Name, true); uri == ns {
-					return a.Value, nil, nil, true
+					return strings.TrimSpace(a.Value), nil, nil, true
 				}
 			}
 		}
