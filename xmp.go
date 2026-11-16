@@ -198,7 +198,9 @@ func (d *xmpDoc) props(ns, local string) []prop {
 // value is a simple property's value.
 func (p prop) value() string {
 	if p.elem == nil {
-		return p.desc.attrs[p.attr].Value
+		// Trimmed like an element's text: a value reads the same written
+		// either way, and an edit may move it from one to the other.
+		return strings.TrimSpace(p.desc.attrs[p.attr].Value)
 	}
 	// <ns:p rdf:value="…"/> or <ns:p rdf:resource="…"/> aren't read here.
 	return strings.TrimSpace(textOf(p.elem))
