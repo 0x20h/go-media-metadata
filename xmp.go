@@ -82,6 +82,12 @@ type XMPEdit struct {
 	// without regions removes it. Fields of the old regions that Region doesn't model (a region's
 	// rotation, extensions) aren't kept.
 	Regions *Regions
+	// GPS sets exif:GPSLatitude, exif:GPSLongitude and, with HasAltitude,
+	// exif:GPSAltitude and exif:GPSAltitudeRef (1 below sea level), the
+	// position ParseXMP reads; without HasAltitude an old altitude is
+	// removed. RemoveGPS removes all four. nil leaves them as they are.
+	GPS       *GPS
+	RemoveGPS bool
 }
 
 // Namespaces of the properties read and written.
@@ -357,6 +363,12 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			}
 		}
 	}
+	if edit.GPS != nil && edit.RemoveGPS {
+		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
+	}
+	if g := edit.GPS; g != nil && !validGPS(g) {
+		return nil, fmt.Errorf("mediameta: GPS position %+v out of range", *g)
+	}
 	if err := checkRegions(edit.Regions); err != nil {
 		return nil, err
 	}
@@ -388,6 +400,26 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 	}
 	if edit.PersonInImage != nil {
 		changed = d.setBag(nsIPTCX, "PersonInImage", *edit.PersonInImage) || changed
+	}
+	if g := edit.GPS; g != nil {
+		changed = d.setSimple(nsExif, "GPSLatitude", formatXMPCoord(g.Latitude, 'N', 'S')) || changed
+		changed = d.setSimple(nsExif, "GPSLongitude", formatXMPCoord(g.Longitude, 'E', 'W')) || changed
+		if g.HasAltitude {
+			ref := "0"
+			if g.Altitude < 0 {
+				ref = "1"
+			}
+			changed = d.setSimple(nsExif, "GPSAltitude", formatXMPRational(math.Abs(g.Altitude))) || changed
+			changed = d.setSimple(nsExif, "GPSAltitudeRef", ref) || changed
+		} else {
+			changed = d.remove(nsExif, "GPSAltitude") || changed
+			changed = d.remove(nsExif, "GPSAltitudeRef") || changed
+		}
+	}
+	if edit.RemoveGPS {
+		for _, local := range [...]string{"GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSAltitudeRef"} {
+			changed = d.remove(nsExif, local) || changed
+		}
 	}
 	if edit.Regions != nil {
 		changed = d.setRegions(edit.Regions) || changed
