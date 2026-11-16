@@ -22,6 +22,13 @@
 
 ### Fixed
 
+- `VideoEdit` writes the title and description everywhere ExifTool and
+  `ReadVideo` read them. Before, an item list's `©des` and the user data's
+  3GPP `titl` and `dscp` kept their old values, and a removal left them.
+  An item list the movie has gets `©nam` and `©des` when it lacks them,
+  as ExifTool writes them, so players that read only the item list show
+  the new values. See [docs/quicktime.md](docs/quicktime.md).
+
 - `SetOrientation`, `SetRotation` and their plans set the orientation of
   a TIFF or DNG whose IFD0 has no Orientation tag, which was refused (ErrUnsupported).
   Most scanners' and converters' TIFFs have none. A copy of IFD0 with the
