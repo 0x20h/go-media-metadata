@@ -23,6 +23,8 @@ const (
 	formatBMP
 	formatGIF
 	formatMatroska // Matroska or WebM
+	formatAVI      // RIFF AVI
+	formatMPEGPS   // an MPEG program stream
 )
 
 // detectFormat tells a file's format from its first bytes, and for an
@@ -74,6 +76,12 @@ func detectFormat(r io.ReaderAt, size int64) format {
 	}
 	if isMatroska(r, size) {
 		return formatMatroska
+	}
+	if isAVI(r, size) {
+		return formatAVI
+	}
+	if isMPEGPS(r, size) {
+		return formatMPEGPS
 	}
 	switch {
 	case isGIF(r, size):

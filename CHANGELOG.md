@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- AVI and MPEG program streams (`.mpg`, `.vob`), read only. `ReadVideo`
+  reads an AVI's recording date (IDIT, else a whole ICRD date), duration
+  and size (avih), title, comment and keywords (INFO). For an MPEG program
+  stream it reads the size (the sequence header) and the duration (the
+  video's first to last PTS, plus a frame). `ReadAll`, `ReadImageSize` and
+  `ReadOrientation` take them too; writes are refused. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 ### Fixed
 
 - A HEIF file with several XMP items is read instead of refused ("two XMP

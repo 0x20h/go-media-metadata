@@ -269,6 +269,11 @@ func FuzzReadVideo(f *testing.F) {
 	}
 	// Transport streams, cut to their first packets: the tables, the SPS
 	// and the MDPM.
+	for _, p := range []string{"testdata/avi/idit.avi", "testdata/mpegps/mpeg2.mpg"} {
+		if b, err := os.ReadFile(p); err == nil {
+			f.Add(b[:min(len(b), 16<<10)])
+		}
+	}
 	for _, name := range []string{"mdpm.m2ts", "plain.ts"} {
 		if b, err := os.ReadFile(filepath.Join("testdata/m2ts", name)); err == nil {
 			f.Add(b[:min(len(b), 64*192)])
