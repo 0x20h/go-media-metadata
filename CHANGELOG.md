@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- `SetOrientation`, `SetRotation` and their plans set the orientation of
+  a TIFF or DNG whose IFD0 has no Orientation tag, which was refused (ErrUnsupported).
+  Most scanners' and converters' TIFFs have none. A copy of IFD0 with the
+  tag goes to the end of the file and the header points to it, so no
+  other byte moves and every offset stays valid. ExifTool validates the
+  result as it did the source. See [docs/raw.md](docs/raw.md).
+
 ### Added
 
 - `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
