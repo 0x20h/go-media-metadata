@@ -150,10 +150,27 @@ type XMPEdit struct {
 	RemoveRating         bool
 	PersonInImage        *[]string // nil leaves; empty removes
 	Regions              *Regions  // as a whole; no regions removes
+
+	// photoshop:DateCreated, xmp:CreateDate, exif:DateTimeOriginal,
+	// xmp:ModifyDate: nil leaves; a zero Time removes
+	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
 }
 ```
 
-`EditXMP` changes those properties and keeps everything else. Keywords
+`EditXMP` changes those properties and keeps everything else.
+
+Dates are written in the XMP Date form:
+- **Precision:** to the date's `Precision`, `PrecisionSecond` when it's
+  unset, with a fraction of a second when the time has one.
+- **Offset:** included when `OffsetKnown` is set (`2021-07-08T09:10:11+02:00`).
+  The clock time is the one in `Time`'s own zone.
+- **Refused:** a year outside 1–9999, or an offset that isn't whole
+  minutes.
+
+A date edit through `ExifEdit` alone leaves the XMP dates as they were. A
+reader that takes XMP first then sees the old date. To keep both in step,
+set them in one `MetadataEdit`, as ExifTool does when it's given both
+groups. Keywords
 and hierarchical keywords are separate properties: setting one leaves the
 other, so a caller that keeps them in step sets both.
 
