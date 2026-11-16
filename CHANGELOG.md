@@ -17,6 +17,12 @@
 
 ### Fixed
 
+- `VideoEdit` writes the title and description everywhere ExifTool and
+  `ReadVideo` read them. Before, an item list's `©des` and the user data's
+  3GPP `titl` and `dscp` kept their old values, and a removal left them.
+  An item list the movie has gets `©nam` and `©des` when it lacks them,
+  as ExifTool writes them, so players that read only the item list show
+  the new values. See [docs/quicktime.md](docs/quicktime.md).
 - `ReadVideo` reads a movie's description from an item list's `©des`
   and from the 3GPP `dscp` box in user data (and the title from `titl`),
   where ExifTool writes ItemList and UserData descriptions. Before, only
