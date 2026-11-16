@@ -153,7 +153,9 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 			}
 		}
 	}
-	if v.Created.IsZero() && icrd != "" {
+	// ICRD, when it holds a whole date: a year alone would read as 1
+	// January, more precise than written.
+	if v.Created.IsZero() && len(icrd) >= len("2006-01-02") {
 		if at, ok := parseAVIDate(icrd); ok {
 			v.Created = at
 		}

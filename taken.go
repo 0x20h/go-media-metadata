@@ -36,6 +36,8 @@ func (s DateSource) String() string {
 		return "IPTC Date Created"
 	case SourceExifDateTime:
 		return "Exif DateTime"
+	case SourceMovie:
+		return "the movie's recording date"
 	}
 	return "none"
 }
