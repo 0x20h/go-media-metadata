@@ -84,3 +84,10 @@ testdata/matroska/streamed.webm
     testdata/matroska/make.sh). Made for this project by its authors.
     Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/heif-xmp/primary-and-gainmap.heic
+    A synthetic HEIC (random stand-in image data, no picture) made by the
+    test builder (internal/bmff/testbuild; TestMakeTwoXMPCorpus): a primary
+    image and an HDR gain map, each described by an XMP item of its own.
+    Made for this project by its authors. Dedicated to the public domain
+    under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

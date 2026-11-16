@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A HEIF file with several XMP items is read instead of refused ("two XMP
+  items"). The image's XMP is the item that describes the primary image,
+  else the lowest id among the items that describe no other image, so not
+  a gain map's. Writes change only that item and keep the others byte for
+  byte. See [docs/heif.md](docs/heif.md).
+
 ## v0.2.0 (2026-11-15)
 
 ### Breaking changes
