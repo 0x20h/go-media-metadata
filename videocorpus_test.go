@@ -28,7 +28,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 	if len(paths) < 7 {
 		t.Fatalf("%d corpus files", len(paths))
 	}
-	out, err := exec.Command(tool, append([]string{"-j", "-n", "-G1", "-api", "QuickTimeUTC", "-Keys:all", "-UserData:all",
+	out, err := exec.Command(tool, append([]string{"-j", "-n", "-G1", "-api", "QuickTimeUTC", "-Keys:all", "-UserData:all", "-ItemList:all",
 		"-XMP-exif:all", "-XMP-photoshop:DateCreated", "-XMP-xmp:CreateDate", "-QuickTime:CreateDate", "-QuickTime:Duration",
 		"-Track1:ImageWidth", "-Track1:ImageHeight", "-Composite:Rotation", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
 		"-Composite:GPSAltitude"}, paths...)...).Output()
@@ -125,6 +125,20 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		} else if g := v.GPS; g != nil && (math.Abs(g.Latitude-lat) > tol || math.Abs(g.Longitude-lon) > tol ||
 			g.HasAltitude != hasAlt || hasAlt && math.Abs(g.Altitude-alt) > 1e-3) {
 			t.Errorf("%s: GPS %+v, ExifTool %v %v %v (%v)", path, *g, lat, lon, alt, hasAlt)
+		}
+
+		// The title and description: Keys, the item list, user data
+		// (ExifTool's order for its own -Title and -Description).
+		for _, c := range []struct{ tag, got string }{{"Title", v.Title}, {"Description", v.Description}} {
+			want := ""
+			for _, g := range []string{"Keys:", "ItemList:", "UserData:"} {
+				if want = str(g + c.tag); want != "" {
+					break
+				}
+			}
+			if want != "" && c.got != want {
+				t.Errorf("%s: %s %q, ExifTool %q", path, c.tag, c.got, want)
+			}
 		}
 
 		dur, _ := num("QuickTime:Duration")

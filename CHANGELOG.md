@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `ReadVideo` reads a movie's description from an item list's `©des`
+  and from the 3GPP `dscp` box in user data (and the title from `titl`),
+  where ExifTool writes ItemList and UserData descriptions. Before, only
+  `desc` and QuickTime `©des` were read. The item list comes before the
+  user data, as in ExifTool. See [docs/quicktime.md](docs/quicktime.md).
+
 ## v0.2.1 (2026-11-16)
 
 No breaking changes.
