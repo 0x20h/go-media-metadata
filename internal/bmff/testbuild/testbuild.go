@@ -45,6 +45,8 @@ type Options struct {
 	SecondExif            bool
 	SecondExifOrientation int
 	SecondExifOfThumbnail bool
+	// XMP adds XMP items (mime, application/rdf+xml), in this order.
+	XMP []XMPItem
 	// MetaAfterMdat puts the meta box after the media data.
 	MetaAfterMdat bool
 	// ExtraProps adds that many descriptive properties before the others,
@@ -61,6 +63,14 @@ func Default() Options {
 		Irot: 3, Imir: -1, ExifOrientation: 6, Seed: 1}
 }
 
+// XMPItem is an XMP item: its id, its packet, and the item it describes
+// (a cdsc reference; 0 for none).
+type XMPItem struct {
+	ID     uint32
+	Packet []byte
+	Of     uint32
+}
+
 // Item ids.
 const (
 	Primary    = 1
@@ -71,11 +81,12 @@ const (
 )
 
 type item struct {
-	id     uint32
-	typ    string
-	data   []byte
-	idat   bool
-	hidden bool
+	id          uint32
+	typ         string
+	contentType string // a mime item's
+	data        []byte
+	idat        bool
+	hidden      bool
 }
 
 // Build returns the file and every item's data by id.
@@ -113,6 +124,9 @@ func Build(o Options) ([]byte, map[uint32][]byte) {
 	}
 	if o.SecondExif {
 		items = append(items, item{id: SecondExif, typ: "Exif", data: exifData(o.SecondExifOrientation, o.ExifBigEndian)})
+	}
+	for _, x := range o.XMP {
+		items = append(items, item{id: x.ID, typ: "mime", contentType: "application/rdf+xml", data: x.Packet})
 	}
 	data := map[uint32][]byte{}
 	for _, it := range items {
@@ -183,7 +197,10 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 		e := be.AppendUint16(nil, uint16(it.id))
 		e = be.AppendUint16(e, 0)
 		e = append(e, it.typ...)
-		e = append(e, 0)
+		e = append(e, 0) // item_name
+		if it.typ == "mime" {
+			e = append(append(e, it.contentType...), 0)
+		}
 		iinf = append(iinf, fullBox("infe", 2, flags, e)...)
 	}
 	body = append(body, fullBox("iinf", 0, 0, iinf)...)
@@ -208,6 +225,11 @@ func buildMeta(o Options, items []item, dataStart int) []byte {
 	}
 	if o.SecondExif && o.SecondExifOfThumbnail {
 		iref = append(iref, box("cdsc", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, SecondExif), 1), Thumbnail))...)
+	}
+	for _, x := range o.XMP {
+		if x.Of != 0 {
+			iref = append(iref, box("cdsc", be.AppendUint16(be.AppendUint16(be.AppendUint16(nil, uint16(x.ID)), 1), uint16(x.Of)))...)
+		}
 	}
 	body = append(body, fullBox("iref", 0, 0, iref)...)
 

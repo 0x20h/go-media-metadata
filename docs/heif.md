@@ -109,3 +109,22 @@ through a Swift probe (`testdata/imageio/probe.swift.txt`).
   applies an `ExifEdit` to the item, but refuses one that sets the orientation
   (`ErrOrientationInExif`), because the tag alone would disagree with
   `irot`/`imir`. `SetOrientation` sets both.
+
+### Several XMP items
+
+A file can have more than one XMP item. An iPhone's HDR photo also has one
+for its gain map, a `cdsc` reference to the gain map item. The image's XMP
+is:
+
+1. the item that describes the primary image (a `cdsc` reference to it),
+2. else the lowest item id among the XMP items that describe no other image.
+
+An item that describes only another image, such as the gain map or a
+thumbnail, isn't the image's XMP. Reads take the image's item, and writes
+change only that one and keep the others byte for byte.
+
+ExifTool reads every XMP item, in ascending item id, and for each property
+shows the last one it found. A gain map's packet holds none of the
+properties this package reads (title, keywords, rating, …), so the two
+agree on such files. `TestTwoXMPItemsExifTool` checks that on
+`testdata/heif-xmp/primary-and-gainmap.heic`.

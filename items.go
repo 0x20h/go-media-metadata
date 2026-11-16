@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
@@ -364,10 +365,15 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patc
 func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 	var id uint32
 	found := false
+	var xmps []uint32
 	for i, t := range f.m.ItemTypes {
 		is := kind == kindExif && t == bmff.T("Exif") ||
 			kind == kindXMP && t == bmff.T("mime") && f.m.ContentType(i) == xmpContentType
 		if !is {
+			continue
+		}
+		if kind == kindXMP {
+			xmps = append(xmps, i)
 			continue
 		}
 		if found {
@@ -375,12 +381,44 @@ func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 		}
 		id, found = i, true
 	}
+	if kind == kindXMP {
+		id, found = f.pickXMPItem(xmps)
+	}
 	if found {
 		if _, ok := f.m.Loc.Item(id); !ok {
 			return 0, false, fmt.Errorf("%w: the %v item has no location", ErrMalformed, kind)
 		}
 	}
 	return id, found, nil
+}
+
+// pickXMPItem is the XMP item that is the image's, of several a file can
+// have (an iPhone's also describes its HDR gain map): the one that
+// describes the primary image (a cdsc reference to it), else the lowest
+// id of those that describe no other item. An item that describes only
+// another image (the gain map, a thumbnail) isn't the image's XMP.
+// (ExifTool reads every XMP item, by item id, and for each property shows
+// the last; for a gain map's packet, which holds none of the properties
+// this package reads, that comes to the same.)
+func (f *heifFile) pickXMPItem(ids []uint32) (uint32, bool) {
+	slices.Sort(ids)
+	describes := map[uint32][]uint32{}
+	for _, ref := range f.m.Refs {
+		if ref.Type == bmff.T("cdsc") {
+			describes[ref.From] = append(describes[ref.From], ref.To...)
+		}
+	}
+	for _, id := range ids {
+		if slices.Contains(describes[id], f.m.Primary) {
+			return id, true
+		}
+	}
+	for _, id := range ids {
+		if len(describes[id]) == 0 {
+			return id, true
+		}
+	}
+	return 0, false
 }
 
 // addMetadataItem lists a new Exif or XMP item that describes the primary
