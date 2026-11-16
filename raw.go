@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
@@ -392,6 +393,9 @@ func planRAWOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, erro
 	var hasXMP bool
 	if t, ok := openRAWTIFF(src, size); ok {
 		f, at := t.ifdAt(t.first)
+		if _, has := f[tagOrientation]; f != nil && !has {
+			return addOrientationIFD0(t, o)
+		}
 		p, err := orientationPatch(t.tiffReader, f, at, o)
 		if err != nil {
 			return nil, err
@@ -491,4 +495,74 @@ func xmpOrientationDigits(packet []byte) []int {
 		}
 	}
 	return out
+}
+
+// addOrientationIFD0 plans adding an Orientation tag to a TIFF whose IFD0
+// has none, as most scanners' and converters' TIFFs and some DNGs: IFD0
+// can't grow where it is, so a copy of it with the tag in tag order goes
+// to the end of the file (at an even offset) and the header points to
+// it. Every other byte stays where it was, so every offset into the file
+// (strips, tiles, SubIFDs, ExifIFD, GPS, a DNG's raw data, IFD0's own
+// values) stays valid; the old IFD0 is left unreferenced. An XMP packet's
+// tiff:Orientation, if any, is set too. Standard TIFF headers only
+// ("II*\0", "MM\0*"), under 4 GiB.
+func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
+	if t.magic != [4]byte{'I', 'I', '*', 0} && t.magic != [4]byte{'M', 'M', 0, '*'} {
+		return nil, fmt.Errorf("%w: no Orientation tag to add to in a %q file", ErrUnsupported, t.magic[:])
+	}
+	var nb [2]byte
+	if _, err := t.r.ReadAt(nb[:], int64(t.first)); err != nil {
+		return nil, fmt.Errorf("%w: reading IFD0: %v", ErrMalformed, err)
+	}
+	n := int(t.order.Uint16(nb[:]))
+	if n == 0 || n >= maxIFDEntries || int64(t.first)+2+12*int64(n)+4 > t.size {
+		return nil, fmt.Errorf("%w: an IFD0 of %d entries", ErrMalformed, n)
+	}
+	old := make([]byte, 12*n+4) // the entries and the next IFD's offset
+	if _, err := t.r.ReadAt(old, int64(t.first)+2); err != nil {
+		return nil, fmt.Errorf("%w: reading IFD0: %v", ErrMalformed, err)
+	}
+	end := t.size + t.size&1
+	if end+2+12*int64(n+1)+4 > math.MaxUint32 {
+		return nil, fmt.Errorf("%w: a TIFF too large to add an IFD to", ErrUnsupported)
+	}
+	ord := t.order.(binary.AppendByteOrder)
+	entry := ord.AppendUint16(nil, tagOrientation)
+	entry = ord.AppendUint16(entry, typeShort)
+	entry = ord.AppendUint32(entry, 1)
+	entry = ord.AppendUint16(entry, uint16(o))
+	entry = append(entry, 0, 0)
+	ifd := make([]byte, 0, int(end-t.size)+2+12*(n+1)+4)
+	ifd = append(ifd, make([]byte, end-t.size)...)
+	ifd = ord.AppendUint16(ifd, uint16(n+1))
+	placed := false
+	for i := range n {
+		e := old[12*i : 12*i+12]
+		if !placed && t.order.Uint16(e) > tagOrientation {
+			ifd, placed = append(ifd, entry...), true
+		}
+		ifd = append(ifd, e...)
+	}
+	if !placed {
+		ifd = append(ifd, entry...)
+	}
+	ifd = append(ifd, old[12*n:]...)
+	e := &spliceEdit{}
+	e.add(splice{at: 4, del: 4, data: ord.AppendUint32(nil, uint32(end))})
+	if xmpAt, xmpN, ok := t.xmpAt(); ok {
+		packet := make([]byte, xmpN)
+		if _, err := t.r.ReadAt(packet, xmpAt); err != nil {
+			return nil, fmt.Errorf("%w: reading the XMP packet: %v", ErrMalformed, err)
+		}
+		for _, i := range xmpOrientationDigits(packet) {
+			if packet[i] != byte('0'+o) {
+				e.add(splice{at: xmpAt + int64(i), del: 1, data: []byte{byte('0' + o)}})
+			}
+		}
+	}
+	e.add(splice{at: t.size, data: ifd})
+	if err := e.sorted(); err != nil {
+		return nil, err
+	}
+	return e.plan(t.r, t.size), nil
 }
