@@ -127,6 +127,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		if isAVI(r, size) {
 			return readAVIVideo(r, size)
 		}
+		if isMPEGPS(r, size) {
+			return readMPEGPSVideo(r, size)
+		}
 		if errors.Is(err, bmff.ErrMalformed) && !looksLikeMovie(r, size) {
 			return v, errNotQuickTime
 		}
@@ -141,6 +144,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		}
 		if isAVI(r, size) {
 			return readAVIVideo(r, size)
+		}
+		if isMPEGPS(r, size) {
+			return readMPEGPSVideo(r, size)
 		}
 		return v, err
 	}
