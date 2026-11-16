@@ -19,6 +19,10 @@
   written to its precision, with its offset when known, or removed. A
   date corrected in Exif can now be corrected in XMP in the same edit. See
   [docs/xmp.md](docs/xmp.md).
+- `XMPEdit` writes a position: `GPS` sets `exif:GPSLatitude`,
+  `exif:GPSLongitude` and the altitude as ExifTool writes them;
+  `RemoveGPS` removes them. A place corrected in Exif can now be
+  corrected in XMP in the same edit. See [docs/xmp.md](docs/xmp.md).
 
 ### Fixed
 

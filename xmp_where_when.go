@@ -308,3 +308,37 @@ func formatXMPDate(d Date) string {
 	}
 	return string(b)
 }
+
+// formatXMPCoord writes a coordinate as the XMP specification's
+// GPSCoordinate "DDD,MM.mmmmmmk", as ExifTool writes it: whole degrees,
+// minutes to six decimals (a few centimetres), trailing zeros dropped,
+// then the direction.
+func formatXMPCoord(v float64, pos, neg byte) string {
+	dir := pos
+	if v < 0 {
+		dir, v = neg, -v
+	}
+	deg := math.Floor(v)
+	mins := math.Round((v-deg)*60*1e6) / 1e6
+	if mins >= 60 {
+		deg, mins = deg+1, 0
+	}
+	b := strconv.AppendInt(nil, int64(deg), 10)
+	b = append(b, ',')
+	b = strconv.AppendFloat(b, mins, 'f', -1, 64)
+	return string(append(b, dir))
+}
+
+// formatXMPRational writes v ≥ 0 as an XMP Rational, to a tenth of a
+// millimetre, reduced: 12.5 is "25/2", 34 is "34/1".
+func formatXMPRational(v float64) string {
+	num, den := int64(math.Round(v*10000)), int64(10000)
+	a, b := num, den
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a > 1 {
+		num, den = num/a, den/a
+	}
+	return strconv.FormatInt(num, 10) + "/" + strconv.FormatInt(den, 10)
+}
