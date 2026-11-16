@@ -37,6 +37,17 @@ et "$OUT/xmp.mp4" "-XMP-photoshop:DateCreated=2021:06:07 08:09:10+01:00" -XMP-ex
 cp "$TMP/base.mov" "$OUT/xmp.mov"
 et "$OUT/xmp.mov" "-XMP-xmp:CreateDate=2022:02:03 04:05:06" -XMP-exif:GPSLatitude=-22.9068 -XMP-exif:GPSLongitude=-43.1729
 
+# Title and description in the item list (©nam, ©des), in user data
+# (an MP4's 3GPP titl/dscp boxes), and in all three places with Keys,
+# each different, for the order they're read in.
+cp "$TMP/base.mp4" "$OUT/itemlist.mp4"
+et "$OUT/itemlist.mp4" "-ItemList:Title=Item title" "-ItemList:Description=Item description"
+cp "$TMP/base.mp4" "$OUT/userdata.mp4"
+et "$OUT/userdata.mp4" "-UserData:Title=User title" "-UserData:Description=User description"
+cp "$TMP/base.mp4" "$OUT/titles.mp4"
+et "$OUT/titles.mp4" "-UserData:Title=User title" "-UserData:Description=User description" \
+  "-ItemList:Title=Item title" "-ItemList:Description=Item description" "-Keys:Title=Keys title"
+
 # Turned: the track matrix (ffmpeg's display_rotation counts
 # anticlockwise; these are 90 and 270 clockwise).
 ff -display_rotation 270 -i "$TMP/base.mp4" -c copy "$OUT/rotate90.mp4"
