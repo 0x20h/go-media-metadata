@@ -143,7 +143,7 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			packet, xmpErr = ReadXMP(r, size)
 			m.Size, m.Errors.Size = ReadImageSize(r, size)
 			m.Orientation, m.Errors.Orientation = ReadOrientation(r, size)
-		case formatMovie, formatTS, formatMatroska:
+		case formatMovie, formatTS, formatMatroska, formatAVI:
 			return readAllVideo(r, size)
 		default:
 			if startsWithFtyp(r, size) && errors.Is(herr, ErrMalformed) {
@@ -220,6 +220,8 @@ func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
 		m.Format = "MPEG-TS"
 	case formatMatroska:
 		m.Format = "Matroska"
+	case formatAVI:
+		m.Format = "AVI"
 	}
 	v, err := ReadVideo(r, size)
 	if err != nil {

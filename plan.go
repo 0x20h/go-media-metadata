@@ -87,6 +87,8 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 		return nil, errTSReadOnly
 	case formatMatroska:
 		return nil, errMatroskaReadOnly
+	case formatAVI:
+		return nil, errAVIReadOnly
 	case formatUnknown:
 		return nil, ErrUnknownFormat
 	}
@@ -132,6 +134,8 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 		return nil, errTSReadOnly
 	case formatMatroska:
 		return nil, errMatroskaReadOnly
+	case formatAVI:
+		return nil, errAVIReadOnly
 	case formatJXL:
 		return nil, fmt.Errorf("%w: a JPEG XL codestream's orientation isn't written", ErrUnsupported)
 	}
