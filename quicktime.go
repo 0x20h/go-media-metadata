@@ -116,7 +116,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	// A transport stream is tried once the file isn't a movie, so a
 	// movie's read costs no more than it did.
-	top, err := bmff.ReadBoxes(r, 0, size)
+	top, err := movieBoxes(r, size)
 	if err != nil {
 		if isTS(r, size) && !looksLikeMovie(r, size) {
 			return readTSVideo(r, size)
@@ -252,6 +252,43 @@ func first(a, b string) string {
 
 // looksLikeMovie reports whether r starts with a box of a movie's
 // top-level types, for telling a broken movie from another format.
+// movieBoxes reads a movie's top-level boxes for reading. A movie cut
+// short (its mdat runs past the end) or with junk after its last box
+// reads as ExifTool reads it: the boxes before, as long as moov is among
+// them whole. Writes read the boxes strictly and refuse such a file.
+func movieBoxes(r io.ReaderAt, size int64) ([]bmff.Box, error) {
+	top, err := bmff.ReadBoxes(r, 0, size)
+	if err == nil || !errors.Is(err, bmff.ErrMalformed) || !looksLikeMovie(r, size) {
+		return top, err
+	}
+	lenient, _ := bmff.ReadBoxesLenient(r, 0, size)
+	for _, b := range lenient {
+		if b.Type == bmff.T("moov") && b.End() <= size {
+			// Whole unless it was the box cut to the end.
+			if last := lenient[len(lenient)-1]; last.Type != bmff.T("moov") || !truncatedAt(r, last, size) {
+				return lenient, nil
+			}
+		}
+	}
+	return nil, err
+}
+
+// truncatedAt reports whether b's header claims more than reaches size.
+func truncatedAt(r io.ReaderAt, b bmff.Box, size int64) bool {
+	var h [16]byte
+	if _, err := r.ReadAt(h[:8], b.Offset); err != nil {
+		return true
+	}
+	n := int64(binary.BigEndian.Uint32(h[:4]))
+	if n == 1 {
+		if _, err := r.ReadAt(h[8:16], b.Offset+8); err != nil {
+			return true
+		}
+		n = int64(binary.BigEndian.Uint64(h[8:16]))
+	}
+	return n != 0 && b.Offset+n > size
+}
+
 func looksLikeMovie(r io.ReaderAt, size int64) bool {
 	var h [8]byte
 	if size < 8 {
@@ -1091,7 +1128,7 @@ func movieXMP(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags) ([]byte, e
 
 // readMovieXMP reads a movie's XMP packet, nil without one.
 func readMovieXMP(r io.ReaderAt, size int64) ([]byte, error) {
-	top, err := bmff.ReadBoxes(r, 0, size)
+	top, err := movieBoxes(r, size)
 	if err != nil {
 		return nil, err
 	}
