@@ -205,8 +205,10 @@ func TestOrientationAddedAgreesWithExifTool(t *testing.T) {
 		}
 		return got[0], nil
 	}
-	if len(inputs) < 3 {
-		t.Errorf("%d inputs: ffmpeg missing?", len(inputs))
+	// ffmpeg's TIFF and the DNGs are added where they're at hand (not on
+	// CI); the synthetic TIFFs always are.
+	if len(inputs) < 2 {
+		t.Errorf("%d inputs", len(inputs))
 	}
 	for name, src := range inputs {
 		t.Logf("%s: %d bytes", name, len(src))
