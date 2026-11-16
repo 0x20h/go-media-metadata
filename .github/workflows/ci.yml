@@ -90,6 +90,10 @@ jobs:
           - FuzzReadPreviews
           - FuzzReadJXL
           - FuzzUnbrob
+          - FuzzMergeXMP
+          - FuzzReadGIF
+          - FuzzReadBMP
+          - FuzzReadMatroska
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
