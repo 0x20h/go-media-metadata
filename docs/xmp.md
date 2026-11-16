@@ -150,10 +150,24 @@ type XMPEdit struct {
 	RemoveRating         bool
 	PersonInImage        *[]string // nil leaves; empty removes
 	Regions              *Regions  // as a whole; no regions removes
+	GPS                  *GPS      // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
+	RemoveGPS            bool
 }
 ```
 
-`EditXMP` changes those properties and keeps everything else. Keywords
+`EditXMP` changes those properties and keeps everything else.
+
+A position is written as ExifTool writes it:
+- **Coordinates:** XMP GPSCoordinate form, whole degrees then minutes to
+  six decimals (`52,31.20048N`), a few centimetres.
+- **Altitude:** with `HasAltitude`, a reduced rational to a tenth of a
+  millimetre (`25/2`), with `exif:GPSAltitudeRef` 1 below sea level.
+  Without `HasAltitude`, an old altitude is removed.
+- **Removal:** `RemoveGPS` removes all four properties.
+- **Refused:** a position out of range.
+
+As with dates, a GPS edit through `ExifEdit` alone leaves an older XMP
+position in place. Set both in one `MetadataEdit`. Keywords
 and hierarchical keywords are separate properties: setting one leaves the
 other, so a caller that keeps them in step sets both.
 

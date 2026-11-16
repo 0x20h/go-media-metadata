@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- `XMPEdit` writes a position: `GPS` sets `exif:GPSLatitude`,
+  `exif:GPSLongitude` and the altitude as ExifTool writes them;
+  `RemoveGPS` removes them. A place corrected in Exif can now be
+  corrected in XMP in the same edit. See [docs/xmp.md](docs/xmp.md).
+
 ## v0.2.1 (2026-11-16)
 
 No breaking changes.
