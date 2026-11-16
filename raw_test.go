@@ -186,8 +186,14 @@ func TestPlanRAWOrientationErrors(t *testing.T) {
 	}
 	b := &tiffBuilder{order: binary.LittleEndian, ifd0: []tiffEntry{{0x010F, typeASCII, 6, []byte("Canon\x00")}}}
 	none := append(b.build(), make([]byte, 64)...)
-	if _, err := planRAWOrientation(bytes.NewReader(none), int64(len(none)), 3); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("no Orientation tag: %v", err)
+	// No Orientation tag: added to a TIFF (see TestOrientationAddedToTIFF),
+	// refused in a file with another header (ORF's "IIRO").
+	if p, err := planRAWOrientation(bytes.NewReader(none), int64(len(none)), 3); err != nil || p.InPlace {
+		t.Errorf("no Orientation tag: %+v, %v", p, err)
+	}
+	orf := append([]byte("IIRO"), none[4:]...)
+	if _, err := planRAWOrientation(bytes.NewReader(orf), int64(len(orf)), 3); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("no Orientation tag in an ORF: %v", err)
 	}
 	jpg := plainJPEG(t)
 	if _, err := planRAWOrientation(bytes.NewReader(jpg), int64(len(jpg)), 3); !errors.Is(err, errNotRAW) {

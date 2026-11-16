@@ -4,6 +4,11 @@
 
 ### Added
 
+- `PlanMetadata` and `SetMetadata` write Exif and XMP to TIFF and DNG files,
+  which were refused with a misleading error. Values change where they
+  fit and are appended where they don't; image data and every offset into
+  it stay, so the image data hash doesn't change. Camera RAWs with a maker
+  note (CR2, NEF, ARW) are refused. See [docs/raw.md](docs/raw.md).
 - `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
   `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
   `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
@@ -23,6 +28,14 @@
   An item list the movie has gets `©nam` and `©des` when it lacks them,
   as ExifTool writes them, so players that read only the item list show
   the new values. See [docs/quicktime.md](docs/quicktime.md).
+
+- `SetOrientation`, `SetRotation` and their plans set the orientation of
+  a TIFF or DNG whose IFD0 has no Orientation tag, which was refused (ErrUnsupported).
+  Most scanners' and converters' TIFFs have none. A copy of IFD0 with the
+  tag goes to the end of the file and the header points to it, so no
+  other byte moves and every offset stays valid. ExifTool validates the
+  result as it did the source. See [docs/raw.md](docs/raw.md).
+
 - `ReadVideo` reads a movie's description from an item list's `©des`
   and from the 3GPP `dscp` box in user data (and the title from `titl`),
   where ExifTool writes ItemList and UserData descriptions. Before, only
