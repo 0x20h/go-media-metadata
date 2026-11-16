@@ -310,3 +310,52 @@ func sameXMPDate(a, b *Date) bool {
 	return a.Time.Equal(b.Time) && a.OffsetKnown == b.OffsetKnown && a.Precision == b.Precision &&
 		a.Time.Location().String() == b.Time.Location().String()
 }
+
+// xmp:ModifyDate reads as ExifTool reads it, at every precision.
+func TestXMPModifyDateAgreesWithExifTool(t *testing.T) {
+	values := []string{"2024", "2024-03", "2024-03-05", "2024-03-05T06:07", "2024-03-05T06:07:08",
+		"2024-03-05T06:07:08.25+02:00", "2024-03-05T06:07:08Z", "not a date"}
+	dir := t.TempDir()
+	files := map[string][]byte{}
+	for i, v := range values {
+		name := fmt.Sprintf("m%d.xmp", i)
+		files[name] = []byte(`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+			`<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmp:ModifyDate="` + v + `"/></rdf:RDF></x:xmpmeta>`)
+		if err := os.WriteFile(filepath.Join(dir, name), files[name], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if x := parseXMP(t, files["m2.xmp"]); x.ModifyDate == nil || x.ModifyDate.Precision != PrecisionDay {
+		t.Fatalf("ModifyDate %+v", x.ModifyDate)
+	}
+	if x := parseXMP(t, files["m7.xmp"]); x.ModifyDate != nil {
+		t.Fatalf("invalid ModifyDate read as %+v", x.ModifyDate)
+	}
+	merged := MergeXMP(XMP{}, parseXMP(t, files["m4.xmp"]))
+	if merged.ModifyDate == nil || !merged.ModifyDate.Time.Equal(time.Date(2024, 3, 5, 6, 7, 8, 0, time.UTC)) {
+		t.Fatalf("MergeXMP's ModifyDate %+v", merged.ModifyDate)
+	}
+	tool, err := exec.LookPath("exiftool")
+	if err != nil {
+		t.Skip("exiftool not installed")
+	}
+	out, err := exec.Command(tool, "-j", "-n", "-q", "-XMP:ModifyDate", dir).Output()
+	if err != nil {
+		t.Fatalf("exiftool: %v", err)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(out, &got); err != nil || len(got) != len(values) {
+		t.Fatalf("exiftool's JSON (%d files): %v\n%s", len(got), err, out)
+	}
+	for _, e := range got {
+		name := filepath.Base(e["SourceFile"].(string))
+		x := parseXMP(t, files[name])
+		want := exifToolDate(e["ModifyDate"])
+		if x.ModifyDate == nil {
+			continue // ExifTool passes text that isn't a date through
+		}
+		if got := formatXMPDateAsExifTool(x.ModifyDate); got != want {
+			t.Errorf("%s: ModifyDate %q, ExifTool %q", name, got, want)
+		}
+	}
+}

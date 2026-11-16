@@ -73,6 +73,9 @@ func MergeXMP(file, sidecar XMP) XMP {
 	if sidecar.CreateDate != nil {
 		m.CreateDate = sidecar.CreateDate
 	}
+	if sidecar.ModifyDate != nil {
+		m.ModifyDate = sidecar.ModifyDate
+	}
 	if sidecar.DateTimeOriginal != nil {
 		m.DateTimeOriginal = sidecar.DateTimeOriginal
 	}
@@ -91,7 +94,7 @@ func MergeXMP(file, sidecar XMP) XMP {
 		g := *m.GPS
 		m.GPS = &g
 	}
-	for _, d := range []**Date{&m.DateCreated, &m.CreateDate, &m.DateTimeOriginal} {
+	for _, d := range []**Date{&m.DateCreated, &m.CreateDate, &m.ModifyDate, &m.DateTimeOriginal} {
 		if *d != nil {
 			c := **d
 			*d = &c

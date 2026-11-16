@@ -4,6 +4,10 @@
 
 ### Added
 
+- `XMP.ModifyDate`: `xmp:ModifyDate`, read like `xmp:CreateDate` and
+  merged by `MergeXMP`. It's for an importer that falls back to the
+  modification date last, as ExifTool's date order does. `TakenFrom`
+  doesn't use it.
 - AVI and MPEG program streams (`.mpg`, `.vob`), read only. `ReadVideo`
   reads an AVI's recording date (IDIT, else a whole ICRD date), duration
   and size (avih), title, comment and keywords (INFO). For an MPEG program
