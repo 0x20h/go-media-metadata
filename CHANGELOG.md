@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.1 (2026-11-16)
+
+No breaking changes.
+
 ### Added
 
 - `XMP.ModifyDate`: `xmp:ModifyDate`, read like `xmp:CreateDate` and
