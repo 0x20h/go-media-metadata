@@ -22,6 +22,13 @@
 
 ### Fixed
 
+- `SetOrientation`, `SetRotation` and their plans set the orientation of
+  a TIFF or DNG whose IFD0 has no Orientation tag, which was refused (ErrUnsupported).
+  Most scanners' and converters' TIFFs have none. A copy of IFD0 with the
+  tag goes to the end of the file and the header points to it, so no
+  other byte moves and every offset stays valid. ExifTool validates the
+  result as it did the source. See [docs/raw.md](docs/raw.md).
+
 - `ReadVideo` reads a movie's description from an item list's `©des`
   and from the 3GPP `dscp` box in user data (and the title from `titl`),
   where ExifTool writes ItemList and UserData descriptions. Before, only

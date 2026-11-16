@@ -117,10 +117,25 @@ that digit is changed too, so the two agree.
 A sidecar `.xmp` next to the file isn't written. To read one with the
 file's own metadata, see `MergeXMP` in [xmp](xmp.md).
 
-The plan is always in place, and nothing else is written: image data and
-maker notes stay byte for byte. A file without the tag is refused
-(`ErrUnsupported`) rather than restructured, because maker notes hold
-offsets into the file that a rewrite would break.
+When IFD0 has the tag, the plan is in place and nothing else is written:
+image data and maker notes stay byte for byte.
+
+Many TIFFs (scanners', converters', ffmpeg's) and some DNGs have no
+Orientation tag. For a file with a standard TIFF header (`II*\0` or
+`MM\0*`, so TIFF, DNG, CR2, NEF, ARW and the like), the tag is added
+without moving anything:
+- A copy of IFD0 with the Orientation entry, in tag order, is appended
+  at the end of the file (at an even offset).
+- The header's first-IFD offset is pointed at the copy.
+
+Every other byte stays where it was, so every offset into the file stays
+valid: strips, tiles, SubIFDs, ExifIFD, GPS, maker notes, a DNG's raw
+data, IFD0's own values. The old IFD0 is left unreferenced. The plan isn't
+in place (the file grows by one IFD), and the next turn is, now that the
+tag is there.
+
+Files with another header without the tag (ORF's `IIRO`, RW2's `IIU`), and
+files over 4 GiB, are refused with `ErrUnsupported`.
 
 ## Writing metadata: TIFF and DNG
 
