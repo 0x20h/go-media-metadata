@@ -365,7 +365,11 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patc
 func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 	var id uint32
 	found := false
+	// XMP: the candidates, kept apart only when there are several (no
+	// allocation for the common one).
 	var xmps []uint32
+	var oneXMP uint32
+	nXMP := 0
 	for i, t := range f.m.ItemTypes {
 		is := kind == kindExif && t == bmff.T("Exif") ||
 			kind == kindXMP && t == bmff.T("mime") && f.m.ContentType(i) == xmpContentType
@@ -373,7 +377,15 @@ func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 			continue
 		}
 		if kind == kindXMP {
-			xmps = append(xmps, i)
+			nXMP++
+			if nXMP == 1 {
+				oneXMP = i
+			} else {
+				if nXMP == 2 {
+					xmps = append(xmps, oneXMP)
+				}
+				xmps = append(xmps, i)
+			}
 			continue
 		}
 		if found {
@@ -382,7 +394,12 @@ func (f *heifFile) metadataItem(kind metadataKind) (uint32, bool, error) {
 		id, found = i, true
 	}
 	if kind == kindXMP {
-		id, found = f.pickXMPItem(xmps)
+		switch {
+		case nXMP == 1:
+			id, found = oneXMP, f.isImageXMP(oneXMP)
+		case nXMP > 1:
+			id, found = f.pickXMPItem(xmps)
+		}
 	}
 	if found {
 		if _, ok := f.m.Loc.Item(id); !ok {
@@ -419,6 +436,22 @@ func (f *heifFile) pickXMPItem(ids []uint32) (uint32, bool) {
 		}
 	}
 	return 0, false
+}
+
+// isImageXMP tells whether an XMP item is the image's: it describes the
+// primary, or no item at all (not only another image, such as a gain map).
+func (f *heifFile) isImageXMP(id uint32) bool {
+	describesOther := false
+	for _, ref := range f.m.Refs {
+		if ref.Type != bmff.T("cdsc") || ref.From != id {
+			continue
+		}
+		if slices.Contains(ref.To, f.m.Primary) {
+			return true
+		}
+		describesOther = true
+	}
+	return !describesOther
 }
 
 // addMetadataItem lists a new Exif or XMP item that describes the primary
