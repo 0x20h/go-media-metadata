@@ -191,8 +191,10 @@ func TestTIFFMetadataEditAgreesWithExifTool(t *testing.T) {
 			}
 		}
 	}
-	if len(inputs) < 3 {
-		t.Errorf("%d inputs: ffmpeg missing?", len(inputs))
+	// ffmpeg's TIFF and the DNGs are added where they're at hand (not on
+	// CI); the synthetic TIFFs always are.
+	if len(inputs) < 2 {
+		t.Errorf("%d inputs", len(inputs))
 	}
 	warnings := func(p string) map[string]bool {
 		out, _ := exec.Command(tool, "-validate", "-warning", "-a", "-s3", p).Output()
