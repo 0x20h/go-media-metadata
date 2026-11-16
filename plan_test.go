@@ -202,6 +202,8 @@ func TestPlanRotationReadsLittle(t *testing.T) {
 func FuzzPlanRotation(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
+	f.Add(tinyTIFF(binary.LittleEndian, true))
+	f.Add(tinyTIFF(binary.BigEndian, false))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			for _, deg := range []int{0, 90, 180} {
