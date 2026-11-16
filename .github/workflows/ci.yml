@@ -91,6 +91,8 @@ jobs:
           - FuzzReadJXL
           - FuzzUnbrob
           - FuzzMergeXMP
+          - FuzzReadGIF
+          - FuzzReadBMP
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
