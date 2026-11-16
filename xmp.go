@@ -89,6 +89,12 @@ type XMPEdit struct {
 	// Precision (PrecisionSecond when unset), with its fraction of a
 	// second when it has one, and its offset when OffsetKnown.
 	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
+	// GPS sets exif:GPSLatitude, exif:GPSLongitude and, with HasAltitude,
+	// exif:GPSAltitude and exif:GPSAltitudeRef (1 below sea level), the
+	// position ParseXMP reads; without HasAltitude an old altitude is
+	// removed. RemoveGPS removes all four. nil leaves them as they are.
+	GPS       *GPS
+	RemoveGPS bool
 }
 
 // Namespaces of the properties read and written.
@@ -369,6 +375,12 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if edit.GPS != nil && edit.RemoveGPS {
+		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
+	}
+	if g := edit.GPS; g != nil && !validGPS(g) {
+		return nil, fmt.Errorf("mediameta: GPS position %+v out of range", *g)
+	}
 	if err := checkRegions(edit.Regions); err != nil {
 		return nil, err
 	}
@@ -416,6 +428,26 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			changed = d.remove(p.ns, p.local) || changed
 		default:
 			changed = d.setSimple(p.ns, p.local, formatXMPDate(*p.d)) || changed
+		}
+	}
+	if g := edit.GPS; g != nil {
+		changed = d.setSimple(nsExif, "GPSLatitude", formatXMPCoord(g.Latitude, 'N', 'S')) || changed
+		changed = d.setSimple(nsExif, "GPSLongitude", formatXMPCoord(g.Longitude, 'E', 'W')) || changed
+		if g.HasAltitude {
+			ref := "0"
+			if g.Altitude < 0 {
+				ref = "1"
+			}
+			changed = d.setSimple(nsExif, "GPSAltitude", formatXMPRational(math.Abs(g.Altitude))) || changed
+			changed = d.setSimple(nsExif, "GPSAltitudeRef", ref) || changed
+		} else {
+			changed = d.remove(nsExif, "GPSAltitude") || changed
+			changed = d.remove(nsExif, "GPSAltitudeRef") || changed
+		}
+	}
+	if edit.RemoveGPS {
+		for _, local := range [...]string{"GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSAltitudeRef"} {
+			changed = d.remove(nsExif, local) || changed
 		}
 	}
 	if edit.Regions != nil {
