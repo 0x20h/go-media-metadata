@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 )
@@ -115,8 +116,15 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 					}
 					usPerFrame := int64(binary.LittleEndian.Uint32(b))
 					frames := int64(binary.LittleEndian.Uint32(b[16:]))
-					v.Duration = time.Duration(usPerFrame*frames) * time.Microsecond
-					v.Width, v.Height = int(binary.LittleEndian.Uint32(b[32:])), int(binary.LittleEndian.Uint32(b[36:]))
+					// Both are 32-bit: their product is in range, but not
+					// in nanoseconds past about 292 years.
+					if us := usPerFrame * frames; us >= 0 && us <= math.MaxInt64/int64(time.Microsecond) {
+						v.Duration = time.Duration(us) * time.Microsecond
+					}
+					w, h := binary.LittleEndian.Uint32(b[32:]), binary.LittleEndian.Uint32(b[36:])
+					if w <= 1<<16 && h <= 1<<16 {
+						v.Width, v.Height = int(w), int(h)
+					}
 				case "IDIT":
 					if b, err := readAVIChunk(r, k); err == nil {
 						if at, ok := parseAVIDate(aviText(b)); ok {

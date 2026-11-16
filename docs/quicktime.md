@@ -148,3 +148,28 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   and none after removal. The decoded frames must be the same, and the
   validation must find nothing new.
 - A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.
+
+## AVI and MPEG program streams
+
+Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
+`ReadOrientation`, which give orientation 1). Writes give an error that is
+`ErrUnsupported`.
+
+- **AVI** (RIFF, as older cameras recorded it, often MJPEG):
+  - The duration and size come from the main header (`avih`): frames ×
+    microseconds per frame.
+  - The recording date is the `IDIT` chunk (asctime or Exif layout), else
+    the INFO list's `ICRD` when it holds a whole date. A year alone isn't
+    taken: it would read as 1 January.
+  - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
+    keywords `IKEY`, split at `;` or `,`.
+- **MPEG program streams** (`.mpg`, `.vob`):
+  - The size comes from the first video sequence header.
+  - The duration runs from the first video PES packet's PTS to the last's,
+    plus one frame at the sequence header's rate. Without PTS it's the span
+    of the packs' system clock references.
+  - ExifTool gives the size, and no duration for a variable bitrate. The
+    tests check the duration against ffprobe.
+
+Both are checked against ExifTool on `testdata/avi` and `testdata/mpegps`,
+synthetic clips made by those folders' `make.sh`.

@@ -98,3 +98,9 @@ testdata/avi/*.avi
     testdata/avi/idit.go.txt (see testdata/avi/make.sh). Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/mpegps/*.mpg
+    A synthetic test pattern (ffmpeg's testsrc, no recording), MPEG-1 and
+    MPEG-2 video, encoded and muxed by ffmpeg (see testdata/mpegps/make.sh).
+    Made for this project by its authors. Dedicated to the public domain
+    under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

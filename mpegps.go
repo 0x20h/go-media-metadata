@@ -10,8 +10,10 @@ import (
 // MPEG program streams (ISO/IEC 11172-1 and 13818-1): .mpg, .mpeg, .vob,
 // as DVD and older cameras wrote them. Read only. The size comes from the
 // first video sequence header; the duration is the span from the first
-// pack's system clock reference to the last's. (ExifTool gives the size,
-// and no duration for a variable bitrate.)
+// video presentation time stamp (PTS) to the last's, plus a frame at the
+// sequence header's frame rate; without PTS, the span of the packs' system
+// clock references. (ExifTool gives the size, and no duration for a
+// variable bitrate.)
 
 // errMPEGPSReadOnly is the error of a write to an MPEG program stream.
 var errMPEGPSReadOnly = fmt.Errorf("%w: an MPEG program stream is read only", ErrUnsupported)
@@ -68,11 +70,16 @@ func readMPEGPSVideo(r io.ReaderAt, size int64) (Video, error) {
 	if !ok {
 		return v, fmt.Errorf("%w: a pack header cut short", ErrMalformed)
 	}
-	// The sequence header: 12 bits of width, 12 of height.
-	if i := bytes.Index(head, []byte{0, 0, 1, 0xB3}); i >= 0 && i+7 <= len(head) {
+	// The sequence header: 12 bits of width, 12 of height, the frame rate
+	// code.
+	var frame time.Duration
+	if i := bytes.Index(head, []byte{0, 0, 1, 0xB3}); i >= 0 && i+8 <= len(head) {
 		b := head[i+4:]
 		v.Width = int(b[0])<<4 | int(b[1]>>4)
 		v.Height = int(b[1]&0x0F)<<8 | int(b[2])
+		if fps := [...]float64{0, 24000.0 / 1001, 24, 25, 30000.0 / 1001, 30, 50, 60000.0 / 1001, 60}; int(b[3]&0x0F) < len(fps) && b[3]&0x0F != 0 {
+			frame = time.Duration(float64(time.Second) / fps[b[3]&0x0F])
+		}
 	}
 	// The last pack, near the end.
 	tail := head
@@ -82,6 +89,13 @@ func readMPEGPSVideo(r io.ReaderAt, size int64) (Video, error) {
 			return v, fmt.Errorf("%w: %v", ErrMalformed, err)
 		}
 	}
+	if p0, ok := videoPTS(head, false); ok {
+		if p1, ok := videoPTS(tail, true); ok && p1 >= p0 {
+			// 90 kHz ticks to nanoseconds.
+			v.Duration = time.Duration((p1-p0)*100000/9) + frame
+			return v, nil
+		}
+	}
 	if i := bytes.LastIndex(tail, packStart); i >= 0 {
 		if last, ok := packSCR(tail[i+4:]); ok && last > first {
 			// 27 MHz ticks to nanoseconds, without overflow.
@@ -89,4 +103,44 @@ func readMPEGPSVideo(r io.ReaderAt, size int64) (Video, error) {
 		}
 	}
 	return v, nil
+}
+
+// videoPTS is the presentation time stamp, at 90 kHz, of the first (or,
+// with last, the last) video PES packet in b that has one: MPEG-2's
+// (ISO/IEC 13818-1 2.4.3.7) or MPEG-1's (11172-1 2.4.3.3).
+func videoPTS(b []byte, last bool) (int64, bool) {
+	var found int64
+	ok := false
+	for i := 0; i+9 < len(b); i++ {
+		if b[i] != 0 || b[i+1] != 0 || b[i+2] != 1 || b[i+3]&0xF0 != 0xE0 {
+			continue
+		}
+		h := b[i+6:]
+		var p []byte
+		if h[0]&0xC0 == 0x80 { // MPEG-2
+			if h[1]&0x80 != 0 && len(h) >= 8 {
+				p = h[3:8]
+			}
+		} else { // MPEG-1: stuffing, an STD buffer field, then the time stamps
+			j := 0
+			for j < len(h) && j < 16 && h[j] == 0xFF {
+				j++
+			}
+			if j+1 < len(h) && h[j]&0xC0 == 0x40 {
+				j += 2
+			}
+			if j+5 <= len(h) && h[j]&0xE0 == 0x20 {
+				p = h[j : j+5]
+			}
+		}
+		if p == nil {
+			continue
+		}
+		pts := int64(p[0]>>1&7)<<30 | int64(p[1])<<22 | int64(p[2]>>1)<<15 | int64(p[3])<<7 | int64(p[4]>>1)
+		if !last {
+			return pts, true
+		}
+		found, ok = pts, true
+	}
+	return found, ok
 }
