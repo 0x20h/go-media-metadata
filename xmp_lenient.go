@@ -80,17 +80,12 @@ func entityLen(b []byte) int {
 		}
 		return end + 1
 	}
-	for i, c := range ref {
-		letter := c == '_' || c == ':' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= 0x80
-		if !letter && (i == 0 || !(c >= '0' && c <= '9' || c == '-' || c == '.')) {
-			return 0
-		}
-	}
+	// The predefined entities only: XMP can't declare others.
 	switch string(ref) {
 	case "amp", "lt", "gt", "quot", "apos":
 		return end + 1
 	}
-	return 0 // an entity XMP can't declare: not one
+	return 0
 }
 
 func hexDigit(c byte) int {
