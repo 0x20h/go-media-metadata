@@ -715,12 +715,12 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	}
 	for _, it := range items {
 		switch string(it.Type[:]) {
-		case "\xa9nam", "desc":
+		case "\xa9nam", "desc", "\xa9des":
 			s, err := readDataString(r, it)
 			if err != nil {
 				return t, err
 			}
-			if string(it.Type[:]) == "desc" {
+			if typ := string(it.Type[:]); typ == "desc" || typ == "\xa9des" {
 				t.description = first(t.description, s)
 			} else {
 				t.title = first(t.title, s)
@@ -851,7 +851,9 @@ func decodeUTF16(u []rune) []rune {
 // readUdta reads the QuickTime user data text entries: ©day, ©xyz, ©mak,
 // ©mod (the first string of each, of any language).
 func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
-	var t qtTags
+	// The item list (a meta box in udta) comes first, the user data text
+	// entries after it, whatever their order in the file.
+	var t, items qtTags
 	kids, err := bmff.ReadBoxes(r, udta.Body(), udta.End())
 	if err != nil {
 		// Some writers end udta with a 32-bit zero: tolerate a broken
@@ -891,12 +893,27 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.title
 		case "\xa9des":
 			dst = &t.description
+		case "titl", "dscp":
+			// 3GPP strings (TS 26.244 8.1), as ExifTool writes UserData
+			// Title and Description in an MP4.
+			s := &t.title
+			if k.Type == bmff.T("dscp") {
+				s = &t.description
+			}
+			if *s == "" {
+				b, err := readBox(r, k, maxLeafBox)
+				if err != nil {
+					return t, err
+				}
+				*s = gppString(b)
+			}
+			continue
 		case "meta":
 			m, err := readMetaKeys(r, k)
 			if err != nil {
 				return t, err
 			}
-			t.merge(m)
+			items.merge(m)
 			continue
 		default:
 			continue
@@ -910,7 +927,8 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 		}
 		*dst = udtaString(b)
 	}
-	return t, nil
+	items.merge(t)
+	return items, nil
 }
 
 // udtaString reads a QuickTime international text entry's first string:
@@ -1093,6 +1111,27 @@ func parseLoci(b []byte) *GPS {
 		return nil
 	}
 	return g
+}
+
+// gppString reads a 3GPP asset string box's text (TS 26.244 8.1): a full
+// box header, a pad bit and packed language, then UTF-8 up to a NUL, or
+// UTF-16 after a byte order mark.
+func gppString(b []byte) string {
+	if len(b) < 6 {
+		return ""
+	}
+	p := b[6:]
+	if len(p) >= 2 && p[0] == 0xFE && p[1] == 0xFF {
+		p = p[2:]
+		i := 0
+		for ; i+1 < len(p) && (p[i] != 0 || p[i+1] != 0); i += 2 {
+		}
+		return strings.TrimSpace(qtText(p[:i], 2))
+	}
+	if i := bytes.IndexByte(p, 0); i >= 0 {
+		p = p[:i]
+	}
+	return strings.TrimSpace(qtText(p, 1))
 }
 
 // xmpUUID is the uuid box type of an MP4's XMP packet.

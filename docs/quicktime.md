@@ -22,9 +22,13 @@ Where each field comes from, in order of preference:
   or an MP4-style one): the date, place, make, model, title
   (`title`), description (`description`), keywords (`keywords`) and
   rating (`rating.user`).
-- **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`)
-  otherwise, or an MP4 item list's `©nam`, `desc` and `keyw` (a `meta`
-  box of handler `mdir` in `udta`).
+- **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
+  for the title, `©des` or `desc` for the description, `keyw`.
+- **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
+  3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
+  UserData Title and Description). For the title and description, the
+  item list comes before the user data, whatever their order in the file,
+  as ExifTool's `-Title` and `-Description` take them.
 - **3GPP `loci`** in the user data, for the place, as 3GP and Android
   writers put it: longitude, latitude and altitude as 16.16 fixed point,
   after the place's name and role (3GPP TS 26.244).

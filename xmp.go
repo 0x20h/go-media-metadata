@@ -82,6 +82,13 @@ type XMPEdit struct {
 	// without regions removes it. Fields of the old regions that Region doesn't model (a region's
 	// rotation, extensions) aren't kept.
 	Regions *Regions
+	// DateCreated, CreateDate, DateTimeOriginal and ModifyDate set
+	// photoshop:DateCreated, xmp:CreateDate, exif:DateTimeOriginal and
+	// xmp:ModifyDate, the dates ParseXMP reads. nil leaves the property as
+	// it is; a Date with a zero Time removes it. A date is written to its
+	// Precision (PrecisionSecond when unset), with its fraction of a
+	// second when it has one, and its offset when OffsetKnown.
+	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
 	// GPS sets exif:GPSLatitude, exif:GPSLongitude and, with HasAltitude,
 	// exif:GPSAltitude and exif:GPSAltitudeRef (1 below sea level), the
 	// position ParseXMP reads; without HasAltitude an old altitude is
@@ -363,6 +370,11 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			}
 		}
 	}
+	for _, at := range [...]*Date{edit.DateCreated, edit.CreateDate, edit.DateTimeOriginal, edit.ModifyDate} {
+		if err := checkXMPDate(at); err != nil {
+			return nil, err
+		}
+	}
 	if edit.GPS != nil && edit.RemoveGPS {
 		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
 	}
@@ -400,6 +412,23 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 	}
 	if edit.PersonInImage != nil {
 		changed = d.setBag(nsIPTCX, "PersonInImage", *edit.PersonInImage) || changed
+	}
+	for _, p := range [...]struct {
+		d         *Date
+		ns, local string
+	}{
+		{edit.DateCreated, nsPhotoshop, "DateCreated"},
+		{edit.CreateDate, nsXMP, "CreateDate"},
+		{edit.DateTimeOriginal, nsExif, "DateTimeOriginal"},
+		{edit.ModifyDate, nsXMP, "ModifyDate"},
+	} {
+		switch {
+		case p.d == nil:
+		case p.d.Time.IsZero():
+			changed = d.remove(p.ns, p.local) || changed
+		default:
+			changed = d.setSimple(p.ns, p.local, formatXMPDate(*p.d)) || changed
+		}
 	}
 	if g := edit.GPS; g != nil {
 		changed = d.setSimple(nsExif, "GPSLatitude", formatXMPCoord(g.Latitude, 'N', 'S')) || changed

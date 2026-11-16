@@ -4,10 +4,24 @@
 
 ### Added
 
+- `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
+  `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
+  `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
+  written to its precision, with its offset when known, or removed. A
+  date corrected in Exif can now be corrected in XMP in the same edit. See
+  [docs/xmp.md](docs/xmp.md).
 - `XMPEdit` writes a position: `GPS` sets `exif:GPSLatitude`,
   `exif:GPSLongitude` and the altitude as ExifTool writes them;
   `RemoveGPS` removes them. A place corrected in Exif can now be
   corrected in XMP in the same edit. See [docs/xmp.md](docs/xmp.md).
+
+### Fixed
+
+- `ReadVideo` reads a movie's description from an item list's `©des`
+  and from the 3GPP `dscp` box in user data (and the title from `titl`),
+  where ExifTool writes ItemList and UserData descriptions. Before, only
+  `desc` and QuickTime `©des` were read. The item list comes before the
+  user data, as in ExifTool. See [docs/quicktime.md](docs/quicktime.md).
 
 ## v0.2.1 (2026-11-16)
 
