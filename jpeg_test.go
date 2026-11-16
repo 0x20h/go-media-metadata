@@ -449,7 +449,7 @@ func FuzzReadExif(f *testing.F) {
 	})
 }
 
-func readFile(t *testing.T, path string) []byte {
+func readFile(t testing.TB, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path)
 	if err != nil {
