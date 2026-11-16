@@ -3,11 +3,14 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +35,9 @@ var videoEdits = []struct {
 	{"date and place", VideoEdit{Created: &editDate, GPS: editPlace}},
 	{"remove place", VideoEdit{RemoveGPS: true}},
 	{"date, remove place", VideoEdit{Created: &editDate, RemoveGPS: true}},
+	{"text", VideoEdit{Title: ptr("Lake & co"), Description: ptr("Morning, by the water"), Keywords: &[]string{"lake", "Öland"}, Rating: ptr(4)}},
+	{"remove text", VideoEdit{Title: ptr(""), Description: ptr(""), Keywords: &[]string{}, RemoveRating: true}},
+	{"rejected", VideoEdit{Rating: ptr(-1), Title: ptr("T")}},
 }
 
 // chunkOffsets are the chunk offsets of every track of a movie.
@@ -107,6 +113,37 @@ func checkVideoEdit(t *testing.T, src []byte, edit VideoEdit, p *Plan) []byte {
 	default:
 		if (after.GPS == nil) != (before.GPS == nil) || after.GPS != nil && *after.GPS != *before.GPS {
 			t.Errorf("GPS %+v, was %+v", after.GPS, before.GPS)
+		}
+	}
+	text := func(set *string, got, was string, name string) {
+		if want := was; set != nil && *set != want || set == nil && got != was {
+			if set != nil {
+				want = *set
+			}
+			if got != want {
+				t.Errorf("%s %q, want %q", name, got, want)
+			}
+		}
+	}
+	text(edit.Title, after.Title, before.Title, "title")
+	text(edit.Description, after.Description, before.Description, "description")
+	removed := edit.Keywords != nil && len(*edit.Keywords) == 0 && after.Keywords == nil
+	if kw := edit.Keywords; kw != nil && !slices.Equal(after.Keywords, *kw) && !removed ||
+		kw == nil && !slices.Equal(after.Keywords, before.Keywords) {
+		t.Errorf("keywords %q, edit %v, were %q", after.Keywords, kw, before.Keywords)
+	}
+	switch {
+	case edit.Rating != nil:
+		if !after.HasRating || after.Rating != *edit.Rating {
+			t.Errorf("rating %d (%v), want %d", after.Rating, after.HasRating, *edit.Rating)
+		}
+	case edit.RemoveRating:
+		if after.HasRating {
+			t.Errorf("rating %d after removing it", after.Rating)
+		}
+	default:
+		if after.HasRating != before.HasRating || after.Rating != before.Rating {
+			t.Errorf("rating %d, was %d", after.Rating, before.Rating)
 		}
 	}
 	if after.Orientation != before.Orientation || after.Width != before.Width || after.Duration != before.Duration ||
@@ -283,7 +320,7 @@ func FuzzVideoEdit(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
-			for _, e := range videoEdits[3:5] {
+			for _, e := range append(videoEdits[3:5:5], videoEdits[6:8]...) {
 				p, err := PlanVideoMetadata(bytes.NewReader(data), int64(len(data)), e.edit)
 				if err != nil {
 					continue
@@ -305,6 +342,10 @@ func FuzzVideoEdit(f *testing.F) {
 				}
 				if e.edit.RemoveGPS && v.GPS != nil {
 					t.Fatalf("GPS %+v after removing it", v.GPS)
+				}
+				if e.edit.Title != nil && v.Title != *e.edit.Title || e.edit.Rating != nil && (!v.HasRating || v.Rating != *e.edit.Rating) ||
+					e.edit.RemoveRating && v.HasRating {
+					t.Fatalf("title %q, rating %d (%v) after %s", v.Title, v.Rating, v.HasRating, e.name)
 				}
 			}
 		})
@@ -459,5 +500,105 @@ func BenchmarkPlanVideoEdit(b *testing.B) {
 			}
 			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
 		})
+	}
+}
+
+// Title, description, keywords and rating on movies FFmpeg made with a
+// title of its own, and in an MP4 a description (MOV: user data ©nam; MP4:
+// an item list's ©nam, desc), moov first and last: ExifTool reads the new
+// values from Keys and from the entries the movie had, FFmpeg decodes the
+// same frames, ExifTool's validation finds nothing new; removing them
+// leaves none. Runs where ffmpeg and exiftool are installed.
+func TestVideoTextEncoded(t *testing.T) {
+	for _, tool := range []string{"ffmpeg", "exiftool"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skip(tool + " not installed")
+		}
+	}
+	dir := t.TempDir()
+	for _, c := range []struct{ name, ext, flags string }{
+		{"moov-last", "mov", ""},
+		{"moov-first", "mov", "+faststart"},
+		{"mp4-moov-last", "mp4", ""},
+		{"mp4-moov-first", "mp4", "+faststart"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			src := filepath.Join(dir, c.name+"."+c.ext)
+			args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x48:rate=10",
+				"-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "aac", "-shortest",
+				"-metadata", "title=Old title", "-metadata", "description=Old description"}
+			if c.flags != "" {
+				args = append(args, "-movflags", c.flags)
+			}
+			if out, err := exec.Command("ffmpeg", append(args, src)...).CombinedOutput(); err != nil {
+				t.Fatalf("ffmpeg: %v\n%s", err, out)
+			}
+			file := readFile(t, src)
+			if v := readVideo(t, file); v.Title != "Old title" || c.ext == "mp4" && v.Description != "Old description" {
+				t.Fatalf("FFmpeg's title and description read as %q, %q", v.Title, v.Description)
+			}
+			var got []byte
+			for _, e := range videoEdits[6:8] {
+				p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), e.edit)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = checkVideoEdit(t, file, e.edit, p)
+				dst := filepath.Join(dir, c.name+"-"+strings.ReplaceAll(e.name, " ", "-")+"."+c.ext)
+				if err := os.WriteFile(dst, got, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				out, err := exec.Command("exiftool", "-j", "-G1", "-Keys:Title", "-Keys:Description", "-Keys:Keywords",
+					"-Keys:UserRating", "-ItemList:Title", "-ItemList:Description", "-UserData:Title", "-UserData:Description", dst).Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var tags []map[string]any
+				if err := json.Unmarshal(out, &tags); err != nil || len(tags) != 1 {
+					t.Fatalf("%v: %s", err, out)
+				}
+				m := tags[0]
+				delete(m, "SourceFile")
+				var want map[string]any
+				if e.edit.Rating != nil {
+					want = map[string]any{"Keys:Title": "Lake & co", "Keys:Description": "Morning, by the water",
+						"Keys:Keywords": "lake,Öland", "Keys:UserRating": float64(4)}
+					if c.ext == "mp4" {
+						want["ItemList:Title"], want["ItemList:Description"] = "Lake & co", "Morning, by the water"
+					} else {
+						want["UserData:Title"] = "Lake & co" // FFmpeg writes no ©des
+					}
+				} else {
+					want = map[string]any{}
+				}
+				if a, b := fmt.Sprint(m), fmt.Sprint(want); a != b {
+					t.Errorf("%s: ExifTool reads %s, want %s", e.name, a, b)
+				}
+				md5 := func(p string) string {
+					out, err := exec.Command("ffmpeg", "-v", "error", "-i", p, "-map", "0", "-f", "framemd5", "-").Output()
+					if err != nil {
+						t.Fatalf("ffmpeg framemd5 %s: %v", p, err)
+					}
+					return string(out)
+				}
+				if a, b := md5(src), md5(dst); a != b || len(a) < 100 {
+					t.Errorf("%s: decoded frames differ (or none)", e.name)
+				}
+				checkExifToolValidation(t, e.name, src, dst)
+			}
+		})
+	}
+}
+
+// checkExifToolValidation fails when ExifTool's validation of after finds
+// what it didn't in before.
+func checkExifToolValidation(t *testing.T, name, before, after string) {
+	t.Helper()
+	warnings := func(p string) string {
+		b, _ := exec.Command("exiftool", "-validate", "-warning", "-error", "-a", "-s3", p).Output()
+		return string(b)
+	}
+	if w0, w1 := warnings(before), warnings(after); w1 != w0 {
+		t.Errorf("%s: ExifTool's validation changed:\nbefore: %s\nafter: %s", name, w0, w1)
 	}
 }

@@ -286,6 +286,7 @@ func (c *cr3) tiff(name string) ([]byte, int64, bool) {
 // exif reads a CR3's Exif from its CMT boxes.
 func (c *cr3) exif() Exif {
 	var x Exif
+	var cmt1IFD0 map[uint16]field
 	if data, _, ok := c.tiff("CMT1"); ok {
 		if t, first, ok := newTIFF(data); ok {
 			ifd0 := t.ifd(first)
@@ -295,6 +296,8 @@ func (c *cr3) exif() Exif {
 				}
 			}
 			x.Camera = t.camera(ifd0, nil)
+			readXPTags(ifd0, &x)
+			cmt1IFD0 = ifd0
 		}
 	}
 	// CMT2 is the Exif IFD, a TIFF of its own: its byte order may differ
@@ -304,6 +307,9 @@ func (c *cr3) exif() Exif {
 			exif := t.ifd(first)
 			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
 			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
+			// DateTime is in CMT1's IFD0; text reads the same in either
+			// byte order.
+			x.DateTime, x.DateTimeOffsetKnown = t.exifDateIn(cmt1IFD0, exif, tagDateTime, tagSubSecTime, tagOffsetTime)
 			mk, model := x.Camera.Make, x.Camera.Model
 			x.Camera = t.camera(nil, exif)
 			x.Camera.Make, x.Camera.Model = mk, model

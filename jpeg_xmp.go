@@ -113,6 +113,11 @@ func readJPEGXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return f.xmp(r)
+}
+
+// xmp reads the XMP packet of a parsed JPEG, its extended part merged in.
+func (f *jpegFile) xmp(r io.ReaderAt) ([]byte, error) {
 	x, err := f.xmpSegments(r)
 	if err != nil || !x.ok {
 		return nil, err

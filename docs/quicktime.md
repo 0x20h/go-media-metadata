@@ -14,25 +14,53 @@ Apple's QuickTime File Format, and MP4 on the ISO base media file format
 - make and model of the recording device
 - content identifier that pairs a Live Photo's video with its still
   image
+- title, description, keywords and rating
 
 Where each field comes from, in order of preference:
 
 - **Keys metadata** (`com.apple.quicktime.*`, in a QuickTime `meta` box
-  or an MP4-style one): the date, place, make and model.
-- **User data** (`©day`, `©xyz`, `©mak`, `©mod`) otherwise.
+  or an MP4-style one): the date, place, make, model, title
+  (`title`), description (`description`), keywords (`keywords`) and
+  rating (`rating.user`).
+- **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`)
+  otherwise, or an MP4 item list's `©nam`, `desc` and `keyw` (a `meta`
+  box of handler `mdir` in `udta`).
+- **3GPP `loci`** in the user data, for the place, as 3GP and Android
+  writers put it: longitude, latitude and altitude as 16.16 fixed point,
+  after the place's name and role (3GPP TS 26.244).
+- **The movie's XMP**, for the date and the place. MP4 files keep it in a
+  top-level `uuid` box (`BE7ACFCB-97A9-42E8-9C71-999491E3AFAC`), and
+  QuickTime movies in the user data's `XMP_`. The date is the first of
+  `exif:DateTimeOriginal`, `photoshop:DateCreated` and `xmp:CreateDate`,
+  as `TakenFrom` orders them. Without a time zone, `OffsetKnown` is false.
+  The place comes from `exif:GPSLatitude` and `exif:GPSLongitude`. The
+  packet is read only when the sources before it have nothing.
+  `ReadXMP` returns it too.
 - **The movie header**, for the date, as a last resort. That date is in
   UTC.
 
-Locations are ISO 6709 strings and dates ISO 8601.
+Locations are ISO 6709 strings and dates ISO 8601. Keywords are split at
+commas. A rating is −1 (rejected) to 5, written as text or as an integer.
 
 The orientation comes from the track header's matrix, in the Exif
 numbering images use. It covers the four rotations and the four
-mirrorings; any other matrix gives 0.
+mirrorings; any other matrix gives 0. `Width` and `Height` are the
+track's size as stored; `Video.Shown()` gives the size as shown, swapped
+for a quarter turn (orientations 5 to 8), as `ImageSize.Shown` does.
 
 `ReadVideo` reads only box headers and the few small boxes these fields
 are in, wherever `moov` sits, and never the sample tables or the media
-data. For a 1 MB test movie that is 870 bytes. Its results are checked
-against ExifTool on the test movies.
+data. For a 1 MB test movie that is 870 bytes.
+
+`TestVideoCorpusAgreesWithExifTool` checks every field against ExifTool
+on `testdata/video`. The files are synthetic: an FFmpeg test pattern,
+CC0, made by its `make.sh`. Each holds the metadata in one place:
+
+- Keys (date with offset, GPS, make, model, content identifier);
+- the user data (`©day`, `©xyz`, `©mak`, `©mod`);
+- 3GPP `loci` in a 3GP;
+- XMP only, in an MP4's `uuid` box and in a MOV's `XMP_`;
+- tracks turned 90° and 270°.
 
 ## Writing the orientation
 
@@ -51,10 +79,12 @@ in its track header (`tkhd`).
 
 ExifTool and FFmpeg read the rotations written.
 
-## Writing the date and place
+## Writing the date, place, title, description, keywords and rating
 
 `SetVideoMetadata` and `PlanVideoMetadata` take a `VideoEdit`: a recording date
-(`Created`), a place (`GPS`), or the place removed (`RemoveGPS`).
+(`Created`), a place (`GPS`), or the place removed (`RemoveGPS`); a
+title, description, keywords and rating, or any of them removed (an
+empty title, description or keyword list, or `RemoveRating`).
 
 Where each value is written:
 
@@ -70,6 +100,17 @@ Where each value is written:
 
 Removing the place removes the Keys entry and `©xyz`; the Keys entries
 after it are renumbered.
+
+The title, description, keywords and rating:
+
+- **Keys:** `com.apple.quicktime.title`, `.description`, `.keywords` and
+  `.rating.user`, each as UTF-8 text, as ExifTool writes them.
+  Keywords are one comma-separated value, because ExifTool reads only one
+  value of an entry, so a keyword can't contain a comma. A rating is
+  written as text, −1 to 5.
+- **User data** `©nam` and `©des`, and an **MP4 item list**'s `©nam`,
+  `desc` and `keyw`, where the movie has them. They are set to the same
+  values, or removed with them. None is added.
 
 ### In place where it can be
 
@@ -100,4 +141,10 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   every decoded frame is the same after the edit (`framemd5`), and
   FFmpeg and ExifTool read the values written. ExifTool's validation
   finds nothing new in the files written.
-- A fuzz target, `FuzzVideoEdit`.
+- FFmpeg-made movies with a title (and in the MP4, a description), MOV
+  and MP4, `moov` first and last: setting and removing the title,
+  description, keywords and rating (`TestVideoTextEncoded`). ExifTool
+  must read the new values from Keys and from the entries the movie had,
+  and none after removal. The decoded frames must be the same, and the
+  validation must find nothing new.
+- A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.

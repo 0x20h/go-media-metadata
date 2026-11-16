@@ -173,8 +173,16 @@ func tiffPayload(b []byte) (prefix, tiff []byte) {
 
 func readPNGExif(r io.ReaderAt, size int64) (Exif, error) {
 	m, err := readPNGMetadata(r, size)
-	if err != nil || len(m.exif) == 0 {
+	if err != nil {
 		return Exif{}, err
+	}
+	return m.readExif(r)
+}
+
+// readExif reads the Exif of the PNG whose chunks m lists.
+func (m *pngMetadata) readExif(r io.ReaderAt) (Exif, error) {
+	if len(m.exif) == 0 {
+		return Exif{}, nil
 	}
 	c := m.chunks[m.exif[0]]
 	b, err := readChunk(r, c.data(), c.n)
@@ -187,8 +195,16 @@ func readPNGExif(r io.ReaderAt, size int64) (Exif, error) {
 
 func readPNGXMP(r io.ReaderAt, size int64) ([]byte, error) {
 	m, err := readPNGMetadata(r, size)
-	if err != nil || len(m.xmp) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	return m.readXMP(r)
+}
+
+// readXMP reads the XMP packet of the PNG whose chunks m lists.
+func (m *pngMetadata) readXMP(r io.ReaderAt) ([]byte, error) {
+	if len(m.xmp) == 0 {
+		return nil, nil
 	}
 	c := m.chunks[m.xmp[0]]
 	b, err := readChunk(r, c.data(), c.n)

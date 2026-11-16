@@ -53,6 +53,16 @@ et camera-mm.jpg -ExifByteOrder#=MM -EXIF:Make=Apple "-EXIF:Model=iPhone 12 Pro"
 et date-digitized.jpg "-EXIF:CreateDate=2023:03:04 05:06:07" -EXIF:SubSecTimeDigitized=5 -EXIF:OffsetTimeDigitized=-03:00
 et date-iptc.jpg -IPTC:DateCreated=2022:01:02 -IPTC:TimeCreated=10:20:30+05:30
 et date-xmp.jpg "-XMP-exif:DateTimeOriginal=2021:06:07 08:09:10+01:00"
+# Only IFD0's DateTime (ModifyDate), as a messenger leaves a photo.
+et date-modify.jpg "-EXIF:ModifyDate=2020:10:11 12:13:14" -EXIF:SubSecTime=5 -EXIF:OffsetTime=+09:00
+
+# Regions with every MWG field: a rotated face with a description and
+# Extensions, a focus circle in pixels, a bar code.
+et regions-full.jpg '-XMP-mwg-rs:RegionInfo={AppliedToDimensions={W=64,H=48,Unit=pixel},RegionList=[{Area={X=0.25,Y=0.33,W=0.25,H=0.33,Unit=normalized},Name=Ada,Type=Face,Description=left,Rotation=0.5,Extensions={XMP-dc:Title=detector 7}},{Area={X=40,Y=30,D=8,Unit=pixel},Type=Focus,FocusUsage#=EvaluatedUsed},{Area={X=0.9,Y=0.1,W=0.1,H=0.1,Unit=normalized},Type=BarCode,BarCodeValue=4006381333931}]}'
+
+# Windows' XP tags (UTF-16LE in IFD0), non-ASCII text among them.
+et xp-tags.jpg "-EXIF:XPTitle=Grüner See" "-EXIF:XPComment=Am Morgen, 6 Uhr" "-EXIF:XPAuthor=Zoë" \
+  "-EXIF:XPKeywords=See;Brücke;雪" "-EXIF:XPSubject=Landschaft"
 
 # Everything at once, as an editor that writes all three would.
 et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:08:15 08:30:00" -EXIF:OffsetTimeOriginal=+01:00 \
@@ -60,5 +70,19 @@ et all.jpg -ExifByteOrder#=II -EXIF:Orientation#=3 "-EXIF:DateTimeOriginal=2024:
   -XMP-dc:Title=Morning "-XMP-dc:Description=Breakfast outside" -XMP-dc:Subject=summer -XMP-xmp:Rating=5 \
   -charset iptc=UTF8 -IPTC:CodedCharacterSet=UTF8 -IPTC:ObjectName=Morning -IPTC:Keywords=summer \
   "-IPTC:Caption-Abstract=Breakfast outside" -IPTCDigest=new
+
+# An Apple maker note as an iPhone writes it ("Apple iOS", version 1,
+# a big-endian IFD whose offsets count from the note's start), with a
+# MakerNoteVersion and a ContentIdentifier: synthetic, written into the
+# Exif as Apple's maker note.
+NOTE="$OUT/.apple-note"
+{
+  printf 'Apple iOS\000\000\001MM\000\002\000\001\000\011\000\000\000\001\000\000\000\016'
+  printf '\000\021\000\002\000\000\000\045\000\000\000,\000\000\000\000'
+  printf '0D5B4E2C-7A41-4F7E-9C3B-2E8F6A1D9B07\000'
+} > "$NOTE"
+et apple-makernote.jpg "-EXIF:DateTimeOriginal=2024:06:01 18:20:00" -EXIF:OffsetTimeOriginal=+02:00 \
+  "-MakerNoteApple<=$NOTE"
+rm -f "$NOTE"
 
 rm -f "$ARGS"

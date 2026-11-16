@@ -11,11 +11,14 @@ Sample files, each with its source and licence:
 
 testdata/imageio/a-orientation1.heic
 testdata/imageio/b-orientation6.heic
+testdata/imageio/c-exif1-irot270.heic
     A synthetic 640x480 image (a vertical gradient with a red square in
     the top-left corner, drawn with Core Graphics; no photograph), encoded
     as HEIC by Apple ImageIO (CGImageDestination) on macOS 26.6: a with no
     orientation (ImageIO still writes an irot box of 0 degrees), b with
     orientation 6 (irot 270 degrees anticlockwise, and Exif Orientation 6).
+    c-exif1-irot270.heic is b with its Exif Orientation set to 1 by
+    ExifTool 13.55 (exiftool "-Orientation#=1"), its irot as it was.
     Made for this project by its authors. Dedicated to the public domain
     under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
@@ -37,7 +40,54 @@ testdata/iphone/grid-gainmap-orientation6.heic
 testdata/exiftool/*.jpg
     A synthetic 64x48 image (a gradient with a red square, drawn and
     encoded by Go's image/jpeg; no photograph), with metadata written by
-    ExifTool 13.44; xmp-where-when.jpg, date-*.jpg and camera-*.jpg by
+    ExifTool 13.44; xmp-where-when.jpg, date-*.jpg, camera-*.jpg,
+    regions-full.jpg and xp-tags.jpg by
     ExifTool 13.55 (see testdata/exiftool/README.md and make.sh). Made for
     this project by its authors. Dedicated to the public domain under CC0
     1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/video/*.mov
+testdata/video/*.mp4
+testdata/video/*.3gp
+    A synthetic test pattern (ffmpeg's testsrc and a sine tone, no
+    recording), encoded and muxed by ffmpeg, with metadata written by
+    ExifTool 13.55 or ffmpeg (see testdata/video/make.sh). Made for this
+    project by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/m2ts/mdpm.m2ts
+testdata/m2ts/mdpm-west.m2ts
+testdata/m2ts/plain.ts
+    A synthetic test pattern (ffmpeg's testsrc, no recording), encoded by
+    ffmpeg's libx264 and muxed by ffmpeg, with MDPM metadata spliced in
+    (see testdata/m2ts/make.sh and splice.go.txt). Made for this project
+    by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/gif-bmp/plain.gif
+testdata/gif-bmp/comment-xmp.gif
+testdata/gif-bmp/bottom-up.bmp
+testdata/gif-bmp/top-down.bmp
+testdata/gif-bmp/core.bmp
+    Synthetic images (a checkerboard of flat colours, and a byte pattern;
+    no photograph): the GIF written by Go's image/gif, the BMPs built
+    byte by byte (see testdata/gif-bmp/make.go.txt); comment-xmp.gif is
+    plain.gif with a comment and XMP added by ExifTool. Made for this
+    project by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/matroska/title-date.mkv
+testdata/matroska/vp9.webm
+testdata/matroska/streamed.webm
+    A synthetic test pattern (ffmpeg's testsrc, no recording), encoded by
+    ffmpeg's libx264, libvpx-vp9 and libvpx and muxed by ffmpeg (see
+    testdata/matroska/make.sh). Made for this project by its authors.
+    Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/heif-xmp/primary-and-gainmap.heic
+    A synthetic HEIC (random stand-in image data, no picture) made by the
+    test builder (internal/bmff/testbuild; TestMakeTwoXMPCorpus): a primary
+    image and an HDR gain map, each described by an XMP item of its own.
+    Made for this project by its authors. Dedicated to the public domain
+    under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

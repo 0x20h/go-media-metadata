@@ -1,6 +1,7 @@
 package mediameta
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -15,24 +16,37 @@ import (
 )
 
 // Video is what this package reads from a QuickTime (MOV) or MP4 movie:
-// the fields a media library sorts, places and shows videos by. A field
+// the fields a media library sorts, places and shows videos by. An MPEG-2
+// transport stream and a Matroska or WebM file fill some of them; see
+// docs/m2ts.md and docs/matroska.md. A field
 // the file doesn't have, or has in a form this package doesn't accept, is
 // left at its zero value.
 type Video struct {
 	// Created is when the video was recorded. The first of these the file
 	// has: the Keys entry com.apple.quicktime.creationdate (a local time
 	// with its offset, so OffsetKnown is true), the user data's ©day (the
-	// same, when it carries an offset), or the movie header's creation
-	// time (in UTC, OffsetKnown true). Zero without any.
+	// same, when it carries an offset), the movie's XMP (in TakenFrom's
+	// order: exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate;
+	// OffsetKnown as written), or the movie header's creation time (in
+	// UTC, OffsetKnown true). Zero without any.
 	Created     time.Time
 	OffsetKnown bool
+
+	// MovieCreated is the movie header's (mvhd) creation time on its own,
+	// in UTC, as ExifTool's QuickTime:CreateDate gives it: zero when the
+	// header has none (0). It's Created's last resort; a caller that dates
+	// videos by the movie header reads it here even when Keys or ©day give
+	// another date.
+	MovieCreated time.Time
 
 	// Duration is the movie header's duration.
 	Duration time.Duration
 
 	// GPS is where the video was recorded: the Keys entry
-	// com.apple.quicktime.location.ISO6709, else the user data's ©xyz.
-	// Nil without a valid position.
+	// com.apple.quicktime.location.ISO6709, else the user data's ©xyz,
+	// else its 3GPP loci (as 3GP and Android writers put it), else the
+	// movie's XMP (exif:GPSLatitude, exif:GPSLongitude). Nil without a
+	// valid position.
 	GPS *GPS
 
 	// Orientation is how the first video track is shown, from its track
@@ -43,7 +57,7 @@ type Video struct {
 	Orientation Orientation
 
 	// Width and Height are the first video track's size as stored, before
-	// its matrix turns it.
+	// its matrix turns it; Shown gives it as it's shown.
 	Width, Height int
 
 	// Make and Model are the recording device's: the Keys entries
@@ -56,6 +70,19 @@ type Video struct {
 	// video with its still image (whose Apple MakerNote has the same
 	// value).
 	ContentIdentifier string
+
+	// Title and Description are the Keys entries
+	// com.apple.quicktime.title and .description, else the user data's
+	// ©nam and ©des, else an MP4 item list's ©nam and desc.
+	Title, Description string
+	// Keywords are the Keys entry com.apple.quicktime.keywords (each data
+	// value one keyword; a value of several, comma-separated, is split),
+	// else an MP4 item list's keyw.
+	Keywords []string
+	// Rating is the Keys entry com.apple.quicktime.rating.user, -1
+	// (rejected) or 0 to 5, when HasRating.
+	Rating    int
+	HasRating bool
 }
 
 // Limits on what a movie read loads into memory: only these small boxes
@@ -87,14 +114,28 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	if size < 8 {
 		return v, errNotQuickTime
 	}
+	// A transport stream is tried once the file isn't a movie, so a
+	// movie's read costs no more than it did.
 	top, err := bmff.ReadBoxes(r, 0, size)
 	if err != nil {
+		if isTS(r, size) && !looksLikeMovie(r, size) {
+			return readTSVideo(r, size)
+		}
+		if isMatroska(r, size) {
+			return readMatroskaVideo(r, size)
+		}
 		if errors.Is(err, bmff.ErrMalformed) && !looksLikeMovie(r, size) {
 			return v, errNotQuickTime
 		}
 		return v, err
 	}
 	if err := checkMovie(r, top); err != nil {
+		if isTS(r, size) && !startsWithFtyp(r, size) {
+			return readTSVideo(r, size)
+		}
+		if isMatroska(r, size) {
+			return readMatroskaVideo(r, size)
+		}
 		return v, err
 	}
 	moov, ok := bmff.Find(top, bmff.T("moov"))
@@ -116,6 +157,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 				return v, err
 			}
 			mvhdCreated, v.Duration = parseMvhd(b)
+			v.MovieCreated = mvhdCreated
 			movieTurned = !mvhdIdentity(b)
 		case bmff.T("trak"):
 			if video {
@@ -139,10 +181,17 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		}
 	}
 
+	// The movie's XMP, read only when the fields before it are missing.
+	// Each source parsed once, in order; the movie's XMP read only when
+	// the ones before it have nothing.
+	var x XMP
+	xRead := false
 	if at, ok := parseISO8601(keys.created); ok {
 		v.Created, v.OffsetKnown = at, true
 	} else if at, ok := parseISO8601(udta.created); ok {
 		v.Created, v.OffsetKnown = at, true
+	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
+		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
 		v.Created, v.OffsetKnown = mvhdCreated, true
 	}
@@ -150,14 +199,36 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.GPS = g
 	} else if g, ok := parseISO6709(udta.location); ok {
 		v.GPS = g
+	} else if udta.loci != nil {
+		v.GPS = udta.loci
+	} else if g := movieXMPOnce(r, size, top, udta, &x, &xRead).GPS; g != nil {
+		v.GPS = g
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
+	v.Title = first(keys.title, udta.title)
+	v.Description = first(keys.description, udta.description)
+	v.Keywords = keys.keywords
+	if v.Keywords == nil {
+		v.Keywords = udta.keywords
+	}
+	// (Parsed only when there's a rating: ParseFloat's error allocates.)
+	if r := first(keys.rating, udta.rating); r != "" {
+		if f, err := strconv.ParseFloat(r, 64); err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
+			v.Rating, v.HasRating = int(f), true
+		}
+	}
 	if movieTurned {
 		v.Orientation = 0
 	}
 	return v, nil
+}
+
+// Shown is the size the video is shown at: Width and Height swapped when
+// Orientation turns it a quarter (5 to 8), as stored otherwise.
+func (v Video) Shown() (width, height int) {
+	return ImageSize{Width: v.Width, Height: v.Height, Orientation: v.Orientation}.Shown()
 }
 
 func first(a, b string) string {
@@ -390,6 +461,10 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	loci                                      *GPS   // 3GPP loci
+	xmp                                       []byte // an XMP packet
+	title, description, rating                string
+	keywords                                  []string
 }
 
 // merge fills t's empty fields from o.
@@ -408,6 +483,24 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
+	}
+	if t.loci == nil {
+		t.loci = o.loci
+	}
+	if t.xmp == nil {
+		t.xmp = o.xmp
+	}
+	if t.title == "" {
+		t.title = o.title
+	}
+	if t.description == "" {
+		t.description = o.description
+	}
+	if t.rating == "" {
+		t.rating = o.rating
+	}
+	if t.keywords == nil {
+		t.keywords = o.keywords
 	}
 }
 
@@ -437,6 +530,10 @@ const (
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
 	keyContentID = "com.apple.quicktime.content.identifier"
+	keyTitle     = "com.apple.quicktime.title"
+	keyDesc      = "com.apple.quicktime.description"
+	keyKeywords  = "com.apple.quicktime.keywords"
+	keyRating    = "com.apple.quicktime.rating.user"
 )
 
 // readMetaKeys reads the Keys metadata (handler mdta: keys and ilst) of a
@@ -454,6 +551,9 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 	h, err := readBox(r, hb, maxLeafBox)
 	if err != nil {
 		return t, err
+	}
+	if len(h) >= 12 && string(h[8:12]) == "mdir" {
+		return readItemList(r, kids)
 	}
 	if len(h) < 12 || string(h[8:12]) != "mdta" {
 		return t, nil
@@ -489,6 +589,21 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.model
 		case keyContentID:
 			dst = &t.contentID
+		case keyTitle:
+			dst = &t.title
+		case keyDesc:
+			dst = &t.description
+		case keyRating:
+			dst = &t.rating
+		case keyKeywords:
+			if t.keywords == nil {
+				vs, err := readDataStrings(r, it)
+				if err != nil {
+					return t, err
+				}
+				t.keywords = splitKeywords(vs)
+			}
+			continue
 		default:
 			continue
 		}
@@ -537,6 +652,83 @@ func parseKeys(b []byte) []string {
 
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
+// readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
+// desc and keyw.
+func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
+	var t qtTags
+	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
+	if !ok || ib.BodyLen() > maxKeysIlst {
+		return t, nil
+	}
+	items, err := bmff.ReadBoxes(r, ib.Body(), ib.End())
+	if err != nil {
+		return t, nil
+	}
+	for _, it := range items {
+		switch string(it.Type[:]) {
+		case "\xa9nam", "desc":
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			if string(it.Type[:]) == "desc" {
+				t.description = first(t.description, s)
+			} else {
+				t.title = first(t.title, s)
+			}
+		case "keyw":
+			if t.keywords == nil {
+				vs, err := readDataStrings(r, it)
+				if err != nil {
+					return t, err
+				}
+				t.keywords = splitKeywords(vs)
+			}
+		}
+	}
+	return t, nil
+}
+
+// splitKeywords is the keywords of data values: each one, or several in
+// one value separated by commas, trimmed; nil without any.
+func splitKeywords(vs []string) []string {
+	var out []string
+	for _, v := range vs {
+		for _, k := range strings.Split(v, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				out = append(out, k)
+			}
+		}
+	}
+	return out
+}
+
+// readDataStrings reads every data box of an item list item, as text: a
+// number (types 21, 22: big-endian integers) as its decimal digits.
+func readDataStrings(r io.ReaderAt, item bmff.Box) ([]string, error) {
+	kids, err := bmff.ReadBoxes(r, item.Body(), item.End())
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, db := range kids {
+		if db.Type != bmff.T("data") {
+			continue
+		}
+		b, err := readBox(r, db, maxLeafBox)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) < 8 {
+			continue
+		}
+		if s := qtText(b[8:], binary.BigEndian.Uint32(b)&0xFFFFFF); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func readDataString(r io.ReaderAt, item bmff.Box) (string, error) {
 	kids, err := bmff.ReadBoxes(r, item.Body(), item.End())
 	if err != nil {
@@ -558,9 +750,22 @@ func readDataString(r io.ReaderAt, item bmff.Box) (string, error) {
 	return qtText(b[8:], typ), nil
 }
 
-// qtText decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE).
+// qtText decodes a value of well-known type 1 (UTF-8) or 2 (UTF-16 BE),
+// or a big-endian integer (21 signed, 22 unsigned) as its digits.
 func qtText(b []byte, typ uint32) string {
 	switch typ {
+	case 21, 22:
+		if len(b) == 0 || len(b) > 8 {
+			return ""
+		}
+		var u uint64
+		for _, c := range b {
+			u = u<<8 | uint64(c)
+		}
+		if typ == 21 && b[0]&0x80 != 0 {
+			return strconv.FormatInt(int64(u)-int64(1)<<(8*len(b)), 10)
+		}
+		return strconv.FormatUint(u, 10)
 	case 1:
 		if !utf8.Valid(b) {
 			return ""
@@ -615,6 +820,28 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case "\xa9mod":
 			dst = &t.model
+		case "loci":
+			if t.loci == nil {
+				b, err := readBox(r, k, maxLeafBox)
+				if err != nil {
+					return t, err
+				}
+				t.loci = parseLoci(b)
+			}
+			continue
+		case "XMP_":
+			if t.xmp == nil {
+				b, err := readBox(r, k, maxXMP)
+				if err != nil {
+					return t, err
+				}
+				t.xmp = b
+			}
+			continue
+		case "\xa9nam":
+			dst = &t.title
+		case "\xa9des":
+			dst = &t.description
 		case "meta":
 			m, err := readMetaKeys(r, k)
 			if err != nil {
@@ -784,4 +1011,102 @@ func iso6709Angle(s string, degDigits int) (float64, bool) {
 		return 0, false
 	}
 	return sign * deg, true
+}
+
+// parseLoci reads a 3GPP location information box's payload (3GPP TS
+// 26.244 8.10): version and flags, a language, the place's name (UTF-8
+// up to a NUL, or UTF-16 after a byte order mark up to a 16-bit NUL), a
+// role byte, then longitude, latitude and altitude as signed 16.16 fixed
+// point. Nil when it's cut short or out of range.
+func parseLoci(b []byte) *GPS {
+	if len(b) < 6 {
+		return nil
+	}
+	p := b[6:]
+	if len(p) >= 2 && p[0] == 0xFE && p[1] == 0xFF {
+		i := 2
+		for ; i+1 < len(p) && (p[i] != 0 || p[i+1] != 0); i += 2 {
+		}
+		p = p[min(i+2, len(p)):]
+	} else {
+		i := bytes.IndexByte(p, 0)
+		if i < 0 {
+			return nil
+		}
+		p = p[i+1:]
+	}
+	if len(p) < 13 {
+		return nil
+	}
+	fixed := func(b []byte) float64 { return float64(int32(binary.BigEndian.Uint32(b))) / 65536 }
+	g := &GPS{Longitude: fixed(p[1:]), Latitude: fixed(p[5:]), Altitude: fixed(p[9:]), HasAltitude: true}
+	if math.Abs(g.Latitude) > 90 || math.Abs(g.Longitude) > 180 {
+		return nil
+	}
+	return g
+}
+
+// xmpUUID is the uuid box type of an MP4's XMP packet.
+var xmpUUID = []byte{0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC}
+
+// movieXMP reads a movie's XMP packet: a top-level uuid box of xmpUUID (as
+// MP4 files have it), else the user data's XMP_ (QuickTime). Nil without
+// one.
+func movieXMP(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags) ([]byte, error) {
+	for _, b := range top {
+		// The box's header ends with its 16-byte extended type.
+		if b.Type != bmff.T("uuid") || b.HeaderLen < 24 {
+			continue
+		}
+		var id [16]byte
+		if _, err := r.ReadAt(id[:], b.Body()-16); err != nil {
+			return nil, fmt.Errorf("%w: reading uuid: %v", ErrMalformed, err)
+		}
+		if !bytes.Equal(id[:], xmpUUID) {
+			continue
+		}
+		if b.BodyLen() > maxXMP {
+			return nil, fmt.Errorf("%w: XMP of %d bytes", ErrUnsupported, b.BodyLen())
+		}
+		p := make([]byte, b.BodyLen())
+		if _, err := r.ReadAt(p, b.Body()); err != nil {
+			return nil, fmt.Errorf("%w: reading XMP: %v", ErrMalformed, err)
+		}
+		return p, nil
+	}
+	return udta.xmp, nil
+}
+
+// readMovieXMP reads a movie's XMP packet, nil without one.
+func readMovieXMP(r io.ReaderAt, size int64) ([]byte, error) {
+	top, err := bmff.ReadBoxes(r, 0, size)
+	if err != nil {
+		return nil, err
+	}
+	var udta qtTags
+	if moov, ok := bmff.Find(top, bmff.T("moov")); ok {
+		kids, err := bmff.ReadBoxes(r, moov.Body(), moov.End())
+		if err != nil {
+			return nil, err
+		}
+		if u, ok := bmff.Find(kids, bmff.T("udta")); ok {
+			if udta, err = readUdta(r, u); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return movieXMP(r, size, top, udta)
+}
+
+// movieXMPOnce parses a movie's XMP into x the first time it's called
+// (read false), and returns x: empty without a packet, or with one it
+// can't read.
+func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP, read *bool) *XMP {
+	if !*read {
+		*read = true
+		if packet, err := movieXMP(r, size, top, udta); err == nil && packet != nil {
+			*x, _ = ParseXMP(packet)
+		}
+	}
+	return x
 }

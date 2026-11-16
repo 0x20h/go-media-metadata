@@ -260,6 +260,20 @@ func movieSeeds(f *testing.F) {
 
 func FuzzReadVideo(f *testing.F) {
 	movieSeeds(f)
+	// The video corpus: Keys, user data, loci, XMP, turned tracks.
+	paths, _ := filepath.Glob("testdata/video/*.*")
+	for _, p := range paths {
+		if b, err := os.ReadFile(p); err == nil && !strings.HasSuffix(p, ".sh") {
+			f.Add(b)
+		}
+	}
+	// Transport streams, cut to their first packets: the tables, the SPS
+	// and the MDPM.
+	for _, name := range []string{"mdpm.m2ts", "plain.ts"} {
+		if b, err := os.ReadFile(filepath.Join("testdata/m2ts", name)); err == nil {
+			f.Add(b[:min(len(b), 64*192)])
+		}
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			v, err := ReadVideo(bytes.NewReader(data), int64(len(data)))
@@ -271,6 +285,12 @@ func FuzzReadVideo(f *testing.F) {
 			}
 			if g := v.GPS; g != nil && (math.Abs(g.Latitude) > 90 || math.Abs(g.Longitude) > 180) {
 				t.Fatalf("GPS %+v", g)
+			}
+			if w, h := v.Shown(); w != v.Width && w != v.Height || h != v.Width && h != v.Height {
+				t.Fatalf("shown %d×%d of %d×%d", w, h, v.Width, v.Height)
+			}
+			if v.Width < 0 || v.Height < 0 || v.Duration < 0 {
+				t.Fatalf("%d×%d, %v", v.Width, v.Height, v.Duration)
 			}
 		})
 	})

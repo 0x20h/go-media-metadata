@@ -387,6 +387,16 @@ func jpegSeeds(f *testing.F) {
 		f.Add(q.file)
 	}
 	f.Add(noTagJPEG(f, binary.LittleEndian))
+	// Apple maker notes: whole, and with the IFD's count and an offset
+	// broken (apple_makernote_test.go).
+	plainApple := plainJPEG(f)
+	for _, note := range [][]byte{appleNote(binary.BigEndian, testContentID), appleNote(binary.LittleEndian, testContentID)[:30]} {
+		f.Add(withSegments(plainApple, exifSegment(withMakerNote(binary.BigEndian, note))))
+	}
+	broken := appleNote(binary.BigEndian, testContentID)
+	binary.BigEndian.PutUint16(broken[14:], 0xFFFF)
+	binary.BigEndian.PutUint32(broken[14+2+12+8:], 0xFFFFFFF0)
+	f.Add(withSegments(plainApple, exifSegment(withMakerNote(binary.BigEndian, broken))))
 	// The files ExifTool wrote (testdata/exiftool).
 	paths, _ := filepath.Glob("testdata/exiftool/*.jpg")
 	for _, p := range paths {
@@ -400,6 +410,12 @@ func FuzzReadExif(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	imageIOSeeds(f)
+	// IFD0's XP tags (UTF-16LE), IFD0's DateTime with its offset.
+	for _, name := range []string{"xp-tags.jpg", "date-modify.jpg"} {
+		if b, err := os.ReadFile(filepath.Join("testdata/exiftool", name)); err == nil {
+			f.Add(b)
+		}
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			x, err := ReadExif(bytes.NewReader(data), int64(len(data)))

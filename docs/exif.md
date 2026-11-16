@@ -41,6 +41,15 @@ pages).
   up to the NUL. Writers put UTF-8 there, ExifTool among them.
 - **`XPTitle`:** IFD0's XPTitle, Windows' title: UTF-16 little-endian,
   up to its NUL.
+- **`ContentIdentifier`:** the Apple maker note's ContentIdentifier (tag
+  0x0011), the UUID an iPhone gives both halves of a Live Photo; the
+  movie's is `Video.ContentIdentifier`. The maker note is the Exif IFD's
+  MakerNote when it starts with `Apple iOS` and a NUL; its IFD follows at
+  offset 14, in the byte order written there, with offsets counted from
+  the note's start, as ExifTool reads it. Only that one IFD is read, every
+  offset checked against the note, so a damaged note reads as no
+  identifier and the rest of the Exif as it is. Writes keep the maker
+  note byte for byte.
 
 A field the file lacks, or has in a form this package doesn't accept,
 stays at its zero value.

@@ -150,6 +150,10 @@ func FuzzPlanMetadata(f *testing.F) {
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}
+	// A HEIC with two XMP items (the primary's and the gain map's).
+	if b, err := os.ReadFile("testdata/heif-xmp/primary-and-gainmap.heic"); err == nil {
+		f.Add(b)
+	}
 	d := time.Date(2031, 7, 8, 9, 10, 11, 0, time.UTC)
 	edits := []MetadataEdit{
 		{Exif: &ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}}, XMP: &XMPEdit{Title: ptr("t"), Rating: ptr(5)},

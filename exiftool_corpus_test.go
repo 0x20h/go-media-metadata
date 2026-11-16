@@ -23,8 +23,10 @@ type corpusWant struct {
 	Taken       string      `json:"taken"`
 	OffsetKnown bool        `json:"offsetKnown"`
 	GPS         *corpusGPS  `json:"gps"`
-	XMP         *corpusXMP  `json:"xmp"`
-	IPTC        *struct {
+	// ContentIdentifier is the Apple maker note's, "" without one.
+	ContentIdentifier string     `json:"contentIdentifier"`
+	XMP               *corpusXMP `json:"xmp"`
+	IPTC              *struct {
 		Title, Description string
 		Keywords           []string
 	} `json:"iptc"`
@@ -44,8 +46,9 @@ type corpusXMP struct {
 		W, H float64
 		Unit string
 		List []struct {
-			Name, Type string
-			X, Y, W, H float64
+			Name, Type, Description, FocusUsage, BarCodeValue string
+			X, Y, W, H, D, Rotation                           float64
+			Unit                                              string
 		}
 	}
 	// GPS is the XMP's position, and DateCreated and CreateDate its
@@ -122,6 +125,9 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 	if !want.GPS.matches(x.GPS) {
 		t.Errorf("%s: GPS %+v, want %+v", name, x.GPS, want.GPS)
 	}
+	if x.ContentIdentifier != want.ContentIdentifier {
+		t.Errorf("%s: ContentIdentifier %q, want %q", name, x.ContentIdentifier, want.ContentIdentifier)
+	}
 	packet, err := ReadXMP(bytes.NewReader(file), int64(len(file)))
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +150,8 @@ func checkCorpusFile(t *testing.T, name string, file []byte, want corpusWant) {
 		if r := w.Regions; r != nil {
 			want := Regions{AppliedTo: Dimensions{W: r.W, H: r.H, Unit: r.Unit}}
 			for _, g := range r.List {
-				want.List = append(want.List, Region{Name: g.Name, Type: g.Type, X: g.X, Y: g.Y, W: g.W, H: g.H})
+				want.List = append(want.List, Region{Name: g.Name, Type: g.Type, Description: g.Description, FocusUsage: g.FocusUsage,
+					BarCodeValue: g.BarCodeValue, X: g.X, Y: g.Y, W: g.W, H: g.H, D: g.D, Rotation: g.Rotation, Unit: g.Unit})
 			}
 			if p.Regions == nil || !sameRegions(p.Regions, &want) {
 				t.Errorf("%s: regions %+v, want %+v", name, p.Regions, want)
@@ -229,6 +236,25 @@ var corpusEdits = map[string]func(t *testing.T, file []byte, w *corpusWant) []by
 	},
 }
 
+// makerNote is the bytes of a JPEG's maker note, nil without one.
+func makerNote(t *testing.T, file []byte) []byte {
+	t.Helper()
+	i := bytes.Index(file, []byte("Exif\x00\x00"))
+	if i < 0 {
+		return nil
+	}
+	tr, first, ok := newTIFF(file[i+6:])
+	if !ok {
+		return nil
+	}
+	f, ok := tr.ifd(first)[tagExifIFD]
+	if !ok {
+		return nil
+	}
+	off, _ := tr.uint(f)
+	return tr.ifd(off)[tagMakerNote].value
+}
+
 func planOut(t *testing.T, file []byte, plan func() (*Plan, error)) []byte {
 	t.Helper()
 	p, err := plan()
@@ -261,6 +287,9 @@ func TestExifToolCorpusWriteBack(t *testing.T) {
 				t.Errorf("%s after %s: the image data changed", name, edit)
 			}
 			checkCorpusFile(t, name+" after "+edit, out, w)
+			if !bytes.Equal(makerNote(t, file), makerNote(t, out)) {
+				t.Errorf("%s after %s: the maker note changed", name, edit)
+			}
 			fn := strings.TrimSuffix(name, ".jpg") + "--" + strings.ReplaceAll(edit, " ", "-") + ".jpg"
 			if err := os.WriteFile(filepath.Join(dir, fn), out, 0o644); err != nil {
 				t.Fatal(err)

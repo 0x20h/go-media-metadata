@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
 
-// VideoEdit is a change to a movie's recording date and place. A field
-// left at its zero value leaves that part as it is, so the zero VideoEdit
-// changes nothing.
+// VideoEdit is a change to a movie's recording date and place, and to its
+// title, description, keywords and rating. A field left at its zero value
+// leaves that part as it is, so the zero VideoEdit changes nothing.
 type VideoEdit struct {
 	// Created sets the recording date: the Keys entry
 	// com.apple.quicktime.creationdate, as the time with its zone's
@@ -28,6 +31,60 @@ type VideoEdit struct {
 	// nil leaves the place as it is; RemoveGPS removes both instead.
 	GPS       *GPS
 	RemoveGPS bool
+
+	// Title and Description set the Keys entries com.apple.quicktime.title
+	// and .description, and the user data's ©nam and ©des and an MP4 item
+	// list's ©nam and desc where the movie has them. nil leaves them as
+	// they are; "" removes them.
+	Title, Description *string
+	// Keywords sets the Keys entry com.apple.quicktime.keywords and an MP4
+	// item list's keyw where the movie has one, as one value,
+	// comma-separated: ExifTool reads only one value of an entry. A
+	// keyword can't hold a comma. nil leaves them as they are; an empty
+	// list removes them.
+	Keywords *[]string
+	// Rating sets the Keys entry com.apple.quicktime.rating.user, -1
+	// (rejected) or 0 to 5, as text. nil leaves it as it is; RemoveRating
+	// removes it.
+	Rating       *int
+	RemoveRating bool
+}
+
+// check reports what's wrong with an edit.
+func (e VideoEdit) check() error {
+	if e.GPS != nil && e.RemoveGPS {
+		return fmt.Errorf("mediameta: GPS and RemoveGPS together")
+	}
+	if g := e.GPS; g != nil && !validGPS(g) {
+		return fmt.Errorf("mediameta: GPS position %+v out of range", *g)
+	}
+	if e.Rating != nil && e.RemoveRating {
+		return fmt.Errorf("mediameta: Rating and RemoveRating together")
+	}
+	if r := e.Rating; r != nil && (*r < -1 || *r > 5) {
+		return fmt.Errorf("mediameta: rating %d: not -1 to 5", *r)
+	}
+	// No slice is built here: an edit without text must cost what it did
+	// before text could be set (the bench gate counts allocations).
+	badText := func(t string) bool { return !utf8.ValidString(t) || len(t) > maxLeafBox/2 }
+	for _, t := range [...]*string{e.Title, e.Description} {
+		if t != nil && badText(*t) {
+			return fmt.Errorf("mediameta: %q: text that isn't UTF-8, or too long", *t)
+		}
+	}
+	if e.Keywords != nil {
+		for _, k := range *e.Keywords {
+			if badText(k) || strings.TrimSpace(k) == "" || strings.Contains(k, ",") {
+				return fmt.Errorf("mediameta: keyword %q: not UTF-8, too long, empty, or with a comma", k)
+			}
+		}
+	}
+	return nil
+}
+
+// textChange is whether the edit changes a text field.
+func (e VideoEdit) textChange() bool {
+	return e.Title != nil || e.Description != nil || e.Keywords != nil || e.Rating != nil || e.RemoveRating
 }
 
 // maxMoov caps the movie box a write loads into memory: its sample tables
@@ -43,23 +100,33 @@ const maxMoov = 64 << 20
 // Otherwise the movie box is rewritten; when it comes before the media
 // data, every chunk offset (stco, co64) that points past it moves with it.
 func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, error) {
-	if edit.GPS != nil && edit.RemoveGPS {
-		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
-	}
-	if g := edit.GPS; g != nil && !validGPS(g) {
-		return nil, fmt.Errorf("mediameta: GPS position %+v out of range", *g)
+	if err := edit.check(); err != nil {
+		return nil, err
 	}
 	if size < 8 {
 		return nil, errNotQuickTime
 	}
+	isTSOnly := func() bool { return !startsWithFtyp(src, size) && isTS(src, size) }
 	top, err := bmff.ReadBoxes(src, 0, size)
 	if err != nil {
+		if isTSOnly() {
+			return nil, errTSReadOnly
+		}
+		if isMatroska(src, size) {
+			return nil, errMatroskaReadOnly
+		}
 		if !looksLikeMovie(src, size) {
 			return nil, errNotQuickTime
 		}
 		return nil, err
 	}
 	if err := checkMovie(src, top); err != nil {
+		if isTSOnly() {
+			return nil, errTSReadOnly
+		}
+		if isMatroska(src, size) {
+			return nil, errMatroskaReadOnly
+		}
 		return nil, err
 	}
 	mi := -1
@@ -293,10 +360,13 @@ func (n *qtNode) handler() string {
 
 // applyVideoEdit makes the edit's changes to the parsed movie box.
 func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
-	if edit.Created == nil && edit.GPS == nil && !edit.RemoveGPS {
+	if edit.Created == nil && edit.GPS == nil && !edit.RemoveGPS && !edit.textChange() {
 		return nil
 	}
-	keys, err := keysMeta(moov, edit.Created != nil || edit.GPS != nil)
+	sets := edit.Created != nil || edit.GPS != nil || edit.Rating != nil ||
+		edit.Title != nil && *edit.Title != "" || edit.Description != nil && *edit.Description != "" ||
+		edit.Keywords != nil && len(*edit.Keywords) > 0
+	keys, err := keysMeta(moov, sets)
 	if err != nil {
 		return err
 	}
@@ -333,7 +403,99 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 			removeKids(udta, bmff.T("\xa9xyz"))
 		}
 	}
+	if !edit.textChange() {
+		return nil
+	}
+	items := itemList(udta)
+	for _, f := range [...]struct {
+		v               *string
+		key, udta, item string
+	}{
+		{edit.Title, keyTitle, "\xa9nam", "\xa9nam"},
+		{edit.Description, keyDesc, "\xa9des", "desc"},
+	} {
+		if f.v == nil {
+			continue
+		}
+		if *f.v == "" {
+			if keys != nil {
+				keys.remove(f.key)
+			}
+			if udta != nil {
+				removeKids(udta, bmff.T(f.udta))
+			}
+			if items != nil {
+				removeKids(items, bmff.T(f.item))
+			}
+			continue
+		}
+		if err := keys.set(f.key, *f.v); err != nil {
+			return err
+		}
+		if udta != nil {
+			setUdtaText(udta, f.udta, *f.v)
+		}
+		setItem(items, f.item, *f.v)
+	}
+	if kw := edit.Keywords; kw != nil {
+		if len(*kw) == 0 {
+			if keys != nil {
+				keys.remove(keyKeywords)
+			}
+			if items != nil {
+				removeKids(items, bmff.T("keyw"))
+			}
+		} else {
+			if err := keys.set(keyKeywords, strings.Join(*kw, ",")); err != nil {
+				return err
+			}
+			setItem(items, "keyw", strings.Join(*kw, ","))
+		}
+	}
+	if edit.RemoveRating && keys != nil {
+		keys.remove(keyRating)
+	}
+	if r := edit.Rating; r != nil {
+		if err := keys.set(keyRating, strconv.Itoa(*r)); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// itemList is the item list of an MP4's user data metadata (a meta box of
+// handler mdir), nil without one.
+func itemList(udta *qtNode) *qtNode {
+	if udta == nil {
+		return nil
+	}
+	m := udta.child(bmff.T("meta"))
+	if m == nil || !m.parsed() || m.handler() != "mdir" {
+		return nil
+	}
+	if l := m.child(bmff.T("ilst")); l != nil && l.parsed() {
+		return l
+	}
+	return nil
+}
+
+// setItem sets item typ of an item list to UTF-8 text s, where the list
+// has one; a missing item isn't added.
+func setItem(ilst *qtNode, typ, s string) {
+	if ilst == nil {
+		return
+	}
+	for i, it := range ilst.kids {
+		if it.typ == bmff.T(typ) {
+			ilst.kids[i] = &qtNode{typ: it.typ, kids: []*qtNode{textData(s)}}
+			return
+		}
+	}
+}
+
+// textData is a data box of UTF-8 text (type 1, locale 0).
+func textData(s string) *qtNode {
+	return &qtNode{typ: bmff.T("data"), body: append(binary.BigEndian.AppendUint32(make([]byte, 0, 8+len(s)), 1), append(make([]byte, 4), s...)...)}
 }
 
 // iso6709 is a position as ISO 6709 text, as cameras write it but with
@@ -477,7 +639,7 @@ func (k *keysNode) item(i uint32) *qtNode {
 // set sets key name's value to UTF-8 text s: the item's data box, or a new
 // key and item.
 func (k *keysNode) set(name, s string) error {
-	data := &qtNode{typ: bmff.T("data"), body: append(binary.BigEndian.AppendUint32(make([]byte, 0, 8+len(s)), 1), append(make([]byte, 4), s...)...)}
+	data := textData(s)
 	i := k.index(name)
 	if i == 0 {
 		k.names = append(k.names, name)

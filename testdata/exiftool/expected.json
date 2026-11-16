@@ -7,6 +7,10 @@
     "orientation": 8, "taken": "2019-12-31T23:59:59-05:00", "offsetKnown": true,
     "gps": { "lat": -33.865, "lon": 151.2094, "alt": -12 }
   },
+  "apple-makernote.jpg": {
+    "orientation": 1, "taken": "2024-06-01T18:20:00+02:00", "offsetKnown": true,
+    "contentIdentifier": "0D5B4E2C-7A41-4F7E-9C3B-2E8F6A1D9B07"
+  },
   "xmp.jpg": {
     "orientation": 1,
     "xmp": {
@@ -27,10 +31,22 @@
   "camera-mm.jpg": { "orientation": 1 },
   "date-digitized.jpg": { "orientation": 1 },
   "date-iptc.jpg": { "orientation": 1, "iptc": {} },
+  "date-modify.jpg": { "orientation": 1 },
   "date-xmp.jpg": {
     "orientation": 1,
     "xmp": { "dateTimeOriginal": { "time": "2021-06-07T08:09:10+01:00", "precision": 5 } }
   },
+  "regions-full.jpg": {
+    "orientation": 1,
+    "xmp": {
+      "regions": { "w": 64, "h": 48, "unit": "pixel", "list": [
+        { "name": "Ada", "type": "Face", "description": "left", "rotation": 0.5, "x": 0.25, "y": 0.33, "w": 0.25, "h": 0.33, "unit": "normalized" },
+        { "type": "Focus", "focusUsage": "EvaluatedUsed", "x": 40, "y": 30, "d": 8, "unit": "pixel" },
+        { "type": "BarCode", "barCodeValue": "4006381333931", "x": 0.9, "y": 0.1, "w": 0.1, "h": 0.1, "unit": "normalized" }
+      ] }
+    }
+  },
+  "xp-tags.jpg": { "orientation": 1 },
   "iptc-utf8.jpg": {
     "orientation": 1,
     "iptc": { "title": "Grün", "keywords": ["Brücke", "See"], "description": "Am See" }
