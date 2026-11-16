@@ -114,8 +114,6 @@ func TestParseXMPErrors(t *testing.T) {
 		"mismatched":         `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:Description>`,
 		"undeclared prefix":  `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><dc:title/></rdf:RDF>`,
 		"too deep":           deep,
-		"unknown entity":     `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">&bomb;</rdf:RDF>`,
-		"not UTF-8":          "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\xff</rdf:RDF>",
 		"two roots elements": `<a/><b/>`,
 		// A prefix that isn't an XML name: EditXMP would reuse it for a
 		// new element that no XML parser reads.
@@ -124,6 +122,17 @@ func TestParseXMPErrors(t *testing.T) {
 	} {
 		if _, err := ParseXMP([]byte(packet)); !errors.Is(err, ErrMalformed) {
 			t.Errorf("%s: %v, want ErrMalformed", name, err)
+		}
+	} // Malformed only by their characters: read leniently, never edited.
+	for name, packet := range map[string]string{
+		"unknown entity": `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">&bomb;</rdf:RDF>`,
+		"not UTF-8":      "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\xff</rdf:RDF>",
+	} {
+		if _, err := ParseXMP([]byte(packet)); !errors.Is(err, ErrXMPRepaired) {
+			t.Errorf("%s: %v, want ErrXMPRepaired", name, err)
+		}
+		if _, err := EditXMP([]byte(packet), XMPEdit{Rating: ptr(1)}); !errors.Is(err, ErrMalformed) {
+			t.Errorf("%s: EditXMP %v, want ErrMalformed", name, err)
 		}
 	}
 }
@@ -273,7 +282,11 @@ func FuzzEditXMP(f *testing.F) {
 	f.Add([]byte(lightroomXMP))
 	f.Add([]byte(hierarchicalXMP))
 	f.Add([]byte(regionsXMP))
+	f.Add([]byte(fullRegionsXMP))
+	f.Add([]byte(whereWhenXMP("51,30N", "0,7.5W", "71/2", "1", "2025-05-04T13:14:15.25", "2025")))
+	f.Add([]byte(whereWhenXMP("51.5", "-0.125", "35.5", "0", "2025-05-04T13:14Z", "2019:12:31 23:59:59.5-05:00")))
 	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description/></rdf:RDF>`))
+	f.Add([]byte(`<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/" tiff:Orientation="6"/></rdf:RDF>`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			before, err := ParseXMP(data)
@@ -296,6 +309,32 @@ func FuzzEditXMP(f *testing.F) {
 			}
 			if before.Description != after.Description {
 				t.Fatalf("description %q became %q", before.Description, after.Description)
+			}
+			checkWhereWhenValid(t, before)
+			// The packet's own regions, one renamed, write back with
+			// everything else they hold.
+			if r := before.Regions; r != nil && len(r.List) > 0 && checkRegions(r) == nil {
+				renamed := *r
+				renamed.List = slices.Clone(r.List)
+				renamed.List[0].Name = "Renamed"
+				out, err := EditXMP(data, XMPEdit{Regions: &renamed})
+				if err != nil {
+					t.Fatalf("EditXMP of the packet's own regions: %v", err)
+				}
+				back, err := ParseXMP(out)
+				if err != nil || back.Regions == nil || !sameRegions(back.Regions, &renamed) {
+					t.Fatalf("regions %+v wrote back as %+v (%v)\n%s", renamed, back.Regions, err, out)
+				}
+			}
+			// The edit doesn't touch the position or the dates.
+			if !sameGPS(before.GPS, after.GPS) || !sameXMPDate(before.DateCreated, after.DateCreated) || !sameXMPDate(before.CreateDate, after.CreateDate) ||
+				!sameXMPDate(before.DateTimeOriginal, after.DateTimeOriginal) {
+				t.Fatalf("position or dates changed: %+v %+v %+v, now %+v %+v %+v",
+					before.GPS, before.DateCreated, before.CreateDate, after.GPS, after.DateCreated, after.CreateDate)
+			}
+			// Nor the orientation, which is always one ParseXMP accepts.
+			if before.Orientation != after.Orientation || before.Orientation != 0 && !before.Orientation.Valid() {
+				t.Fatalf("orientation %d became %d", before.Orientation, after.Orientation)
 			}
 		})
 	})

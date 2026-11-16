@@ -150,6 +150,10 @@ func FuzzPlanMetadata(f *testing.F) {
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}
+	// A HEIC with two XMP items (the primary's and the gain map's).
+	if b, err := os.ReadFile("testdata/heif-xmp/primary-and-gainmap.heic"); err == nil {
+		f.Add(b)
+	}
 	d := time.Date(2031, 7, 8, 9, 10, 11, 0, time.UTC)
 	edits := []MetadataEdit{
 		{Exif: &ExifEdit{DateTimeOriginal: &d, GPS: &GPS{Latitude: 1, Longitude: 2}}, XMP: &XMPEdit{Title: ptr("t"), Rating: ptr(5)},
@@ -158,6 +162,10 @@ func FuzzPlanMetadata(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
+			if iim, err := ReadIPTC(bytes.NewReader(data), int64(len(data))); err == nil && iim != nil {
+				_, _ = ParseIPTC(iim)
+			}
+			hash, hashErr := imageDataMD5(t, data)
 			for _, e := range edits {
 				p, err := PlanMetadata(bytes.NewReader(data), int64(len(data)), e)
 				if err != nil {
@@ -165,6 +173,12 @@ func FuzzPlanMetadata(f *testing.F) {
 				}
 				checkPlan(t, data, p)
 				out := written(t, p)
+				// A metadata write leaves the image data.
+				if hashErr == nil {
+					if after, err := imageDataMD5(t, out); after != hash {
+						t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+					}
+				}
 				if want := sequential(t, data, e); !bytes.Equal(out, want) {
 					t.Fatalf("%d bytes, the parts one after another %d", len(out), len(want))
 				}

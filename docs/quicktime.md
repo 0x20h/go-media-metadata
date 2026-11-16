@@ -14,25 +14,74 @@ Apple's QuickTime File Format, and MP4 on the ISO base media file format
 - make and model of the recording device
 - content identifier that pairs a Live Photo's video with its still
   image
+- title, description, keywords and rating
 
 Where each field comes from, in order of preference:
 
 - **Keys metadata** (`com.apple.quicktime.*`, in a QuickTime `meta` box
-  or an MP4-style one): the date, place, make and model.
-- **User data** (`©day`, `©xyz`, `©mak`, `©mod`) otherwise.
+  or an MP4-style one): the date, place, make, model, title
+  (`title`), description (`description`), keywords (`keywords`) and
+  rating (`rating.user`).
+- **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
+  for the title, `©des` or `desc` for the description, `keyw`.
+- **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
+  3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
+  UserData Title and Description). For the title and description, the
+  item list comes before the user data, whatever their order in the file,
+  as ExifTool's `-Title` and `-Description` take them.
+- **3GPP `loci`** in the user data, for the place, as 3GP and Android
+  writers put it: longitude, latitude and altitude as 16.16 fixed point,
+  after the place's name and role (3GPP TS 26.244).
+- **The movie's XMP**, for the date and the place. MP4 files keep it in a
+  top-level `uuid` box (`BE7ACFCB-97A9-42E8-9C71-999491E3AFAC`), and
+  QuickTime movies in the user data's `XMP_`. The date is the first of
+  `exif:DateTimeOriginal`, `photoshop:DateCreated` and `xmp:CreateDate`,
+  as `TakenFrom` orders them. Without a time zone, `OffsetKnown` is false.
+  The place comes from `exif:GPSLatitude` and `exif:GPSLongitude`. The
+  packet is read only when the sources before it have nothing.
+  `ReadXMP` returns it too.
 - **The movie header**, for the date, as a last resort. That date is in
   UTC.
 
-Locations are ISO 6709 strings and dates ISO 8601.
+Locations are ISO 6709 strings and dates ISO 8601. Keywords are split at
+commas. A rating is −1 (rejected) to 5, written as text or as an integer.
 
 The orientation comes from the track header's matrix, in the Exif
 numbering images use. It covers the four rotations and the four
-mirrorings; any other matrix gives 0.
+mirrorings; any other matrix gives 0. `Width` and `Height` are the
+track's size as stored; `Video.Shown()` gives the size as shown, swapped
+for a quarter turn (orientations 5 to 8), as `ImageSize.Shown` does.
 
 `ReadVideo` reads only box headers and the few small boxes these fields
 are in, wherever `moov` sits, and never the sample tables or the media
-data. For a 1 MB test movie that is 870 bytes. Its results are checked
-against ExifTool on the test movies.
+data. For a 1 MB test movie that is 870 bytes.
+
+`TestVideoCorpusAgreesWithExifTool` checks every field against ExifTool
+on `testdata/video`. The files are synthetic: an FFmpeg test pattern,
+CC0, made by its `make.sh`. Each holds the metadata in one place:
+
+- Keys (date with offset, GPS, make, model, content identifier);
+- the user data (`©day`, `©xyz`, `©mak`, `©mod`);
+- 3GPP `loci` in a 3GP;
+- XMP only, in an MP4's `uuid` box and in a MOV's `XMP_`;
+- tracks turned 90° and 270°.
+
+### Movies cut short or with junk at the end
+
+Some movies have a broken layout that ExifTool reads past:
+- a file cut short, so its `mdat` claims more bytes than are there
+- junk after the last box: a partial header, stray bytes, or a header
+  whose size is impossible
+
+`ReadVideo` (and `ReadAll`, `ReadImageSize`, `ReadOrientation`) read
+these too. They keep the boxes before the break, and a last box that runs
+past the end is cut to the file. This applies only when the file starts
+like a movie (`ftyp`, `moov`, `mdat`, `wide`, `free` or `skip`) and holds
+a whole `moov`. A movie whose `moov` itself is cut is still `ErrMalformed`.
+
+A well-formed movie takes the strict path, at the same cost as before.
+Writes always read the boxes strictly, so they refuse these files
+(`ErrMalformed`) rather than write past what's there.
 
 ## Writing the orientation
 
@@ -51,10 +100,12 @@ in its track header (`tkhd`).
 
 ExifTool and FFmpeg read the rotations written.
 
-## Writing the date and place
+## Writing the date, place, title, description, keywords and rating
 
 `SetVideoMetadata` and `PlanVideoMetadata` take a `VideoEdit`: a recording date
-(`Created`), a place (`GPS`), or the place removed (`RemoveGPS`).
+(`Created`), a place (`GPS`), or the place removed (`RemoveGPS`); a
+title, description, keywords and rating, or any of them removed (an
+empty title, description or keyword list, or `RemoveRating`).
 
 Where each value is written:
 
@@ -70,6 +121,17 @@ Where each value is written:
 
 Removing the place removes the Keys entry and `©xyz`; the Keys entries
 after it are renumbered.
+
+The title, description, keywords and rating:
+
+- **Keys:** `com.apple.quicktime.title`, `.description`, `.keywords` and
+  `.rating.user`, each as UTF-8 text, as ExifTool writes them.
+  Keywords are one comma-separated value, because ExifTool reads only one
+  value of an entry, so a keyword can't contain a comma. A rating is
+  written as text, −1 to 5.
+- **User data** `©nam` and `©des`, and an **MP4 item list**'s `©nam`,
+  `desc` and `keyw`, where the movie has them. They are set to the same
+  values, or removed with them. None is added.
 
 ### In place where it can be
 
@@ -100,4 +162,35 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   every decoded frame is the same after the edit (`framemd5`), and
   FFmpeg and ExifTool read the values written. ExifTool's validation
   finds nothing new in the files written.
-- A fuzz target, `FuzzVideoEdit`.
+- FFmpeg-made movies with a title (and in the MP4, a description), MOV
+  and MP4, `moov` first and last: setting and removing the title,
+  description, keywords and rating (`TestVideoTextEncoded`). ExifTool
+  must read the new values from Keys and from the entries the movie had,
+  and none after removal. The decoded frames must be the same, and the
+  validation must find nothing new.
+- A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.
+
+## AVI and MPEG program streams
+
+Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
+`ReadOrientation`, which give orientation 1). Writes give an error that is
+`ErrUnsupported`.
+
+- **AVI** (RIFF, as older cameras recorded it, often MJPEG):
+  - The duration and size come from the main header (`avih`): frames ×
+    microseconds per frame.
+  - The recording date is the `IDIT` chunk (asctime or Exif layout), else
+    the INFO list's `ICRD` when it holds a whole date. A year alone isn't
+    taken: it would read as 1 January.
+  - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
+    keywords `IKEY`, split at `;` or `,`.
+- **MPEG program streams** (`.mpg`, `.vob`):
+  - The size comes from the first video sequence header.
+  - The duration runs from the first video PES packet's PTS to the last's,
+    plus one frame at the sequence header's rate. Without PTS it's the span
+    of the packs' system clock references.
+  - ExifTool gives the size, and no duration for a variable bitrate. The
+    tests check the duration against ffprobe.
+
+Both are checked against ExifTool on `testdata/avi` and `testdata/mpegps`,
+synthetic clips made by those folders' `make.sh`.

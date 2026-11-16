@@ -23,6 +23,21 @@ packet is capped at 4 MiB.
   its own. A top-level `uuid` box holds the XMP. The file's `ftyp` brand
   is `crx `.
 
+## Image size
+
+`ReadImageSize` gives the full-size image, as ExifTool's composite
+`ImageSize` does:
+
+- **RAF:** RawImageCroppedSize (tag 0x0111 of the RAF directory that byte
+  92 of the header points to).
+- **CR3 and Canon CR2:** the Exif IFD's ExifImageWidth and
+  ExifImageHeight. CR2's IFD0 is a preview.
+- **RW2:** the image inside the sensor's borders (IFD0 tags 0x0004 to
+  0x0007).
+- **The other TIFF-based files (DNG, NEF, ARW, ORF):** the largest
+  full-resolution image (NewSubfileType without its reduced-resolution
+  bit) in IFD0 and its SubIFDs. A DNG's DefaultCropSize isn't applied.
+
 ## Previews
 
 `ReadPreviews` finds the JPEG previews a TIFF-based RAW embeds, largest
@@ -98,6 +113,9 @@ Orientation value (for a CR3, CMT1's), where it sits: a tag with its
 value in its entry (SHORT, or LONG as some writers have it). Where the
 file's XMP packet has `tiff:Orientation`, as an attribute or an element,
 that digit is changed too, so the two agree.
+
+A sidecar `.xmp` next to the file isn't written. To read one with the
+file's own metadata, see `MergeXMP` in [xmp](xmp.md).
 
 The plan is always in place, and nothing else is written: image data and
 maker notes stay byte for byte. A file without the tag is refused

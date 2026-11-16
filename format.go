@@ -19,6 +19,12 @@ const (
 	formatJXL
 	formatRAW // TIFF-based, CR3 or RAF
 	formatMovie
+	formatTS // an MPEG-2 transport stream: .ts, .mts, .m2ts
+	formatBMP
+	formatGIF
+	formatMatroska // Matroska or WebM
+	formatAVI      // RIFF AVI
+	formatMPEGPS   // an MPEG program stream
 )
 
 // detectFormat tells a file's format from its first bytes, and for an
@@ -64,6 +70,24 @@ func detectFormat(r io.ReaderAt, size int64) format {
 	}
 	if looksLikeMovie(r, size) {
 		return formatMovie
+	}
+	if isTS(r, size) {
+		return formatTS
+	}
+	if isMatroska(r, size) {
+		return formatMatroska
+	}
+	if isAVI(r, size) {
+		return formatAVI
+	}
+	if isMPEGPS(r, size) {
+		return formatMPEGPS
+	}
+	switch {
+	case isGIF(r, size):
+		return formatGIF
+	case isBMP(r, size):
+		return formatBMP
 	}
 	return formatUnknown
 }

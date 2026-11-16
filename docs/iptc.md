@@ -18,6 +18,14 @@ as JPEG files carry it: in APP13, among Photoshop's image resource blocks
 | `Title` | 2:05 Object Name | dc:title |
 | `Keywords` | 2:25 Keywords, repeated | dc:subject |
 | `Description` | 2:120 Caption/Abstract | dc:description |
+| `DateCreated` | 2:55 Date Created, 2:60 Time Created | photoshop:DateCreated |
+
+**Dates.** `DateCreated` is read only. 2:55 is `CCYYMMDD`, where IIM
+allows `00` for an unknown month or day, and the `Date` is then as
+precise as the parts that are known. 2:60 is `HHMMSS±HHMM`. A time
+without its offset, as some writers give it, or with an invalid one, is
+read as a clock time with `OffsetKnown` false. A time that isn't valid
+leaves the date without one. A date that doesn't exist is none.
 
 **Character set.** Text is UTF-8 when 1:90 says `ESC % G`, or when it is
 valid UTF-8 anyway. Otherwise it's read as Latin-1 (Windows-1252), as

@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -33,6 +34,26 @@ type XMP struct {
 	// Regions are the image's face and other regions (mwg-rs:Regions),
 	// nil without any; see Regions.
 	Regions *Regions
+	// GPS is the position in exif:GPSLatitude and exif:GPSLongitude, with
+	// exif:GPSAltitude and exif:GPSAltitudeRef: nil without a valid
+	// latitude and longitude. See parseXMPCoord for the forms read.
+	GPS *GPS
+	// DateCreated is photoshop:DateCreated, when the photo was taken, and
+	// CreateDate xmp:CreateDate, when the file was made (for a photo, as a
+	// rule, the same). nil without a valid date.
+	DateCreated, CreateDate *Date
+	// ModifyDate is xmp:ModifyDate, when the file was last changed: the
+	// last of ExifTool's date fallbacks, after the capture and creation
+	// dates. nil without a valid date.
+	ModifyDate *Date
+	// DateTimeOriginal is exif:DateTimeOriginal, the Exif tag's XMP
+	// mirror (some writers put the date only there), nil without a valid
+	// date.
+	DateTimeOriginal *Date
+	// Orientation is tiff:Orientation, the Exif tag's XMP mirror, 0
+	// without a valid one (1 to 8). Sidecars carry it when the image was
+	// turned after it was taken; see MergeXMP.
+	Orientation Orientation
 }
 
 // XMPEdit is a change to an XMP packet. A nil field leaves that property
@@ -61,6 +82,13 @@ type XMPEdit struct {
 	// without regions removes it. Fields of the old regions that Region doesn't model (a region's
 	// rotation, extensions) aren't kept.
 	Regions *Regions
+	// DateCreated, CreateDate, DateTimeOriginal and ModifyDate set
+	// photoshop:DateCreated, xmp:CreateDate, exif:DateTimeOriginal and
+	// xmp:ModifyDate, the dates ParseXMP reads. nil leaves the property as
+	// it is; a Date with a zero Time removes it. A date is written to its
+	// Precision (PrecisionSecond when unset), with its fraction of a
+	// second when it has one, and its offset when OffsetKnown.
+	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
 }
 
 // Namespaces of the properties read and written.
@@ -181,7 +209,9 @@ func (d *xmpDoc) props(ns, local string) []prop {
 // value is a simple property's value.
 func (p prop) value() string {
 	if p.elem == nil {
-		return p.desc.attrs[p.attr].Value
+		// Trimmed like an element's text: a value reads the same written
+		// either way, and an edit may move it from one to the other.
+		return strings.TrimSpace(p.desc.attrs[p.attr].Value)
 	}
 	// <ns:p rdf:value="…"/> or <ns:p rdf:resource="…"/> aren't read here.
 	return strings.TrimSpace(textOf(p.elem))
@@ -250,8 +280,18 @@ func (d *xmpDoc) langAlt(ns, local string) string {
 // element, an rdf:RDF one, or either in an xpacket wrapper. Properties in
 // any of the packet's rdf:Description elements count; the first
 // occurrence of each wins.
+//
+// A packet that is malformed only by characters XML doesn't allow reads
+// leniently: ParseXMP returns its fields with ErrXMPRepaired.
 func ParseXMP(packet []byte) (XMP, error) {
 	d, err := parseXMPDoc(packet)
+	if errors.Is(err, ErrMalformed) && len(packet) <= maxXMP {
+		if fixed, changed := repairXML(packet); changed {
+			if d, err2 := parseXMPDoc(fixed); err2 == nil {
+				return d.fields(), ErrXMPRepaired
+			}
+		}
+	}
 	if err != nil {
 		return XMP{}, err
 	}
@@ -266,6 +306,12 @@ func (d *xmpDoc) fields() XMP {
 	x.HierarchicalKeywords = d.stringBag(nsLR, "hierarchicalSubject")
 	x.PersonInImage = d.stringBag(nsIPTCX, "PersonInImage")
 	x.Regions = d.regions()
+	x.GPS = d.xmpGPS()
+	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
+	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
+	x.ModifyDate = d.xmpDate(nsXMP, "ModifyDate")
+	x.DateTimeOriginal = d.xmpDate(nsExif, "DateTimeOriginal")
+	x.Orientation = d.xmpOrientation()
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {
 		f, err := strconv.ParseFloat(ps[0].value(), 64)
 		if err == nil && f == math.Trunc(f) && f >= -1 && f <= 5 {
@@ -318,6 +364,11 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			}
 		}
 	}
+	for _, at := range [...]*Date{edit.DateCreated, edit.CreateDate, edit.DateTimeOriginal, edit.ModifyDate} {
+		if err := checkXMPDate(at); err != nil {
+			return nil, err
+		}
+	}
 	if err := checkRegions(edit.Regions); err != nil {
 		return nil, err
 	}
@@ -349,6 +400,23 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 	}
 	if edit.PersonInImage != nil {
 		changed = d.setBag(nsIPTCX, "PersonInImage", *edit.PersonInImage) || changed
+	}
+	for _, p := range [...]struct {
+		d         *Date
+		ns, local string
+	}{
+		{edit.DateCreated, nsPhotoshop, "DateCreated"},
+		{edit.CreateDate, nsXMP, "CreateDate"},
+		{edit.DateTimeOriginal, nsExif, "DateTimeOriginal"},
+		{edit.ModifyDate, nsXMP, "ModifyDate"},
+	} {
+		switch {
+		case p.d == nil:
+		case p.d.Time.IsZero():
+			changed = d.remove(p.ns, p.local) || changed
+		default:
+			changed = d.setSimple(p.ns, p.local, formatXMPDate(*p.d)) || changed
+		}
 	}
 	if edit.Regions != nil {
 		changed = d.setRegions(edit.Regions) || changed

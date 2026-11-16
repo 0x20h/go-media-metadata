@@ -34,8 +34,28 @@ type Exif struct {
 	DateTimeOriginal time.Time
 	OffsetKnown      bool
 
+	// DateTimeDigitized is when the image was stored digitally, the tag
+	// ExifTool calls CreateDate: DateTimeDigitized with
+	// SubSecTimeDigitized and OffsetTimeDigitized, read as
+	// DateTimeOriginal is. For a camera's photo it is, as a rule, the same
+	// time; for a scan, when it was scanned. See ReadTaken for the date a
+	// photo was taken whichever tags it has.
+	DateTimeDigitized    time.Time
+	DigitizedOffsetKnown bool
+
+	// DateTime is IFD0's DateTime, when the file was last changed
+	// (ExifTool's ModifyDate), with SubSecTime and OffsetTime, read as
+	// DateTimeOriginal is. A file stripped of its capture dates (as
+	// messengers send photos) may keep only this one; ReadTaken takes it
+	// last.
+	DateTime            time.Time
+	DateTimeOffsetKnown bool
+
 	// GPS is where the photo was taken, nil without a valid position.
 	GPS *GPS
+
+	// Camera is the camera, lens and exposure, read only.
+	Camera Camera
 
 	// ImageDescription is IFD0's ImageDescription tag, as its bytes are
 	// (writers put UTF-8 there, ExifTool among them), up to its NUL.
@@ -43,6 +63,16 @@ type Exif struct {
 	// XPTitle is IFD0's XPTitle tag (Windows' title, UTF-16 little-endian
 	// in BYTE data), up to its NUL.
 	XPTitle string
+	// XPComment, XPAuthor, XPKeywords and XPSubject are IFD0's other
+	// Windows tags, read as XPTitle is: a caption, the author, keywords
+	// separated by ";" as written, and a subject. Read only.
+	XPComment, XPAuthor, XPKeywords, XPSubject string
+
+	// ContentIdentifier is the Apple maker note's ContentIdentifier (tag
+	// 0x0011), "" without one: the UUID an iPhone gives both halves of a
+	// Live Photo, the still and the movie (Video.ContentIdentifier), so
+	// the two can be paired.
+	ContentIdentifier string
 }
 
 // GPS is a position from the Exif GPS IFD.
@@ -60,10 +90,17 @@ type GPS struct {
 const (
 	tagImageDescription = 0x010E
 	tagXPTitle          = 0x9C9B
+	tagXPComment        = 0x9C9C
+	tagXPAuthor         = 0x9C9D
+	tagXPKeywords       = 0x9C9E
+	tagXPSubject        = 0x9C9F
 
 	tagExifIFD            = 0x8769
 	tagGPSIFD             = 0x8825
 	tagDateTimeOriginal   = 0x9003
+	tagDateTime           = 0x0132 // IFD0's, ExifTool's ModifyDate
+	tagSubSecTime         = 0x9290
+	tagOffsetTime         = 0x9010
 	tagOffsetTimeOriginal = 0x9011
 	tagSubSecTimeOriginal = 0x9291
 
@@ -273,14 +310,20 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 	if f, ok := ifd0[tagImageDescription]; ok && f.typ == typeASCII {
 		x.ImageDescription = nulTerminated(f.value)
 	}
-	if f, ok := ifd0[tagXPTitle]; ok && (f.typ == typeByte || f.typ == typeUndef) {
-		x.XPTitle = utf16LE(f.value)
-	}
+	readXPTags(ifd0, &x)
+	var exif map[uint16]field
 	if f, ok := ifd0[tagExifIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
-			x.DateTimeOriginal, x.OffsetKnown = t.dateTimeOriginal(ifd(off))
+			exif = ifd(off)
+			x.DateTimeOriginal, x.OffsetKnown = t.exifDate(exif, tagDateTimeOriginal, tagSubSecTimeOriginal, tagOffsetTimeOriginal)
+			x.DateTimeDigitized, x.DigitizedOffsetKnown = t.exifDate(exif, tagDateTimeDigitized, tagSubSecTimeDigitized, tagOffsetTimeDigitized)
+			if f, ok := exif[tagMakerNote]; ok && f.typ == typeUndef {
+				x.ContentIdentifier = appleContentIdentifier(f.value)
+			}
 		}
 	}
+	x.DateTime, x.DateTimeOffsetKnown = t.exifDateIn(ifd0, exif, tagDateTime, tagSubSecTime, tagOffsetTime)
+	x.Camera = t.camera(ifd0, exif)
 	if f, ok := ifd0[tagGPSIFD]; ok {
 		if off, ok := t.uint(f); ok && off != first {
 			x.GPS = t.gps(ifd(off))
@@ -292,10 +335,18 @@ func (t tiffReader) exif(ifd func(uint32) map[uint16]field, first uint32) Exif {
 // exifDateLayout is the layout of Exif date and time tags.
 const exifDateLayout = "2006:01:02 15:04:05"
 
-// dateTimeOriginal reads DateTimeOriginal, SubSecTimeOriginal and
-// OffsetTimeOriginal from the Exif IFD.
-func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
-	s, ok := ascii(exif[tagDateTimeOriginal])
+// exifDate reads a date tag of the Exif IFD with its sub-second and
+// offset tags: DateTimeOriginal, SubSecTimeOriginal and
+// OffsetTimeOriginal, or DateTimeDigitized and its two.
+func (t tiffReader) exifDate(exif map[uint16]field, dateTag, subTag, offTag uint16) (time.Time, bool) {
+	return t.exifDateIn(exif, exif, dateTag, subTag, offTag)
+}
+
+// exifDateIn reads a date tag from one IFD, its sub-second and offset tags
+// from another: IFD0's DateTime has them (SubSecTime, OffsetTime) in the
+// Exif IFD.
+func (t tiffReader) exifDateIn(dates, exif map[uint16]field, dateTag, subTag, offTag uint16) (time.Time, bool) {
+	s, ok := ascii(dates[dateTag])
 	if !ok {
 		return time.Time{}, false
 	}
@@ -303,13 +354,13 @@ func (t tiffReader) dateTimeOriginal(exif map[uint16]field) (time.Time, bool) {
 	if !ok {
 		return time.Time{}, false
 	}
-	if sub, ok := ascii(exif[tagSubSecTimeOriginal]); ok && sub != "" && len(sub) <= 9 {
+	if sub, ok := ascii(exif[subTag]); ok && sub != "" && len(sub) <= 9 {
 		if n, err := strconv.ParseUint(sub, 10, 32); err == nil {
 			at = at.Add(time.Duration(n) * time.Duration(math.Pow10(9-len(sub))))
 		}
 	}
 	// OffsetTimeOriginal, else an offset some writers put after the time.
-	off, ok := ascii(exif[tagOffsetTimeOriginal])
+	off, ok := ascii(exif[offTag])
 	if !ok || off == "" {
 		off = inline
 	}
@@ -446,4 +497,49 @@ func (t tiffReader) gps(g map[uint16]field) *GPS {
 		}
 	}
 	return p
+}
+
+// readXPTags reads IFD0's Windows tags: UTF-16 little-endian text in BYTE
+// (or UNDEFINED) arrays.
+func readXPTags(ifd0 map[uint16]field, x *Exif) {
+	for _, t := range [...]struct {
+		tag uint16
+		dst *string
+	}{
+		{tagXPTitle, &x.XPTitle}, {tagXPComment, &x.XPComment}, {tagXPAuthor, &x.XPAuthor},
+		{tagXPKeywords, &x.XPKeywords}, {tagXPSubject, &x.XPSubject},
+	} {
+		if f, ok := ifd0[t.tag]; ok && (f.typ == typeByte || f.typ == typeUndef) {
+			*t.dst = utf16LE(f.value)
+		}
+	}
+}
+
+// appleMakerNote is how an Apple maker note starts: "Apple iOS", a NUL, a
+// version (1), and the byte order of the IFD that follows it at offset 14.
+// Its offsets count from the start of the maker note.
+const appleMakerNote = "Apple iOS\x00"
+
+// tagAppleContentIdentifier is the Apple maker note's ContentIdentifier.
+const tagAppleContentIdentifier = 0x0011
+
+// appleContentIdentifier is the ContentIdentifier of an Apple maker note,
+// "" for another maker's note or one that's damaged: the IFD is read with
+// every offset checked against the note, and only that one IFD, so a
+// truncated or looping note reads as no identifier.
+func appleContentIdentifier(note []byte) string {
+	if len(note) < 16 || string(note[:len(appleMakerNote)]) != appleMakerNote {
+		return ""
+	}
+	var t tiffReader
+	switch string(note[12:14]) {
+	case "MM":
+		t = tiffReader{data: note, order: binary.BigEndian}
+	case "II":
+		t = tiffReader{data: note, order: binary.LittleEndian}
+	default:
+		return ""
+	}
+	id, _ := ascii(t.ifd(14)[tagAppleContentIdentifier])
+	return id
 }

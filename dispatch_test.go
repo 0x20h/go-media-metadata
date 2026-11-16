@@ -12,7 +12,7 @@ import (
 
 // One file of each format the orientation functions take, and what they
 // say for the ones they don't.
-func dispatchFiles(t *testing.T) map[string][]byte {
+func dispatchFiles(t testing.TB) map[string][]byte {
 	heif, _ := testbuild.Build(testbuild.Default())
 	movie, _, _ := qtbuild.Build(qtbuild.Default())
 	files := map[string][]byte{
@@ -84,9 +84,12 @@ func TestOrientationRefusals(t *testing.T) {
 	if _, err := PlanRotation(bytes.NewReader(raf), int64(len(raf)), 90); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("RAF: %v, want ErrUnsupported", err)
 	}
+	// A GIF keeps no orientation: it reads as 1, and nothing writes one.
 	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
+	if o, err := ReadOrientation(bytes.NewReader(gif), int64(len(gif))); err != nil || o != 1 {
+		t.Errorf("ReadOrientation(GIF): %v, %v; want 1", o, err)
+	}
 	for name, err := range map[string]error{
-		"ReadOrientation": func() error { _, err := ReadOrientation(bytes.NewReader(gif), int64(len(gif))); return err }(),
 		"PlanOrientation": func() error { _, err := PlanOrientation(bytes.NewReader(gif), int64(len(gif)), 1); return err }(),
 		"PlanRotation":    func() error { _, err := PlanRotation(bytes.NewReader(gif), int64(len(gif)), 90); return err }(),
 		"ReadExif":        func() error { _, err := ReadExif(bytes.NewReader(gif), int64(len(gif))); return err }(),
@@ -98,4 +101,100 @@ func TestOrientationRefusals(t *testing.T) {
 			t.Errorf("%s(GIF): %v, want ErrUnknownFormat", name, err)
 		}
 	}
+}
+
+// Every orientation entry point, on files of every format and their
+// mutations: the format is told apart (ftyp brands, TIFF and RAF magic,
+// JPEG XL), and whatever it routes to keeps the plan's guarantees.
+func FuzzOrientationAnyFormat(f *testing.F) {
+	for _, file := range dispatchFiles(f) {
+		f.Add(file)
+	}
+	for _, s := range rawSamples(f) { // CR2, NEF, ARW, RAF, RW2, CR3, maker notes
+		f.Add(s.file)
+	}
+	jxl, _ := buildJXL(f, jxlLayouts[0], 6)
+	f.Add(jxl)
+	f.Add(buildMotionPhoto(f, motionOpts{}).file)
+	sentinel := func(err error) bool {
+		return errors.Is(err, ErrUnknownFormat) || errors.Is(err, ErrMalformed) || errors.Is(err, ErrUnsupported) ||
+			errors.Is(err, ErrOrientationInExif)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		withinDeadline(t, func() {
+			r := func() *bytes.Reader { return bytes.NewReader(data) }
+			n := int64(len(data))
+			hash, hashErr := imageDataMD5(t, data)
+			sameHash := func(out []byte) {
+				if hashErr != nil {
+					return
+				}
+				if after, err := imageDataMD5(t, out); after != hash {
+					t.Fatalf("image data hash %q became %q (%v)", hash, after, err)
+				}
+			}
+			_, readErr := ReadOrientation(r(), n)
+			if readErr != nil && !sentinel(readErr) {
+				t.Fatalf("ReadOrientation: an error that is none of the sentinels: %v", readErr)
+			}
+			sz, szErr := ReadImageSize(r(), n)
+			if szErr != nil && !sentinel(szErr) {
+				t.Fatalf("ReadImageSize: an error that is none of the sentinels: %v", szErr)
+			}
+			if szErr == nil && (sz.Width <= 0 || sz.Height <= 0) {
+				t.Fatalf("ReadImageSize: %+v", sz)
+			}
+			// An orientation write leaves the stored size.
+			sameSize := func(out []byte) {
+				if szErr != nil {
+					return
+				}
+				if got, err := ReadImageSize(bytes.NewReader(out), int64(len(out))); err != nil || got.Width != sz.Width || got.Height != sz.Height {
+					t.Fatalf("size %+v became %+v (%v)", sz, got, err)
+				}
+			}
+			for _, o := range []Orientation{1, 6, 7} {
+				p, err := PlanOrientation(r(), n, o)
+				if err != nil {
+					if !sentinel(err) {
+						t.Fatalf("PlanOrientation(%d): an error that is none of the sentinels: %v", o, err)
+					}
+					continue
+				}
+				checkPlan(t, data, p)
+				out := written(t, p)
+				sameSize(out)
+				sameHash(out)
+				var set bytes.Buffer
+				if err := SetOrientation(r(), n, &set, o); err != nil || !bytes.Equal(set.Bytes(), out) {
+					t.Fatalf("SetOrientation(%d) differs from the plan (%v)", o, err)
+				}
+				if readErr == nil {
+					if got, err := ReadOrientation(bytes.NewReader(out), int64(len(out))); err != nil || got != o {
+						t.Fatalf("set %d, reads %d (%v)", o, got, err)
+					}
+				}
+			}
+			p, err := PlanRotation(r(), n, 90)
+			if err != nil {
+				if !sentinel(err) {
+					t.Fatalf("PlanRotation: an error that is none of the sentinels: %v", err)
+				}
+				return
+			}
+			checkPlan(t, data, p)
+			out := written(t, p)
+			sameSize(out)
+			sameHash(out)
+			var set bytes.Buffer
+			if err := SetRotation(r(), n, &set, 90); err != nil || !bytes.Equal(set.Bytes(), out) {
+				t.Fatalf("SetRotation differs from the plan (%v)", err)
+			}
+			if readErr == nil {
+				if got, err := ReadOrientation(bytes.NewReader(out), int64(len(out))); err != nil || got.Degrees() != 90 {
+					t.Fatalf("rotated 90°, reads %v (%v)", got, err)
+				}
+			}
+		})
+	})
 }

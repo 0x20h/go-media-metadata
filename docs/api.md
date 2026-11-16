@@ -14,13 +14,105 @@ never the image data.
 | Function | Returns |
 |---|---|
 | `ReadOrientation` | how the image is shown, 1 to 8 |
+| `ReadImageSize` | the size as stored, and with `Shown()` as shown |
 | `ReadExif` | orientation, date taken (with fraction and offset), GPS |
 | `ReadXMP` | the XMP packet's bytes, nil without one |
 | `ParseXMP` | title, description, keywords and rating of a packet |
+| `ReadComment` | a GIF's comment extensions |
 
 The format is recognised from the file's first bytes. HEIF is tried
 first, so reading a HEIF file costs the same as it did before the other
 formats existed.
+
+## Everything at once: ReadAll
+
+`ReadAll(r, size)` reads everything this package reads from a file in one
+call. It tells the format once and parses JPEG, HEIF, PNG and GIF files
+once for all their parts; the other formats read each part as its own
+function does. The result equals the separate calls' (`ReadExif`,
+`ReadXMP` with `ParseXMP`, `ReadIPTC` with `ParseIPTC`, `ReadImageSize`,
+`ReadOrientation`, `TakenFrom`, `ReadVideo`). `TestReadAllEqualsSeparateCalls`
+checks that on every corpus file, and those functions are checked against
+ExifTool.
+
+`Metadata` holds:
+
+- **A summary.** `Taken` (with its source), `GPS`, `Camera`, `Size`,
+  `Orientation`, `Title`, `Description`, `Keywords`, `Rating`,
+  `Regions`, `PersonInImage` and `ContentIdentifier`. Each field comes
+  from the first part that has it: XMP, then IPTC, then Exif
+  (`XPTitle`; `ImageDescription`, `XPComment`, `XPSubject`;
+  `XPKeywords` split at `;`). A GIF's comment is the description's last
+  resort. A movie's summary is its `Video`'s, and `Taken.Source` is
+  `SourceMovie`.
+- **The parsed parts.** `Exif`, `XMP`, `IPTC`, and `Video` for a movie, for
+  whatever the summary leaves out.
+- **`Errors`.** Each part's own error. A broken XMP packet doesn't lose the
+  Exif. `Errors.Err()` joins them. The call itself fails only for a file of
+  no format this package reads (`ErrUnknownFormat`).
+
+On the benchmark files (HEIC), `ReadAll` takes 2.5 to 5 times less time
+than the separate calls an importer would make. It reads 2.5 to 5 times
+fewer bytes (6 to 9 read calls instead of 40 to 46) and makes 3 to 5 times
+fewer allocations (`BenchmarkReadAll`).
+
+## Image size: ReadImageSize
+
+`ReadImageSize` returns the image's width and height as stored, and the
+orientation `ReadOrientation` gives. `Shown()` is the size as the image is
+displayed: swapped for orientations 5 to 8, which turn it a quarter. Each
+format's size comes from the image itself, not from metadata about it:
+
+| Format | Size from |
+|---|---|
+| JPEG | the frame header (SOF), not Exif's PixelXDimension |
+| PNG | IHDR |
+| WebP | VP8X's canvas, else the VP8 or VP8L frame |
+| HEIF | the primary item's `ispe` (a grid's output size), before `clap` |
+| JPEG XL | the codestream's SizeHeader |
+| Camera RAW | the full-size image; see [raw](raw.md) |
+| QuickTime, MP4 | the first video track's size, its matrix as the orientation |
+| Matroska, WebM | the first video track's PixelWidth and PixelHeight; see [matroska](matroska.md) |
+| GIF | the logical screen |
+| BMP | the info header (a top-down image's negative height as its absolute value) |
+
+The tests check every corpus file and the RAW samples against ExifTool's
+composite `ImageSize`. An orientation write leaves the stored size as it
+was, which the dispatch fuzz target checks.
+
+## Image data hash: HashImageData
+
+`HashImageData(r, size, w)` writes the file's image data, without its
+metadata, to `w`. With `w` a hash, the sum is what ExifTool gives as
+ImageDataHash with the same `-api ImageHashType` (MD5, SHA256, SHA512):
+
+```go
+h := sha256.New()
+_, err := mediameta.HashImageData(f, size, h)
+// ExifTool: -ImageDataHash -api ImageHashType=SHA256
+```
+
+A metadata write leaves the sum as it was, so comparing it before and
+after a write shows the image is unchanged. Two files with the same sum
+hold the same image whatever their metadata.
+
+| Format | Image data |
+|---|---|
+| JPEG | the scans, from the first SOS marker to EOI, leaving out the segments between scans. A scan's data after its last RST marker or stuffed 0xFF is left out when a segment, not the next scan, follows it. ExifTool does the same. |
+| PNG | the IDAT chunks' data (and a JNG's JDAT, JDAA) |
+| WebP | the VP8, VP8L, ALPH, ANIM and ANMF chunks' data, with padding |
+| HEIF | every coded image item (av01, avc1, hvc1, lhv1, hvt1), tiles, thumbnails and auxiliary images included, by item id |
+| JPEG XL | the jxlc and jxlp payloads (jxlp's with its part index); a bare codestream is the whole file |
+| TIFF-based RAW | the strips and tiles of each IFD and SubIFD, a SubIFD's before its parent's. Previews are left out: a CR2's IFD0, a DNG's reduced JPEG, the thumbnail in IFD1, an ARW's preview in IFD0. A Panasonic RW2's raw data, to the end of the file. |
+| RAF | the raw data blocks the header points to |
+| QuickTime, MP4, CR3 | each video and sound track's chunks, in chunk-offset order |
+
+ExifTool gives no ImageDataHash for an Olympus ORF, whose header isn't
+TIFF's. This package hashes the ORF's strips. The tests compare the sum
+with ExifTool's on every corpus file, the RAW samples, every JPEG XL
+layout, and progressive and restart-marker JPEGs, WebP files and movies
+made with jpegtran, cwebp and ffmpeg. The fuzz targets check that every
+metadata, orientation and rotation write leaves it as it was.
 
 ## Writing
 
@@ -122,6 +214,7 @@ A write never leaves an old value in the file:
 | `ErrMalformed` | the file breaks its own structure: a length past its container, a truncated header, too many segments, XML that doesn't parse |
 | `ErrUnsupported` | a structure this package can't change safely. The file is left as it is rather than risk a wrong result. |
 | `ErrNotInPlace` | `Plan.Apply` on a plan that changes the file's size |
+| `ErrXMPRepaired` | from `ParseXMP` (and in `ReadAll`'s `Errors.XMP`), with the fields it read: a packet malformed only by characters XML doesn't allow, read leniently as ExifTool reads it (see [xmp](xmp.md)). Not a failure: the fields are good. |
 | `ErrOrientationInExif` | a `MetadataEdit` whose Exif part sets a HEIF image's orientation; use `SetOrientation` (see [heif](heif.md)) |
 
 Every error wraps one of these, with context, and its text starts

@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -36,6 +37,11 @@ type Regions struct {
 	// made for another one (an image that was cropped or turned since).
 	AppliedTo Dimensions
 	List      []Region
+
+	// kept are the fields of mwg-rs:Regions and of its
+	// AppliedToDimensions this package doesn't model, as read, written
+	// back with them.
+	kept, keptDims *keptFields
 }
 
 // Dimensions are a width and height, in Unit (MWG: "pixel").
@@ -45,16 +51,37 @@ type Dimensions struct {
 }
 
 // Region is one area of an image (an mwg-rs:RegionList item).
+//
+// A Region read by ParseXMP carries the fields it doesn't model (such as
+// mwg-rs:Extensions, which applications put their own data in), and
+// EditXMP writes them back with it: change a region's name and keep the
+// rest, reorder or drop regions and the fields go with them. A Region made
+// anew has none, unless its area is that of a region already in the
+// packet, whose fields it then keeps.
 type Region struct {
 	// Name is who or what it shows, e.g. the person's name.
 	Name string
 	// Type is "Face", "Pet", "Focus" or "BarCode" (MWG); "" reads and
 	// writes as "Face".
 	Type string
-	// X and Y are the area's centre, W and H its size, each a fraction of
-	// the image's width or height (stArea, unit "normalized"), with (0, 0)
-	// the top-left corner of the image as it is stored.
-	X, Y, W, H float64
+	// Description is mwg-rs:Description, FocusUsage mwg-rs:FocusUsage
+	// ("EvaluatedUsed", "EvaluatedNotUsed", "NotEvaluatedNotUsed") and
+	// BarCodeValue mwg-rs:BarCodeValue; "" without.
+	Description, FocusUsage, BarCodeValue string
+	// X and Y are the area's centre, W and H its size, with (0, 0) the
+	// top-left corner of the image as it is stored: fractions of the
+	// image's width and height when Unit is "normalized" (or ""), pixels
+	// when it is "pixel". D is a circle's diameter (stArea:d), 0 for a
+	// rectangle; an area with W, H and D 0 is a point.
+	X, Y, W, H, D float64
+	Unit          string
+	// Rotation is mwg-rs:Rotation, the area's rotation about its centre,
+	// as written (radians, by the MWG guidelines); 0 without.
+	Rotation float64
+
+	// kept are the fields of the region and of its area this package
+	// doesn't model, as read.
+	kept, keptArea *keptFields
 }
 
 // structFields are the nodes a struct value's fields can be in: the
@@ -79,7 +106,7 @@ func structField(el *xmlNode, in scope, ns, local string) (value string, sub *xm
 		for _, a := range n.attrs {
 			if a.Name.Local == local && a.Name.Space != "" && a.Name.Space != nsXMLNS {
 				if uri, _ := scopes[i].ns(a.Name, true); uri == ns {
-					return a.Value, nil, nil, true
+					return strings.TrimSpace(a.Value), nil, nil, true
 				}
 			}
 		}
@@ -98,21 +125,23 @@ func number(s string) (float64, bool) {
 	return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
 }
 
-// regions reads mwg-rs:Regions; nil without one. A region without a
-// normalized area that fits the image is left out.
+// regions reads mwg-rs:Regions; nil without one. A region without an area
+// this package takes (normalized, within the image; or in pixels, not
+// negative) is left out.
 func (d *xmpDoc) regions() *Regions {
 	ps := d.props(nsMWGRS, "Regions")
 	if len(ps) == 0 || ps[0].elem == nil {
 		return nil
 	}
 	el, in := ps[0].elem, ps[0].in.enter(ps[0].elem)
-	r := &Regions{}
+	r := &Regions{kept: keepFields(el, in, knownRegionsField)}
 	if _, dims, dimsIn, ok := structField(el, in, nsMWGRS, "AppliedToDimensions"); ok && dims != nil {
 		ws, _, _, _ := structField(dims, dimsIn, nsStDim, "w")
 		hs, _, _, _ := structField(dims, dimsIn, nsStDim, "h")
 		r.AppliedTo.Unit, _, _, _ = structField(dims, dimsIn, nsStDim, "unit")
 		r.AppliedTo.W, _ = number(ws)
 		r.AppliedTo.H, _ = number(hs)
+		r.keptDims = keepFields(dims, dimsIn, knownDimsField)
 	}
 	_, list, listIn, ok := structField(el, in, nsMWGRS, "RegionList")
 	if !ok || list == nil {
@@ -128,21 +157,26 @@ func (d *xmpDoc) regions() *Regions {
 			var g Region
 			g.Name, _, _, _ = structField(li, lin, nsMWGRS, "Name")
 			g.Type, _, _, _ = structField(li, lin, nsMWGRS, "Type")
+			g.Description, _, _, _ = structField(li, lin, nsMWGRS, "Description")
+			g.FocusUsage, _, _, _ = structField(li, lin, nsMWGRS, "FocusUsage")
+			g.BarCodeValue, _, _, _ = structField(li, lin, nsMWGRS, "BarCodeValue")
+			if s, _, _, ok := structField(li, lin, nsMWGRS, "Rotation"); ok {
+				g.Rotation, _ = number(s)
+			}
 			_, area, areaIn, ok := structField(li, lin, nsMWGRS, "Area")
 			if !ok || area == nil {
 				continue
 			}
-			unit, _, _, _ := structField(area, areaIn, nsStArea, "unit")
-			if unit != "" && unit != "normalized" {
-				continue
-			}
-			vals := [4]float64{}
+			g.Unit, _, _, _ = structField(area, areaIn, nsStArea, "unit")
+			var vals [5]float64
 			good := true
-			for i, k := range []string{"x", "y", "w", "h"} {
-				s, _, _, _ := structField(area, areaIn, nsStArea, k)
+			for i, k := range []string{"x", "y", "w", "h", "d"} {
+				s, _, _, has := structField(area, areaIn, nsStArea, k)
+				if !has && k != "x" && k != "y" {
+					continue // a circle has no w and h, a rectangle no d, a point neither
+				}
 				v, ok := number(s)
-				// The centre lies on the image; a size is at most all of it.
-				if !ok || v < 0 || v > 1 {
+				if !ok || !areaValueOK(g.Unit, v) {
 					good = false
 				}
 				vals[i] = v
@@ -150,7 +184,9 @@ func (d *xmpDoc) regions() *Regions {
 			if !good {
 				continue
 			}
-			g.X, g.Y, g.W, g.H = vals[0], vals[1], vals[2], vals[3]
+			g.X, g.Y, g.W, g.H, g.D = vals[0], vals[1], vals[2], vals[3], vals[4]
+			g.kept = keepFields(li, lin, knownRegionField)
+			g.keptArea = keepFields(area, areaIn, knownAreaField)
 			r.List = append(r.List, g)
 		}
 		break
@@ -186,30 +222,69 @@ func checkRegions(r *Regions) error {
 		return fmt.Errorf("mediameta: regions without the image size they apply to")
 	}
 	for i, g := range r.List {
-		for _, v := range []float64{g.X, g.Y, g.W, g.H} {
-			if !(v >= 0 && v <= 1) {
-				return fmt.Errorf("mediameta: region %d: %v, %v, %v, %v: not fractions of the image", i, g.X, g.Y, g.W, g.H)
+		if g.Unit != "" && g.Unit != "normalized" && g.Unit != "pixel" {
+			return fmt.Errorf("mediameta: region %d: unit %q, not normalized or pixel", i, g.Unit)
+		}
+		for _, v := range []float64{g.X, g.Y, g.W, g.H, g.D} {
+			if !areaValueOK(g.Unit, v) {
+				return fmt.Errorf("mediameta: region %d: %v, %v, %v, %v, %v: not an area of the image in %q", i, g.X, g.Y, g.W, g.H, g.D, g.Unit)
 			}
 		}
-		if !utf8.ValidString(g.Name) || !utf8.ValidString(g.Type) {
-			return fmt.Errorf("mediameta: region %d: text that isn't UTF-8", i)
+		if math.IsNaN(g.Rotation) || math.IsInf(g.Rotation, 0) {
+			return fmt.Errorf("mediameta: region %d: rotation %v", i, g.Rotation)
+		}
+		for _, s := range []string{g.Name, g.Type, g.Description, g.FocusUsage, g.BarCodeValue} {
+			if !utf8.ValidString(s) {
+				return fmt.Errorf("mediameta: region %d: text that isn't UTF-8", i)
+			}
 		}
 	}
 	return nil
 }
 
+// areaValueOK tells whether v can be an area's coordinate or size: a
+// fraction of the image when normalized, a pixel count not negative in
+// pixels.
+func areaValueOK(unit string, v float64) bool {
+	if unit == "pixel" {
+		return v >= 0 && !math.IsInf(v, 0)
+	}
+	return v >= 0 && v <= 1
+}
+
 func formatNumber(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 
 // setRegions writes mwg-rs:Regions as a whole: the regions given, in the
-// MWG's layout. Fields of the old regions this package doesn't model (a
-// region's rotation, extensions) aren't kept. No regions remove the
-// property.
+// MWG's layout, each with the fields it carries that this package doesn't
+// model (see Region). No regions remove the property.
 func (d *xmpDoc) setRegions(r *Regions) bool {
 	if r == nil || len(r.List) == 0 {
 		return d.remove(nsMWGRS, "Regions")
 	}
-	if cur := d.regions(); cur != nil && sameRegions(cur, r) {
+	cur := d.regions()
+	if cur != nil && sameRegions(cur, r) {
 		return false
+	}
+	// What the old packet kept, for what the new regions don't carry: the
+	// structure's, and a region's by its area.
+	if cur != nil {
+		cp := *r
+		if cp.kept == nil && cp.keptDims == nil {
+			cp.kept, cp.keptDims = cur.kept, cur.keptDims
+		}
+		cp.List = slices.Clone(r.List)
+		for i, g := range cp.List {
+			if g.kept != nil || g.keptArea != nil {
+				continue
+			}
+			for _, old := range cur.List {
+				if sameArea(old, g) {
+					cp.List[i].kept, cp.List[i].keptArea = old.kept, old.keptArea
+					break
+				}
+			}
+		}
+		r = &cp
 	}
 	d.replace(nsMWGRS, "Regions", func(p string, in scope) *xmlNode {
 		rdf := prefixIn(in, nsRDF)
@@ -219,6 +294,9 @@ func (d *xmpDoc) setRegions(r *Regions) bool {
 		text := func(space, local, v string) *xmlNode {
 			return &xmlNode{kind: elemNode, name: xml.Name{Space: space, Local: local}, kids: []*xmlNode{{kind: textNode, text: []byte(v)}}}
 		}
+		// The prefixes the new elements use, which kept fields mustn't
+		// redeclare.
+		ours := map[string]string{p: nsMWGRS, rdf: nsRDF, "stDim": nsStDim, "stArea": nsStArea}
 		unit := r.AppliedTo.Unit
 		if unit == "" {
 			unit = "pixel"
@@ -230,31 +308,53 @@ func (d *xmpDoc) setRegions(r *Regions) bool {
 			text("stDim", "h", formatNumber(r.AppliedTo.H)),
 			text("stDim", "unit", unit),
 		}}
+		r.keptDims.writeInto(dims, ours)
 		bag := &xmlNode{kind: elemNode, name: xml.Name{Space: rdf, Local: "Bag"}}
 		for _, g := range r.List {
 			typ := g.Type
 			if typ == "" {
 				typ = "Face"
 			}
+			unit := g.Unit
+			if unit == "" {
+				unit = "normalized"
+			}
 			area := &xmlNode{kind: elemNode, name: xml.Name{Space: p, Local: "Area"}, attrs: []xml.Attr{attr(rdf, "parseType", "Resource")}, kids: []*xmlNode{
 				text("stArea", "x", formatNumber(g.X)),
 				text("stArea", "y", formatNumber(g.Y)),
-				text("stArea", "w", formatNumber(g.W)),
-				text("stArea", "h", formatNumber(g.H)),
-				text("stArea", "unit", "normalized"),
 			}}
-			kids := []*xmlNode{area, text(p, "Type", typ)}
-			if g.Name != "" {
-				kids = append(kids, text(p, "Name", g.Name))
+			// A circle (d) and a point have no width and height.
+			if g.W != 0 || g.H != 0 {
+				area.kids = append(area.kids, text("stArea", "w", formatNumber(g.W)), text("stArea", "h", formatNumber(g.H)))
 			}
-			bag.kids = append(bag.kids, &xmlNode{kind: elemNode, name: xml.Name{Space: rdf, Local: "li"}, attrs: []xml.Attr{attr(rdf, "parseType", "Resource")}, kids: kids})
+			if g.D != 0 {
+				area.kids = append(area.kids, text("stArea", "d", formatNumber(g.D)))
+			}
+			area.kids = append(area.kids, text("stArea", "unit", unit))
+			g.keptArea.writeInto(area, ours)
+			kids := []*xmlNode{area, text(p, "Type", typ)}
+			for _, f := range []struct{ local, v string }{
+				{"Name", g.Name}, {"Description", g.Description}, {"FocusUsage", g.FocusUsage}, {"BarCodeValue", g.BarCodeValue},
+			} {
+				if f.v != "" {
+					kids = append(kids, text(p, f.local, f.v))
+				}
+			}
+			if g.Rotation != 0 {
+				kids = append(kids, text(p, "Rotation", formatNumber(g.Rotation)))
+			}
+			li := &xmlNode{kind: elemNode, name: xml.Name{Space: rdf, Local: "li"}, attrs: []xml.Attr{attr(rdf, "parseType", "Resource")}, kids: kids}
+			g.kept.writeInto(li, ours)
+			bag.kids = append(bag.kids, li)
 		}
 		list := &xmlNode{kind: elemNode, name: xml.Name{Space: p, Local: "RegionList"}, kids: []*xmlNode{bag}}
-		return &xmlNode{kind: elemNode, name: xml.Name{Space: p, Local: "Regions"}, attrs: []xml.Attr{
+		regions := &xmlNode{kind: elemNode, name: xml.Name{Space: p, Local: "Regions"}, attrs: []xml.Attr{
 			attr(rdf, "parseType", "Resource"),
 			attr(nsXMLNS, "stDim", nsStDim),
 			attr(nsXMLNS, "stArea", nsStArea),
 		}, kids: []*xmlNode{dims, list}}
+		r.kept.writeInto(regions, ours)
+		return regions
 	})
 	return true
 }
@@ -277,9 +377,21 @@ func sameRegions(a, b *Regions) bool {
 	}
 	for i := range a.List {
 		x, y := a.List[i], b.List[i]
-		if x.Name != y.Name || typ(x.Type) != typ(y.Type) || x.X != y.X || x.Y != y.Y || x.W != y.W || x.H != y.H {
+		if x.Name != y.Name || typ(x.Type) != typ(y.Type) || x.Description != y.Description || x.FocusUsage != y.FocusUsage ||
+			x.BarCodeValue != y.BarCodeValue || x.Rotation != y.Rotation || !sameArea(x, y) {
 			return false
 		}
 	}
 	return true
+}
+
+// sameArea tells whether two regions have the same area.
+func sameArea(a, b Region) bool {
+	unit := func(u string) string {
+		if u == "" {
+			return "normalized"
+		}
+		return u
+	}
+	return a.X == b.X && a.Y == b.Y && a.W == b.W && a.H == b.H && a.D == b.D && unit(a.Unit) == unit(b.Unit)
 }

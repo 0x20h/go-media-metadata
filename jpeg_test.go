@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -386,6 +387,16 @@ func jpegSeeds(f *testing.F) {
 		f.Add(q.file)
 	}
 	f.Add(noTagJPEG(f, binary.LittleEndian))
+	// Apple maker notes: whole, and with the IFD's count and an offset
+	// broken (apple_makernote_test.go).
+	plainApple := plainJPEG(f)
+	for _, note := range [][]byte{appleNote(binary.BigEndian, testContentID), appleNote(binary.LittleEndian, testContentID)[:30]} {
+		f.Add(withSegments(plainApple, exifSegment(withMakerNote(binary.BigEndian, note))))
+	}
+	broken := appleNote(binary.BigEndian, testContentID)
+	binary.BigEndian.PutUint16(broken[14:], 0xFFFF)
+	binary.BigEndian.PutUint32(broken[14+2+12+8:], 0xFFFFFFF0)
+	f.Add(withSegments(plainApple, exifSegment(withMakerNote(binary.BigEndian, broken))))
 	// The files ExifTool wrote (testdata/exiftool).
 	paths, _ := filepath.Glob("testdata/exiftool/*.jpg")
 	for _, p := range paths {
@@ -399,6 +410,12 @@ func FuzzReadExif(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	imageIOSeeds(f)
+	// IFD0's XP tags (UTF-16LE), IFD0's DateTime with its offset.
+	for _, name := range []string{"xp-tags.jpg", "date-modify.jpg"} {
+		if b, err := os.ReadFile(filepath.Join("testdata/exiftool", name)); err == nil {
+			f.Add(b)
+		}
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			x, err := ReadExif(bytes.NewReader(data), int64(len(data)))
@@ -411,6 +428,19 @@ func FuzzReadExif(f *testing.F) {
 			if g := x.GPS; g != nil && (math.Abs(g.Latitude) > 90 || math.Abs(g.Longitude) > 180 || math.IsNaN(g.Altitude)) {
 				t.Errorf("position %+v", *g)
 			}
+			if s, err := ReadImageSize(bytes.NewReader(data), int64(len(data))); err == nil && (s.Width <= 0 || s.Height <= 0) {
+				t.Errorf("size %+v", s)
+			}
+			c := x.Camera
+			for _, v := range []float64{c.FNumber, c.ExposureTime, c.FocalLength} {
+				if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+					t.Errorf("camera %+v", c)
+				}
+			}
+			if c.ISO < 0 || c.FocalLengthIn35mm < 0 {
+				t.Errorf("camera %+v", c)
+			}
+			_, _ = HashImageData(bytes.NewReader(data), int64(len(data)), io.Discard)
 			o, err := ReadOrientation(bytes.NewReader(data), int64(len(data)))
 			if isJPEG(bytes.NewReader(data), int64(len(data))) && (err != nil || !o.Valid()) {
 				t.Errorf("ReadExif read the JPEG, ReadOrientation: %v, %v", o, err)
@@ -419,7 +449,7 @@ func FuzzReadExif(f *testing.F) {
 	})
 }
 
-func readFile(t *testing.T, path string) []byte {
+func readFile(t testing.TB, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path)
 	if err != nil {

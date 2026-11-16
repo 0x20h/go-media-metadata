@@ -342,7 +342,8 @@ func (f *jpegFile) mpf(r io.ReaderAt) (mpfIndex, error) {
 // The other images' offsets count from the index, so they change by what
 // the edit adds or removes between the index and them (segments after
 // the MPF one). An edit inside the MPF segment is refused, as is one
-// that takes a size or offset out of range.
+// that takes a size or offset out of range, or one with an image of the
+// index where the edit changes or moves bytes before it.
 func (f *jpegFile) fixMPF(r io.ReaderAt, e *spliceEdit) error {
 	x, err := f.mpf(r)
 	if err != nil || len(x.entries) == 0 {
@@ -374,6 +375,21 @@ func (f *jpegFile) fixMPF(r io.ReaderAt, e *spliceEdit) error {
 	if p := x.entries[0]; total != 0 && p.size != 0 {
 		if err := put(p.at-4, int64(p.size)+total, "size"); err != nil {
 			return err
+		}
+	}
+	// The other images come after the primary image, so after every byte
+	// the edit changes. One that starts in the marker segments (as only a
+	// broken index has it) can't be kept: the edit would move or change
+	// part of it.
+	for _, en := range x.entries[1:] {
+		if en.offset == 0 || en.size == 0 {
+			continue
+		}
+		at := x.base + int64(en.offset)
+		for _, s := range e.splices {
+			if at < s.at+s.del || at < segEnd {
+				return fmt.Errorf("%w: an MPF image at %d, among the marker segments the edit changes", ErrUnsupported, at)
+			}
 		}
 	}
 	if after != 0 {

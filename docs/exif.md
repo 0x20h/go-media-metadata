@@ -16,12 +16,40 @@ pages).
   is in a fixed zone of that offset. Without either, it is the camera's
   clock time, returned in `time.UTC` with `OffsetKnown` false. That is
   not a UTC time.
+- **`DateTimeDigitized`:** the tag ExifTool calls CreateDate, with
+  `SubSecTimeDigitized` and `OffsetTimeDigitized`, read the same way, its
+  offset flag `DigitizedOffsetKnown`. For a camera's photo it is usually
+  the same time; for a scan it's when it was scanned.
 - **`GPS`:** latitude and longitude in signed decimal degrees, and the
   altitude when there is one. Nil without a valid position.
+- **`Camera`:** the camera, lens and exposure, read only (this package
+  writes no capture data):
+  - `Make` and `Model` from IFD0, `LensMake` and `LensModel` from the Exif
+    IFD. Each is the text as written, placeholders such as `----`
+    included.
+  - `ISO` is PhotographicSensitivity (ISOSpeedRatings), its first value.
+    When that is 65535 (Exif's "65535 or more"), the
+    RecommendedExposureIndex or ISOSpeed that SensitivityType names is
+    used instead.
+  - `FNumber` (2.8 for f/2.8), `ExposureTime` in seconds and `FocalLength`
+    in mm, each positive or 0, and `FocalLengthIn35mm`.
+  - In a CR3 they come from CMT1 and CMT2. An RW2 whose own Exif IFD
+    lacks some has them from the JPEG it embeds, as ExifTool reads them.
+  - The tests compare every field with ExifTool's EXIF values on the
+    corpora and the RAW samples.
 - **`ImageDescription`:** IFD0's ImageDescription, its bytes as they are
   up to the NUL. Writers put UTF-8 there, ExifTool among them.
 - **`XPTitle`:** IFD0's XPTitle, Windows' title: UTF-16 little-endian,
   up to its NUL.
+- **`ContentIdentifier`:** the Apple maker note's ContentIdentifier (tag
+  0x0011), the UUID an iPhone gives both halves of a Live Photo; the
+  movie's is `Video.ContentIdentifier`. The maker note is the Exif IFD's
+  MakerNote when it starts with `Apple iOS` and a NUL; its IFD follows at
+  offset 14, in the byte order written there, with offsets counted from
+  the note's start, as ExifTool reads it. Only that one IFD is read, every
+  offset checked against the note, so a damaged note reads as no
+  identifier and the rest of the Exif as it is. Writes keep the maker
+  note byte for byte.
 
 A field the file lacks, or has in a form this package doesn't accept,
 stays at its zero value.
@@ -69,6 +97,28 @@ These differ from ExifTool on purpose, and each is pinned in a test
 `TestExifAgreesWithExifTool` compares every field with ExifTool on the
 synthetic files, the quirk files where the two agree, and the HEIF
 samples. It runs where `exiftool` is installed.
+
+## The date taken: ReadTaken
+
+A photo's date can be in several places, and some files have it in only
+one. `ReadTaken` (or `TakenFrom`, given what was read already) returns
+the first of these, with the source it came from:
+
+1. Exif `DateTimeOriginal`
+2. Exif `DateTimeDigitized` (CreateDate)
+3. XMP `exif:DateTimeOriginal`
+4. XMP `photoshop:DateCreated`
+5. XMP `xmp:CreateDate`
+6. IPTC 2:55 Date Created with 2:60 Time Created
+
+This follows the Metadata Working Group's order for the capture date,
+Exif first, with the creation dates after it: a date that says when the
+file was made is a better guess than none. The result is a `Date` with its
+precision and whether an offset was known. Each date is taken as its source
+gives it, so a later source doesn't add an offset an earlier one lacks.
+`ReadTaken` stops at the Exif when that has a date. A file without any
+date gives `SourceNone` and no error. The tests check the result against
+ExifTool's values on every corpus file.
 
 ## Writing: EditExif
 

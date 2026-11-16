@@ -31,7 +31,7 @@ func SetMetadata(src io.ReaderAt, size int64, dst io.Writer, edit MetadataEdit) 
 }
 
 // PlanMetadata plans every part of edit as one edit of the JPEG, HEIF,
-// PNG or WebP file in src (size bytes): the Exif part as planExifEdit,
+// PNG, WebP or JPEG XL file in src (size bytes): the Exif part as planExifEdit,
 // the IPTC part as EditIPTC applied to the file's IPTC data, the XMP part
 // as planXMPEdit, in that order, each on the file the parts before it
 // make. Nothing is written until the plan is: either every part is
