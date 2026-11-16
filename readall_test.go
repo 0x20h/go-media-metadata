@@ -17,7 +17,7 @@ func readAllFiles(t testing.TB) []string {
 	pats := []string{"testdata/exiftool/*.jpg", imageIOCorpus + "/*.jpg", imageIOCorpus + "/*.heic", "testdata/imageio/*.heic",
 		"testdata/iphone/*.heic", "testdata/webp/*.webp", "testdata/video/*.mov", "testdata/video/*.mp4", "testdata/video/*.3gp",
 		"testdata/m2ts/*.m2ts", "testdata/m2ts/*.ts", "testdata/gif-bmp/*.gif", "testdata/gif-bmp/*.bmp",
-		"testdata/matroska/*.mkv", "testdata/matroska/*.webm"}
+		"testdata/matroska/*.mkv", "testdata/matroska/*.webm", "testdata/avi/*.avi"}
 	if dir := os.Getenv("MEDIAMETA_RAW_DIR"); dir != "" {
 		for _, ext := range []string{"dng", "cr2", "cr3", "nef", "arw", "orf", "rw2", "raf"} {
 			pats = append(pats, filepath.Join(dir, "*."+ext))

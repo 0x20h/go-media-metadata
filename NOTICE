@@ -91,3 +91,10 @@ testdata/heif-xmp/primary-and-gainmap.heic
     image and an HDR gain map, each described by an XMP item of its own.
     Made for this project by its authors. Dedicated to the public domain
     under CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+testdata/avi/*.avi
+    A synthetic test pattern (ffmpeg's testsrc, no recording), MJPEG,
+    encoded and muxed by ffmpeg, idit.avi with an IDIT date spliced in by
+    testdata/avi/idit.go.txt (see testdata/avi/make.sh). Made for this
+    project by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/

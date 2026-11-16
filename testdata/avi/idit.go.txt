@@ -1,0 +1,32 @@
+// Adds an IDIT chunk, the recording date as cameras write it, to an AVI
+// made by ffmpeg: at the end of its hdrl list, whose size and the RIFF
+// size grow by the chunk's.
+//
+// Usage: go run idit.go <in.avi> <out.avi> <date text>
+package main
+
+import (
+	"encoding/binary"
+	"os"
+)
+
+func main() {
+	in, _ := os.ReadFile(os.Args[1])
+	text := append([]byte(os.Args[3]), '\n', 0)
+	if len(text)%2 == 1 {
+		text = append(text, 0)
+	}
+	chunk := append(binary.LittleEndian.AppendUint32([]byte("IDIT"), uint32(len(text))), text...)
+	// The first LIST is hdrl, at 12.
+	if string(in[12:16]) != "LIST" || string(in[20:24]) != "hdrl" {
+		panic("no hdrl at 12")
+	}
+	n := binary.LittleEndian.Uint32(in[16:])
+	end := 20 + int(n)
+	out := append(append(append([]byte(nil), in[:end]...), chunk...), in[end:]...)
+	binary.LittleEndian.PutUint32(out[16:], n+uint32(len(chunk)))
+	binary.LittleEndian.PutUint32(out[4:], binary.LittleEndian.Uint32(in[4:])+uint32(len(chunk)))
+	if err := os.WriteFile(os.Args[2], out, 0o644); err != nil {
+		panic(err)
+	}
+}
