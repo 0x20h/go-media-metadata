@@ -44,6 +44,9 @@ func planExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
 	if ok {
 		return p, err
 	}
+	if detectFormat(src, size) == formatMovie {
+		return nil, fmt.Errorf("%w: a movie has no Exif to edit; its date and place are VideoEdit's", ErrUnsupported)
+	}
 	if edit.Orientation != 0 {
 		return nil, ErrOrientationInExif
 	}

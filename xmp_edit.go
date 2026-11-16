@@ -28,6 +28,9 @@ func planXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 	if p, ok, err := planChunked(src, size, kindXMP, apply); ok {
 		return p, err
 	}
+	if detectFormat(src, size) == formatMovie {
+		return PlanVideoMetadata(src, size, VideoEdit{XMP: &edit})
+	}
 	f, err := parseHEIF(src, size)
 	if err != nil {
 		return nil, err

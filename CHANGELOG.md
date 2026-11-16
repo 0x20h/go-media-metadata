@@ -4,6 +4,11 @@
 
 ### Added
 
+- `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
+  can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
+  `uuid` box when it fits, else moved to the user data's `XMP_`, the box
+  freed. `PlanMetadata`'s XMP part takes movies too. See
+  [docs/quicktime.md](docs/quicktime.md).
 - `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
   `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
   `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
