@@ -122,7 +122,7 @@ func ReadTaken(r io.ReaderAt, size int64) (Taken, error) {
 	if packet, err := ReadXMP(r, size); err != nil {
 		keep(err)
 	} else if packet != nil {
-		if x, err = ParseXMP(packet); err != nil {
+		if x, err = ParseXMP(packet); err != nil && !errors.Is(err, ErrXMPRepaired) {
 			keep(err)
 		}
 	}

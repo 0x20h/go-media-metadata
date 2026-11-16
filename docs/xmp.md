@@ -85,6 +85,26 @@ other value (0, 9, `6.0`, text) reads as 0, no orientation. Sidecars
 carry it when the image was turned after it was taken. `EditXMP` keeps it
 as it is.
 
+### Characters XML doesn't allow
+
+Some writers put characters into a packet that XML doesn't allow:
+- a control character in a value
+- bytes that aren't UTF-8, such as Latin-1 text
+- a bare `&` that starts no entity
+
+Strict XML rejects the whole packet. ExifTool reads it anyway, and so does
+`ParseXMP`: it parses a repaired copy and returns its fields together with
+`ErrXMPRepaired`. The repair:
+- turns control characters (other than tab, newline and carriage return),
+  non-UTF-8 bytes, U+FFFE and U+FFFF into U+FFFD. ExifTool keeps control
+  characters; XML can't carry them.
+- reads a bare `&`, or an entity other than the five XML predefines, as a
+  literal `&`.
+
+A packet malformed in its structure (nesting, an undeclared prefix) is
+still `ErrMalformed`. `EditXMP` and the writers built on it refuse every
+malformed packet, so a write never passes one on.
+
 ## Sidecars: MergeXMP
 
 A sidecar (`IMG_1.xmp` or `IMG_1.CR3.xmp` next to `IMG_1.CR3`) is an XMP
@@ -238,7 +258,8 @@ streams the same edit to a writer.
 
 - Nesting must match, and every prefix must be declared.
 - Unknown entities are rejected (strict mode), as is input that isn't
-  UTF-8.
+  UTF-8. `ParseXMP` then retries once on a repaired copy (see "Characters
+  XML doesn't allow"); the edits don't.
 - Depth is capped at 64, nodes at 2^18 and packets at 16 MiB.
 
 ## Checks

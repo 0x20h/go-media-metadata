@@ -15,6 +15,11 @@
   video's first to last PTS, plus a frame). `ReadAll`, `ReadImageSize` and
   `ReadOrientation` take them too; writes are refused. See
   [docs/quicktime.md](docs/quicktime.md).
+- `ParseXMP` reads a packet malformed only by characters XML doesn't
+  allow, as ExifTool does: a control character, bytes that aren't UTF-8, a
+  bare `&`. It returns the fields with the new `ErrXMPRepaired`, which
+  `ReadAll` reports in `Errors.XMP`. Writes still refuse such a packet. See
+  [docs/xmp.md](docs/xmp.md).
 
 ### Fixed
 
