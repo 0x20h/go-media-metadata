@@ -42,6 +42,10 @@ type XMP struct {
 	// CreateDate xmp:CreateDate, when the file was made (for a photo, as a
 	// rule, the same). nil without a valid date.
 	DateCreated, CreateDate *Date
+	// ModifyDate is xmp:ModifyDate, when the file was last changed: the
+	// last of ExifTool's date fallbacks, after the capture and creation
+	// dates. nil without a valid date.
+	ModifyDate *Date
 	// DateTimeOriginal is exif:DateTimeOriginal, the Exif tag's XMP
 	// mirror (some writers put the date only there), nil without a valid
 	// date.
@@ -298,6 +302,7 @@ func (d *xmpDoc) fields() XMP {
 	x.GPS = d.xmpGPS()
 	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
 	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
+	x.ModifyDate = d.xmpDate(nsXMP, "ModifyDate")
 	x.DateTimeOriginal = d.xmpDate(nsExif, "DateTimeOriginal")
 	x.Orientation = d.xmpOrientation()
 	if ps := d.props(nsXMP, "Rating"); len(ps) > 0 {

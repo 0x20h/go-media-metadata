@@ -4,6 +4,10 @@
 
 ### Added
 
+- `XMP.ModifyDate`: `xmp:ModifyDate`, read like `xmp:CreateDate` and
+  merged by `MergeXMP`. It's for an importer that falls back to the
+  modification date last, as ExifTool's date order does. `TakenFrom`
+  doesn't use it.
 - `ReadVideo`, `ReadAll` and the other readers read a movie cut short (an
   `mdat` past the end) or with junk after its last box, as ExifTool does,
   as long as its `moov` is whole. Writes still refuse such a file. See

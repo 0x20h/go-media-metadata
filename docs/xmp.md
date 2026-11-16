@@ -19,6 +19,7 @@ type XMP struct {
 	GPS                  *GPS        // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
 	DateCreated          *Date       // photoshop:DateCreated
 	CreateDate           *Date       // xmp:CreateDate
+	ModifyDate           *Date       // xmp:ModifyDate
 	DateTimeOriginal     *Date       // exif:DateTimeOriginal
 	Orientation          Orientation // tiff:Orientation, 0 without a valid one
 }
@@ -63,7 +64,9 @@ Read only: `EditXMP` doesn't write them, and keeps them as they are.
   writers use alone) and `photoshop:DateCreated` are when the photo was
   taken, and
   `xmp:CreateDate` when the file was made. The two are usually the same
-  for a camera's photo, but not for a scan. Every precision of the XMP
+  for a camera's photo, but not for a scan. `xmp:ModifyDate` is when the
+  file was last changed. `TakenFrom` doesn't use it, but an importer can
+  fall back to it last, as ExifTool's date order does. Every precision of the XMP
   Date type is read: `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, then `Thh:mm`,
   `Thh:mm:ss` or `Thh:mm:ss.s…`, with a time zone (`Z`, `±hh:mm`) or
   without one. `Precision` says how much was written. Parts not written
