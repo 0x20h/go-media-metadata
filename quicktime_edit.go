@@ -419,12 +419,20 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		return nil
 	}
 	items := itemList(udta)
+	// Every place a reader finds the title and description gets the new
+	// value, so none keeps the old one: Keys; the item list's ©nam, and
+	// ©des (ExifTool's ItemList Description) and desc; the user data's
+	// QuickTime text (©nam, ©des) and 3GPP strings (titl, dscp). An item
+	// list gets ©nam and ©des when it has none (ExifTool writes them);
+	// Keys are added when missing, as before; the rest are updated where
+	// they are.
 	for _, f := range [...]struct {
-		v               *string
-		key, udta, item string
+		v              *string
+		key, udta, gpp string
+		items          [2]string // set (added when missing), updated
 	}{
-		{edit.Title, keyTitle, "\xa9nam", "\xa9nam"},
-		{edit.Description, keyDesc, "\xa9des", "desc"},
+		{edit.Title, keyTitle, "\xa9nam", "titl", [2]string{"\xa9nam", ""}},
+		{edit.Description, keyDesc, "\xa9des", "dscp", [2]string{"\xa9des", "desc"}},
 	} {
 		if f.v == nil {
 			continue
@@ -435,9 +443,14 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 			}
 			if udta != nil {
 				removeKids(udta, bmff.T(f.udta))
+				removeKids(udta, bmff.T(f.gpp))
 			}
 			if items != nil {
-				removeKids(items, bmff.T(f.item))
+				for _, it := range f.items {
+					if it != "" {
+						removeKids(items, bmff.T(it))
+					}
+				}
 			}
 			continue
 		}
@@ -446,8 +459,12 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		}
 		if udta != nil {
 			setUdtaText(udta, f.udta, *f.v)
+			setGppText(udta, f.gpp, *f.v)
 		}
-		setItem(items, f.item, *f.v)
+		addItem(items, f.items[0], *f.v)
+		if f.items[1] != "" {
+			setItem(items, f.items[1], *f.v)
+		}
 	}
 	if kw := edit.Keywords; kw != nil {
 		if len(*kw) == 0 {
@@ -503,6 +520,39 @@ func setItem(ilst *qtNode, typ, s string) {
 			return
 		}
 	}
+}
+
+// addItem sets item typ of an item list to UTF-8 text s, adding the item
+// when the list has none.
+func addItem(ilst *qtNode, typ, s string) {
+	if ilst == nil {
+		return
+	}
+	for _, it := range ilst.kids {
+		if it.typ == bmff.T(typ) {
+			setItem(ilst, typ, s)
+			return
+		}
+	}
+	ilst.kids = append(ilst.kids, &qtNode{typ: bmff.T(typ), kids: []*qtNode{textData(s)}})
+}
+
+// setGppText sets a 3GPP asset string box of the user data (titl, dscp:
+// TS 26.244 8.1) to UTF-8 text s, keeping its language, where there is
+// one.
+func setGppText(udta *qtNode, typ, s string) {
+	n := udta.child(bmff.T(typ))
+	if n == nil {
+		return
+	}
+	old := n.payload()
+	lang := []byte{0x55, 0xc4} // undetermined
+	if len(old) >= 6 {
+		lang = old[4:6]
+	}
+	p := make([]byte, 4, 4+2+len(s)+1) // version and flags 0
+	p = append(append(append(p, lang...), s...), 0)
+	n.setPayload(p)
 }
 
 // textData is a data box of UTF-8 text (type 1, locale 0).

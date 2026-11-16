@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -33,6 +34,13 @@ type IPTCEdit struct {
 	// Keywords sets the 2:25 datasets. nil leaves them as they are; an
 	// empty list removes them.
 	Keywords *[]string
+	// DateCreated sets 2:55 Date Created ("CCYYMMDD", 00 for a month or
+	// day its Precision leaves out) and, from PrecisionMinute on, 2:60
+	// Time Created ("HHMMSS", with "±HHMM" when OffsetKnown; a time
+	// without its offset is left without one rather than given this
+	// machine's). nil leaves both as they are; a Date with a zero Time
+	// removes them.
+	DateCreated *Date
 }
 
 // IIM datasets read and written here: record, dataset.
@@ -296,7 +304,11 @@ func EditIPTC(iim []byte, edit IPTCEdit) ([]byte, error) {
 		return nil, err
 	}
 	before, _ := ParseIPTC(iim)
-	same := (edit.Title == nil || clip(*edit.Title, iimMax[iimTitle]) == before.Title) &&
+	if err := checkIIMDate(edit.DateCreated); err != nil {
+		return nil, err
+	}
+	same := (edit.DateCreated == nil || sameIIMDate(edit.DateCreated, before.DateCreated)) &&
+		(edit.Title == nil || clip(*edit.Title, iimMax[iimTitle]) == before.Title) &&
 		(edit.Description == nil || clip(*edit.Description, iimMax[iimDescription]) == before.Description) &&
 		(edit.Keywords == nil || equalKeywords(*edit.Keywords, before.Keywords))
 	if same {
@@ -327,6 +339,20 @@ func EditIPTC(iim []byte, edit IPTCEdit) ([]byte, error) {
 			}
 		}
 		ds = setIIM(ds, iimKeywords, vs)
+	}
+	if d := edit.DateCreated; d != nil {
+		if d.Time.IsZero() {
+			ds = setIIM(ds, iimDateCreated, nil)
+			ds = setIIM(ds, iimTimeCreated, nil)
+		} else {
+			date, clock := formatIIMDate(*d)
+			ds = setIIM(ds, iimDateCreated, [][]byte{[]byte(date)})
+			if clock == "" {
+				ds = setIIM(ds, iimTimeCreated, nil)
+			} else {
+				ds = setIIM(ds, iimTimeCreated, [][]byte{[]byte(clock)})
+			}
+		}
 	}
 	// The Application Record starts with 2:00, its version (4).
 	if !hasRecord(ds, iimVersion) && hasRecord2(ds) {
@@ -407,4 +433,46 @@ func setIIM(ds []iimDataset, tag [2]byte, vs [][]byte) []iimDataset {
 		add[i] = iimDataset{tag: tag, value: v}
 	}
 	return append(out[:at], append(add, out[at:]...)...)
+}
+
+// checkIIMDate refuses a date IIM can't hold: a year outside 1 to 9999,
+// an unknown precision, an offset that isn't whole minutes or is past
+// ±24 hours. nil and a zero Time (a removal) pass.
+func checkIIMDate(d *Date) error {
+	if err := checkXMPDate(d); err != nil {
+		return errors.New(strings.Replace(err.Error(), "XMP date", "IPTC date", 1))
+	}
+	return nil
+}
+
+// formatIIMDate is d as 2:55 Date Created and 2:60 Time Created (""
+// below PrecisionMinute).
+func formatIIMDate(d Date) (date, clock string) {
+	t := d.Time
+	switch d.Precision {
+	case PrecisionYear:
+		return t.Format("2006") + "0000", ""
+	case PrecisionMonth:
+		return t.Format("200601") + "00", ""
+	case PrecisionDay:
+		return t.Format("20060102"), ""
+	}
+	clock = t.Format("150405")
+	if d.OffsetKnown {
+		clock += t.Format("-0700")
+	}
+	return t.Format("20060102"), clock
+}
+
+// sameIIMDate reports whether writing d would leave old as it reads.
+func sameIIMDate(d, old *Date) bool {
+	if d.Time.IsZero() {
+		return old == nil
+	}
+	if old == nil {
+		return false
+	}
+	date, clock := formatIIMDate(*d)
+	od, oc := formatIIMDate(*old)
+	return date == od && clock == oc
 }

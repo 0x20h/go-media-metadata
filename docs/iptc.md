@@ -48,6 +48,17 @@ or an empty list removes it.
 - **IIM's length limits apply.** A title or keyword is at most 64 bytes, a
   description at most 2000. A longer value is cut at a character boundary,
   as IIM readers expect. XMP keeps the full text.
+- **The date:** `DateCreated` sets 2:55 Date Created (`CCYYMMDD`, with 00
+  for a month or day its `Precision` leaves out, as IIM allows). From
+  `PrecisionMinute` on, it also sets 2:60 Time Created: `HHMMSS`, plus
+  `±HHMM` when `OffsetKnown`.
+  - A time without a known offset is written without one. ExifTool would
+    add the writing machine's offset, which says nothing about the photo.
+    ExifTool and `ParseIPTC` both read the time without it.
+  - A less precise date removes an old time. A zero `Time` removes both
+    datasets.
+  - Set the date together with Exif and XMP in one `MetadataEdit`, so that
+    no older date stays behind.
 - **An edit that changes nothing** returns the data as it was.
 
 **`SetIPTC` and `PlanIPTC`** write a JPEG's IIM data. Empty data removes

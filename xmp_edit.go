@@ -31,6 +31,12 @@ func planXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 	if p, ok, err := planChunked(src, size, kindXMP, apply); ok {
 		return p, err
 	}
+	if isTIFF, err := tiffFileEditable(src, size); isTIFF {
+		if err != nil {
+			return nil, err
+		}
+		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return editTIFFXMP(file, edit) })
+	}
 	f, err := parseHEIF(src, size)
 	if err != nil {
 		return nil, err
