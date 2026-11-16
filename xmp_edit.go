@@ -25,6 +25,9 @@ func planXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 		}
 		return planJPEGXMP(src, size, packet)
 	}
+	if isPNG(src, size) {
+		return planPNGXMP(src, size, edit)
+	}
 	if p, ok, err := planChunked(src, size, kindXMP, apply); ok {
 		return p, err
 	}
