@@ -7,34 +7,48 @@ against regressions (`.github/benchgate`).
 ## Result
 
 Apple M4 (10 cores, 16 GB), macOS 26.6, an APFS SSD; Go 1.26.3,
-ExifTool 13.55. Test set: 140 files (20 per template), seed 1, manifest
-`b25cfad2eb1e6ce9`; 3 rounds, so 420 runs of each operation per tool.
+ExifTool 13.55. Measured for v0.2.0. Test set: 140 files (20 per
+template), seed 1, manifest `b25cfad2eb1e6ce9`; 3 rounds, so 420 runs of
+each operation per tool.
 
-On this set, **reads are 16× faster and writes 4× faster** than ExifTool
-in `-stay_open` mode, and 100 of the 140 writes could also have been done
+On this set, **reading everything an importer needs (`ReadAll`) is 24×
+faster than ExifTool reading the same tags (69× for HEIC)**. The narrower
+read of orientation, date, GPS and XMP title and keywords is 15× faster,
+and writes are 5× faster. 100 of the 140 writes could also have been done
 in place.
 
 ### Read
 
 | Format | Runs | mediameta files/s | p50 | p95 | ExifTool files/s | p50 | p95 | Speed-up |
 |---|---|---|---|---|---|---|---|---|
-| heic | 60 | 8456 | 92 µs | 266 µs | 242 | 3.9 ms | 4.2 ms | 35× |
-| jpg | 180 | 2820 | 98 µs | 963 µs | 218 | 1.9 ms | 12.0 ms | 13× |
-| mp4 | 60 | 23399 | 39 µs | 51 µs | 1291 | 759 µs | 870 µs | 18× |
-| png | 60 | 19111 | 55 µs | 75 µs | 822 | 1.3 ms | 1.6 ms | 23× |
-| webp | 60 | 21188 | 51 µs | 63 µs | 839 | 1.3 ms | 1.4 ms | 25× |
-| all | 420 | 5286 | 76 µs | 936 µs | 332 | 1.4 ms | 10.5 ms | 16× |
+| heic | 60 | 6532 | 116 µs | 281 µs | 217 | 4.2 ms | 4.8 ms | 30× |
+| jpg | 180 | 2529 | 114 µs | 1.1 ms | 203 | 2.1 ms | 12.4 ms | 12× |
+| mp4 | 60 | 18350 | 53 µs | 68 µs | 1061 | 941 µs | 1.1 ms | 17× |
+| png | 60 | 16179 | 66 µs | 85 µs | 787 | 1.3 ms | 1.6 ms | 21× |
+| webp | 60 | 17492 | 60 µs | 77 µs | 754 | 1.4 ms | 1.6 ms | 23× |
+| all | 420 | 4627 | 89 µs | 985 µs | 305 | 1.5 ms | 11.3 ms | 15× |
+
+### Read everything (ReadAll)
+
+| Format | Runs | mediameta files/s | p50 | p95 | ExifTool files/s | p50 | p95 | Speed-up |
+|---|---|---|---|---|---|---|---|---|
+| heic | 60 | 12381 | 74 µs | 127 µs | 181 | 5.5 ms | 6.3 ms | 69× |
+| jpg | 180 | 2775 | 90 µs | 997 µs | 141 | 2.7 ms | 18.6 ms | 20× |
+| mp4 | 60 | 19587 | 49 µs | 59 µs | 766 | 1.3 ms | 1.4 ms | 26× |
+| png | 60 | 20358 | 53 µs | 69 µs | 538 | 2.0 ms | 2.2 ms | 38× |
+| webp | 60 | 13266 | 70 µs | 119 µs | 533 | 2.0 ms | 2.2 ms | 25× |
+| all | 420 | 5234 | 73 µs | 933 µs | 220 | 2.1 ms | 16.7 ms | 24× |
 
 ### Write (a new file)
 
 | Format | Runs | mediameta files/s | p50 | p95 | ExifTool files/s | p50 | p95 | Speed-up |
 |---|---|---|---|---|---|---|---|---|
-| heic | 60 | 821 | 702 µs | 4.2 ms | 153 | 5.1 ms | 8.8 ms | 5× |
-| jpg | 180 | 582 | 652 µs | 2.9 ms | 148 | 4.0 ms | 12.8 ms | 4× |
-| mp4 | 60 | 286 | 1.8 ms | 6.8 ms | 134 | 6.9 ms | 10.6 ms | 2× |
-| png | 60 | 5500 | 169 µs | 286 µs | 281 | 3.6 ms | 4.2 ms | 20× |
-| webp | 60 | 6807 | 136 µs | 209 µs | 444 | 2.3 ms | 2.4 ms | 15× |
-| all | 420 | 686 | 566 µs | 4.0 ms | 175 | 4.1 ms | 11.8 ms | 4× |
+| heic | 60 | 1216 | 788 µs | 1.1 ms | 141 | 5.7 ms | 6.8 ms | 9× |
+| jpg | 180 | 809 | 895 µs | 2.4 ms | 143 | 4.4 ms | 13.7 ms | 6× |
+| mp4 | 60 | 349 | 2.4 ms | 3.6 ms | 125 | 7.5 ms | 10.2 ms | 3× |
+| png | 60 | 4664 | 198 µs | 325 µs | 264 | 3.8 ms | 4.2 ms | 18× |
+| webp | 60 | 4966 | 185 µs | 440 µs | 384 | 2.5 ms | 3.1 ms | 13× |
+| all | 420 | 896 | 687 µs | 2.7 ms | 165 | 4.4 ms | 13.2 ms | 5× |
 
 ### Writes this package could do in place
 
@@ -52,6 +66,13 @@ in place.
   title and keywords. For this package that's `ReadOrientation`,
   `ReadExif` and `ReadXMP` with `ParseXMP` (`ReadVideo` for an MP4).
   ExifTool gets the same tags with `-json -n -fast2`.
+- **Read everything:** what `ReadAll` gives an importer, in one call:
+  every date (with sub-seconds and offsets), GPS, camera, lens and
+  exposure, size, orientation, title, description, keywords and rating
+  from XMP, IPTC and Exif, face regions and people, and the content
+  identifier (for an MP4 its duration and video fields). ExifTool gets the
+  same tags with `-json -n -fast2 -struct` (the list is `readAllTags` in
+  `tools/mmbench`).
 - **Write:** a new date taken (with its offset), a place, an XMP title
   and keywords, written to a new file. For this package that's
   `PlanMetadata` (`PlanVideoMetadata` for an MP4) and `WriteTo`, through

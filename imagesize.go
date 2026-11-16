@@ -88,7 +88,7 @@ func ReadImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 			s, err = gifImageSize(r, size)
 		case formatBMP:
 			s, err = bmpImageSize(r, size)
-		case formatMovie, formatTS:
+		case formatMovie, formatTS, formatMatroska:
 			v, verr := ReadVideo(r, size)
 			if verr != nil {
 				return ImageSize{}, verr
@@ -150,6 +150,11 @@ func jpegImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 	if err != nil {
 		return ImageSize{}, err
 	}
+	return f.imageSize(r)
+}
+
+// imageSize reads a parsed JPEG's first frame header.
+func (f *jpegFile) imageSize(r io.ReaderAt) (ImageSize, error) {
 	for _, s := range f.segs {
 		if s.marker < 0xC0 || s.marker > 0xCF || s.marker == 0xC4 || s.marker == 0xC8 || s.marker == 0xCC {
 			continue

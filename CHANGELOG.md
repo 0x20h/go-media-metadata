@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- A HEIF file with several XMP items is read instead of refused ("two XMP
+  items"). The image's XMP is the item that describes the primary image,
+  else the lowest id among the items that describe no other image, so not
+  a gain map's. Writes change only that item and keep the others byte for
+  byte. See [docs/heif.md](docs/heif.md).
+
+## v0.2.0 (2026-11-15)
+
 ### Breaking changes
 
 - `XMPDate` is now `Date`, since IPTC dates use it too. It was added
@@ -10,6 +20,18 @@
 
 ### Added
 
+- `ReadAll`: everything an importer needs in one call, one parse per
+  container for JPEG, HEIF, PNG and GIF, with each part's error kept
+  apart (`Metadata.Errors`). It equals the separate calls on every corpus
+  file and is 2.5 to 5 times faster than them. See [docs/api.md](docs/api.md).
+- `ReadOrientation` reads GIF and BMP as 1 (they keep no orientation), as
+  `ReadImageSize` reads their size.
+- Matroska and WebM, read only: `ReadVideo` reads the duration, the
+  recording date (`DateUTC`), the title (Info's, else the file's `TITLE`
+  tag), the first video track's size and its rotation (a projection's
+  roll). It reads only the SeekHead, Info, Tracks and Tags, never the
+  Clusters. `ReadImageSize` and `ReadOrientation` take them too. See
+  [docs/matroska.md](docs/matroska.md).
 - Windows' XP tags: `Exif.XPComment`, `XPAuthor`, `XPKeywords` and
   `XPSubject` (UTF-16LE in IFD0), read as `XPTitle` is. Read only.
 - `Exif.DateTime` (IFD0's DateTime, ExifTool's ModifyDate) with
@@ -75,6 +97,25 @@
   (`xmp:CreateDate`), as the new `Date`: the time, whether a time zone
   was written, and how precise the date is (year through fractional
   seconds). See [docs/xmp.md](docs/xmp.md).
+
+### Fixed and clarified
+
+- A JPEG write is refused (`ErrUnsupported`) when the file's MPF index
+  puts an image among the marker segments the write changes, rather than
+  leave the index pointing at other bytes. Real Motion Photos and Ultra
+  HDR files keep their images after the primary and are written as
+  before. v0.1.0 moved such an image's offset off its bytes.
+- HEIC orientation: when the Exif Orientation tag disagrees with `irot`
+  and `imir`, the properties win, as Apple's ImageIO shows the image
+  (checked by a test). `Exif.Orientation` gives the tag as written.
+  ExifTool's `Orientation` is that tag; it reports `irot` as
+  `QuickTime:Rotation`. See [docs/heif.md](docs/heif.md).
+- Benchmarks against ExifTool, re-measured for this release: `ReadAll`
+  is 24× faster than ExifTool reading the same tags (69× for HEIC), and
+  writes 5× faster. See [docs/benchmarks.md](docs/benchmarks.md).
+- CI now runs every test that compares this package with ExifTool,
+  against a pinned ExifTool, and keeps a failing fuzz input as an
+  artifact.
 
 ## v0.1.0 (2026-11-14)
 

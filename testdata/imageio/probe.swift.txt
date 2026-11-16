@@ -1,0 +1,12 @@
+import Foundation
+import ImageIO
+
+for path in CommandLine.arguments.dropFirst() {
+    guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { print(path, "unreadable"); continue }
+    let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] ?? [:]
+    let o = props[kCGImagePropertyOrientation] ?? "none"
+    let opts = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 4096] as CFDictionary
+    let th = CGImageSourceCreateThumbnailAtIndex(src, 0, opts)
+    print((path as NSString).lastPathComponent, "orientation property:", o, " shown (transformed):", th.map { "\($0.width)x\($0.height)" } ?? "none")
+}

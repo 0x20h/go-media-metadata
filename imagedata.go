@@ -66,6 +66,9 @@ func HashImageData(r io.ReaderAt, size int64, w io.Writer) (int64, error) {
 		case formatTS:
 			// ExifTool gives no ImageDataHash for a transport stream either.
 			return 0, fmt.Errorf("%w: no image data hash for a transport stream", ErrUnsupported)
+		case formatMatroska:
+			// Nor for Matroska.
+			return 0, fmt.Errorf("%w: no image data hash for a Matroska or WebM file", ErrUnsupported)
 		default:
 			if startsWithFtyp(r, size) {
 				// A brand this package doesn't take as HEIF or a movie.
