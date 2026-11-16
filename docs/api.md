@@ -214,6 +214,7 @@ A write never leaves an old value in the file:
 | `ErrMalformed` | the file breaks its own structure: a length past its container, a truncated header, too many segments, XML that doesn't parse |
 | `ErrUnsupported` | a structure this package can't change safely. The file is left as it is rather than risk a wrong result. |
 | `ErrNotInPlace` | `Plan.Apply` on a plan that changes the file's size |
+| `ErrXMPRepaired` | from `ParseXMP` (and in `ReadAll`'s `Errors.XMP`), with the fields it read: a packet malformed only by characters XML doesn't allow, read leniently as ExifTool reads it (see [xmp](xmp.md)). Not a failure: the fields are good. |
 | `ErrOrientationInExif` | a `MetadataEdit` whose Exif part sets a HEIF image's orientation; use `SetOrientation` (see [heif](heif.md)) |
 
 Every error wraps one of these, with context, and its text starts

@@ -114,8 +114,6 @@ func TestParseXMPErrors(t *testing.T) {
 		"mismatched":         `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:Description>`,
 		"undeclared prefix":  `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><dc:title/></rdf:RDF>`,
 		"too deep":           deep,
-		"unknown entity":     `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">&bomb;</rdf:RDF>`,
-		"not UTF-8":          "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\xff</rdf:RDF>",
 		"two roots elements": `<a/><b/>`,
 		// A prefix that isn't an XML name: EditXMP would reuse it for a
 		// new element that no XML parser reads.
@@ -124,6 +122,17 @@ func TestParseXMPErrors(t *testing.T) {
 	} {
 		if _, err := ParseXMP([]byte(packet)); !errors.Is(err, ErrMalformed) {
 			t.Errorf("%s: %v, want ErrMalformed", name, err)
+		}
+	} // Malformed only by their characters: read leniently, never edited.
+	for name, packet := range map[string]string{
+		"unknown entity": `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">&bomb;</rdf:RDF>`,
+		"not UTF-8":      "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\xff</rdf:RDF>",
+	} {
+		if _, err := ParseXMP([]byte(packet)); !errors.Is(err, ErrXMPRepaired) {
+			t.Errorf("%s: %v, want ErrXMPRepaired", name, err)
+		}
+		if _, err := EditXMP([]byte(packet), XMPEdit{Rating: ptr(1)}); !errors.Is(err, ErrMalformed) {
+			t.Errorf("%s: EditXMP %v, want ErrMalformed", name, err)
 		}
 	}
 }
