@@ -287,7 +287,7 @@ var readWindows = sync.Pool{New: func() any { return new(readWindow) }}
 func newReadWindow(r io.ReaderAt, size int64) *readWindow {
 	w := readWindows.Get().(*readWindow)
 	w.r, w.n = r, min(size, readWindowSize)
-	if n, err := r.ReadAt(w.b[:w.n], 0); err != nil && !(err == io.EOF && int64(n) == w.n) {
+	if n, err := r.ReadAt(w.b[:w.n], 0); err != nil && (err != io.EOF || int64(n) != w.n) {
 		w.n = 0
 	}
 	return w
