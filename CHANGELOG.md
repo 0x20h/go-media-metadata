@@ -4,6 +4,10 @@
 
 ### Added
 
+- `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
+  `NCDT`): make, model, and the recording's start as the date where Keys
+  and user data have none, as ExifTool reads them.
+
 - `Video.LensModel`: the Keys entry
   `com.apple.quicktime.camera.lens_model`, as iPhones write it.
 - `Camera.LensModel` falls back to a Canon maker note's LensModel (tag

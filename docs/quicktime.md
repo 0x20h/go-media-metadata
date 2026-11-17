@@ -27,6 +27,10 @@ Where each field comes from, in order of preference:
 - **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
   for the title, `©des` or `desc` for the description, `©xyz` for the
   place (ISO 6709, as Android cameras write it), `keyw`.
+- **Nikon's tags** (an `NCTG` box in the user data's `NCDT`, as Nikon
+  cameras write MOV files): Make, Model and DateTimeOriginal, the
+  recording's start in the camera's clock time, without an offset. They
+  come after Keys and the user data's own entries, before XMP.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
