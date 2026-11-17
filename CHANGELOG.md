@@ -4,6 +4,10 @@
 
 ### Added
 
+- `ReadPNGText` and `Metadata.PNG`: a PNG's Title and Description text
+  chunks (`tEXt`, `zTXt`, `iTXt`) and its `tIME` (the last modification),
+  as ExifTool reads them. `ReadAll`'s title and description fall back to
+  them. See [docs/png-webp.md](docs/png-webp.md).
 - `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
   the date's precision, with its offset when known, or removes them. A
   date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in

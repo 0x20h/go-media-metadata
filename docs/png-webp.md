@@ -10,6 +10,15 @@ most 65536 of them.
 - **XMP** is an `iTXt` chunk with the keyword `XML:com.adobe.xmp` (XMP
   Part 3, 1.1.5), compressed or not. The first chunk of each kind is the
   one read.
+- **PNG text** (`ReadPNGText`, and `ReadAll`'s `PNG`), as ExifTool's PNG
+  group reads it:
+  - The title and description come from the text chunks with the
+    keywords `Title` and `Description` (`tEXt` and `zTXt` in Latin-1,
+    `iTXt` in UTF-8, compressed or not), the first of each.
+  - `Modified` is the `tIME` chunk, the last modification in UTC
+    (ExifTool's PNG ModifyDate). It isn't a capture date.
+  - `ReadAll`'s `Title` and `Description` fall back to these after XMP,
+    IPTC and Exif.
 
 **Writing.** A payload no longer than the old one fills its chunk,
 padded with zeros after TIFF data or spaces after XMP, and the chunk's

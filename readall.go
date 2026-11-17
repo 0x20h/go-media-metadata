@@ -56,6 +56,11 @@ type Metadata struct {
 
 	// Exif, XMP and IPTC are the standards as parsed, empty where the file
 	// has none or one that couldn't be read (see Errors).
+	// PNG is a PNG's own text metadata (its Title and Description text
+	// chunks, its tIME), zero for other formats. Title and Description
+	// fall back to it after XMP, IPTC and Exif.
+	PNG PNGText
+
 	Exif Exif
 	XMP  XMP
 	IPTC IPTC
@@ -118,6 +123,9 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 		case formatPNG:
 			m.Format = "PNG"
 			pm, err := readPNGMetadata(r, size)
+			if err == nil {
+				m.PNG = readPNGText(r, pm.chunks)
+			}
 			if err != nil {
 				exifErr, xmpErr = err, err
 			} else {
@@ -193,8 +201,8 @@ func (m *Metadata) summarize() {
 		m.GPS = x.GPS
 	}
 	m.Camera = e.Camera
-	m.Title = firstOf(x.Title, i.Title, e.XPTitle)
-	m.Description = firstOf(x.Description, i.Description, e.ImageDescription, e.XPComment, e.XPSubject, m.Description)
+	m.Title = firstOf(x.Title, i.Title, e.XPTitle, m.PNG.Title)
+	m.Description = firstOf(x.Description, i.Description, e.ImageDescription, e.XPComment, e.XPSubject, m.PNG.Description, m.Description)
 	switch {
 	case x.Keywords != nil:
 		m.Keywords = x.Keywords
