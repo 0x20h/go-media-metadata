@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
@@ -91,12 +92,24 @@ type rangeWriter struct {
 	w    io.Writer
 	n    int64
 	buf  []byte
+	// record, when set, collects the ranges instead of copying them: each
+	// as [off, off+n) with n as declared, before it's cut at the end of
+	// the file.
+	record *[][2]int64
 }
 
 // copy writes r's bytes [off, off+n) to w; a range past the end of the
 // file is cut at it.
 func (h *rangeWriter) copy(off, n int64) error {
 	if off < 0 || n <= 0 || off >= h.size {
+		return nil
+	}
+	if h.record != nil {
+		end := off + n
+		if end < off {
+			end = math.MaxInt64
+		}
+		*h.record = append(*h.record, [2]int64{off, end})
 		return nil
 	}
 	n = min(n, h.size-off)

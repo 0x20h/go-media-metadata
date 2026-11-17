@@ -1,8 +1,10 @@
 package mediameta
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // TIFF and DNG files are their own Exif: IFD0 and its ExifIFD and GPS IFD
@@ -73,6 +75,29 @@ func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byt
 	diffSplices(e, 0, file, out[:size])
 	if int64(len(out)) > size {
 		e.add(splice{at: size, data: out[size:]})
+	}
+	// The image data, as HashImageData takes it, must stay as it is. In a
+	// file whose strips or tiles claim bytes the metadata uses (or run
+	// past the end, over what's appended), the edit is refused.
+	var ranges, after [][2]int64
+	h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
+	errBefore := h.raw()
+	if errBefore == nil {
+		for _, s := range e.splices {
+			end := s.at + max(s.del, 1) // an insert at the end touches the byte after
+			for _, rg := range ranges {
+				if s.at < rg[1] && rg[0] < end {
+					return nil, fmt.Errorf("%w: a TIFF whose image data overlaps its metadata (at %d)", ErrUnsupported, s.at)
+				}
+			}
+		}
+	}
+	// And the edited file's image data is where it was: a malformed IFD
+	// the hash walks one way and the TIFF writer reads another (entries
+	// past the end of the file, say) could lose or gain image data.
+	h = &rangeWriter{r: bytes.NewReader(out), size: int64(len(out)), w: io.Discard, record: &after}
+	if errAfter := h.raw(); (errAfter == nil) != (errBefore == nil) || !slices.Equal(ranges, after) {
+		return nil, fmt.Errorf("%w: a TIFF whose image data the edit would change", ErrUnsupported)
 	}
 	if err := e.sorted(); err != nil {
 		return nil, err
