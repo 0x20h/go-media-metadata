@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- `ReadVideo` (and `ReadAll`) read the make, model and date taken of
+  Canon MP4 files, from the Exif of the thumbnail in their `uuid` box,
+  and of Nikon AVI files, from the `nctg` chunk of their `ncdt` list, as
+  ExifTool reads them. See [docs/quicktime.md](docs/quicktime.md).
+
 ## v0.2.3 (2026-11-17)
 
 No breaking changes.

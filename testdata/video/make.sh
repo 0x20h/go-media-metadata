@@ -57,4 +57,14 @@ et "$OUT/itemlist-gps.mp4" "-ItemList:GPSCoordinates=-33.8568, 151.2153, 5"
 ff -display_rotation 270 -i "$TMP/base.mp4" -c copy "$OUT/rotate90.mp4"
 ff -display_rotation 90 -i "$TMP/base.mov" -c copy "$OUT/rotate270.mov"
 
+# Canon's uuid box in moov (see canon.go.txt): a thumbnail whose Exif
+# has the make, model and date taken (a clock time, no zone).
+DIR=$(cd "$(dirname "$0")" && pwd)
+ff -f lavfi -i testsrc=size=160x120 -frames:v 1 -q:v 10 "$TMP/thumb.jpg"
+et "$TMP/thumb.jpg" -Make=Canon "-Model=Canon PowerShot S1" "-DateTimeOriginal=2014:03:04 05:06:07" \
+  "-CreateDate=2014:03:04 05:06:07" -Orientation#=1
+cp "$DIR/canon.go.txt" "$TMP/canon.go"
+(cd "$TMP" && go run canon.go base.mp4 thumb.jpg canon.mp4)
+cp "$TMP/canon.mp4" "$OUT/canon.mp4"
+
 rm -rf "$TMP"

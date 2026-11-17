@@ -51,7 +51,9 @@ testdata/video/*.mp4
 testdata/video/*.3gp
     A synthetic test pattern (ffmpeg's testsrc and a sine tone, no
     recording), encoded and muxed by ffmpeg, with metadata written by
-    ExifTool 13.55 or ffmpeg (see testdata/video/make.sh). Made for this
+    ExifTool 13.55 or ffmpeg; canon.mp4 with a Canon-style uuid box (a
+    thumbnail of the pattern, made-up Exif values) spliced in by
+    testdata/video/canon.go.txt (see testdata/video/make.sh). Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 
@@ -95,7 +97,9 @@ testdata/heif-xmp/primary-and-gainmap.heic
 testdata/avi/*.avi
     A synthetic test pattern (ffmpeg's testsrc, no recording), MJPEG,
     encoded and muxed by ffmpeg, idit.avi with an IDIT date spliced in by
-    testdata/avi/idit.go.txt (see testdata/avi/make.sh). Made for this
+    testdata/avi/idit.go.txt, nikon.avi with a Nikon-style ncdt list (made-up
+    values and a thumbnail of the pattern) by testdata/avi/ncdt.go.txt
+    (see testdata/avi/make.sh). Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 

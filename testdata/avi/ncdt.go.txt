@@ -1,0 +1,83 @@
+// Adds a Nikon ncdt list, as Nikon compact cameras write one, to an AVI
+// made by ffmpeg: an ncvr record, an nctg record of tags (make, model,
+// software, orientation, exposure time, the dates), a thumbnail JPEG
+// (ncth) and an empty preview (ncvw). It takes the start of ffmpeg's JUNK
+// padding chunk, which stays after it, shorter: nothing moves, so the
+// index's absolute offsets stay right.
+//
+// Usage: go run ncdt.go <in.avi> <thumbnail.jpg> <out.avi>
+package main
+
+import (
+	"encoding/binary"
+	"os"
+)
+
+func le16(b []byte, v uint16) []byte { return binary.LittleEndian.AppendUint16(b, v) }
+func le32(b []byte, v uint32) []byte { return binary.LittleEndian.AppendUint32(b, v) }
+
+// chunk is a RIFF chunk. Odd data gets a zero byte counted in its size,
+// as the camera's chunks are all even: readers that skip a chunk by its
+// size, without RIFF's pad byte, stay in step.
+func chunk(id string, data []byte) []byte {
+	if len(data)%2 == 1 {
+		data = append(data[:len(data):len(data)], 0)
+	}
+	return append(le32([]byte(id), uint32(len(data))), data...)
+}
+
+// tag is an ncvr or nctg record: tag, size, value.
+func tag(t uint16, v []byte) []byte { return append(le16(le16(nil, t), uint16(len(v))), v...) }
+
+func str(s string, n int) []byte { b := make([]byte, n); copy(b, s); return b }
+
+func main() {
+	in, _ := os.ReadFile(os.Args[1])
+	thumb, _ := os.ReadFile(os.Args[2])
+	var ncvr, nctg []byte
+	ncvr = append(ncvr, tag(0x01, str("NIKON", 6))...)
+	ncvr = append(ncvr, tag(0x02, []byte{0, 0, 1, 0})...)
+	nctg = append(nctg, tag(0x03, str("NIKON", 6))...)
+	nctg = append(nctg, tag(0x04, str("COOLPIX S1", 12))...)
+	nctg = append(nctg, tag(0x05, str("COOLPIX S1V1.0", 16))...)
+	nctg = append(nctg, tag(0x07, le16(nil, 1))...)
+	nctg = append(nctg, tag(0x08, le32(le32(nil, 1), 60))...)
+	nctg = append(nctg, tag(0x0d, le16(nil, 0))...)
+	nctg = append(nctg, tag(0x13, str("2013:05:06 07:08:09", 20))...)
+	nctg = append(nctg, tag(0x14, str("2013:05:06 07:08:09", 20))...)
+	// The records fill their chunks exactly, as the camera's do: a pad
+	// byte there would read as the start of another record.
+	if len(ncvr)%2 == 1 || len(nctg)%2 == 1 {
+		panic("records of odd length")
+	}
+	body := []byte("ncdt")
+	body = append(body, chunk("ncvr", ncvr)...)
+	body = append(body, chunk("nctg", nctg)...)
+	body = append(body, chunk("ncth", thumb)...)
+	body = append(body, chunk("ncvw", nil)...)
+	list := chunk("LIST", body)
+	// The top-level JUNK chunk (hdrl has one of its own).
+	at := 12
+	for at+8 <= len(in) && string(in[at:at+4]) != "JUNK" {
+		m := int(binary.LittleEndian.Uint32(in[at+4:]))
+		at += 8 + m + m&1
+	}
+	if at+8 > len(in) {
+		panic("no top-level JUNK chunk")
+	}
+	n := int(binary.LittleEndian.Uint32(in[at+4:]))
+	rest := n - len(list) // the JUNK left: 8 + rest bytes
+	if rest < 0 || rest%2 == 1 {
+		panic("the ncdt list doesn't fit the JUNK chunk")
+	}
+	out := append([]byte(nil), in[:at]...)
+	out = append(out, list...)
+	out = append(out, chunk("JUNK", make([]byte, rest))...)
+	out = append(out, in[at+8+n:]...)
+	if len(out) != len(in) {
+		panic("the file changed size")
+	}
+	if err := os.WriteFile(os.Args[3], out, 0o644); err != nil {
+		panic(err)
+	}
+}

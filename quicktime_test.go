@@ -274,7 +274,7 @@ func FuzzReadVideo(f *testing.F) {
 	for _, b := range broken {
 		f.Add(b)
 	}
-	for _, p := range []string{"testdata/avi/idit.avi", "testdata/mpegps/mpeg2.mpg"} {
+	for _, p := range []string{"testdata/avi/idit.avi", "testdata/avi/nikon.avi", "testdata/mpegps/mpeg2.mpg"} {
 		if b, err := os.ReadFile(p); err == nil {
 			f.Add(b[:min(len(b), 16<<10)])
 		}

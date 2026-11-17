@@ -31,6 +31,12 @@ Where each field comes from, in order of preference:
   cameras write MOV files): Make, Model and DateTimeOriginal, the
   recording's start in the camera's clock time, without an offset. They
   come after Keys and the user data's own entries, before XMP.
+- **Canon's tags** (a `uuid` box in `moov`,
+  `85C0B687-820F-11E0-8111-F4CE462B6A48`, as Canon cameras write MP4
+  files): Make, Model and DateTimeOriginal from the Exif of the thumbnail
+  JPEG in its `CNTH` box (`CNDA`, CNTH's one box; what follows it there is
+  padding). The date is the camera's clock time, without an offset unless
+  the Exif has one. They come after Nikon's.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
@@ -74,6 +80,7 @@ CC0, made by its `make.sh`. Each holds the metadata in one place:
 
 - Keys (date with offset, GPS, make, model, content identifier);
 - the user data (`©day`, `©xyz`, `©mak`, `©mod`);
+- Canon's `uuid` box with a thumbnail and its Exif;
 - 3GPP `loci` in a 3GP;
 - XMP only, in an MP4's `uuid` box and in a MOV's `XMP_`;
 - tracks turned 90° and 270°.
@@ -292,8 +299,11 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
   - The duration and size come from the main header (`avih`): frames ×
     microseconds per frame.
   - The recording date is the `IDIT` chunk (asctime or Exif layout), else
-    the INFO list's `ICRD` when it holds a whole date. A year alone isn't
-    taken: it would read as 1 January.
+    Nikon's DateTimeOriginal, else the INFO list's `ICRD` when it holds a
+    whole date. A year alone isn't taken: it would read as 1 January.
+  - The make, model and DateTimeOriginal of Nikon compact cameras come from
+    the `nctg` chunk of their `ncdt` list: records of a 16-bit tag and a
+    16-bit size, little-endian, then the value. Without an offset.
   - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
     keywords `IKEY`, split at `;` or `,`.
 - **MPEG program streams** (`.mpg`, `.vob`):
