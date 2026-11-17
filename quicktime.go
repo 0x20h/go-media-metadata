@@ -64,6 +64,9 @@ type Video struct {
 	// com.apple.quicktime.make and .model, else the user data's ©mak and
 	// ©mod.
 	Make, Model string
+	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
+	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
+	LensModel string
 
 	// ContentIdentifier is the Keys entry
 	// com.apple.quicktime.content.identifier, which pairs a Live Photo's
@@ -105,6 +108,10 @@ var qtEpoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 // maxQTSeconds is 496 years of seconds: a movie time after 2400 is a
 // broken field, not a date.
 const maxQTSeconds = 496 * 366 * 86400
+
+// unixEpochQT is 1970-01-01 in seconds since 1904: 66 years and 17 leap
+// days.
+const unixEpochQT = (66*365 + 17) * 86400
 
 // ReadVideo reads the metadata of the QuickTime or MP4 movie in r (size
 // bytes). It reads box headers and the few small boxes the fields come
@@ -221,6 +228,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
+	v.LensModel = keys.lensModel
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
 	v.Title = first(keys.title, udta.title)
 	v.Description = first(keys.description, udta.description)
@@ -383,8 +391,14 @@ func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 		return
 	}
 	// Up to the year 2400: anything later is a broken field, not a date.
-	if secs != 0 && secs < maxQTSeconds {
+	// Some writers count from 1970 instead of 1904 (Unix time): a value
+	// below 1970's in 1904 seconds is read from 1970, as ExifTool reads
+	// it, rather than as a date before 1970.
+	switch {
+	case secs >= unixEpochQT && secs < maxQTSeconds:
 		created = qtEpoch.Add(time.Duration(secs) * time.Second)
+	case secs != 0 && secs < unixEpochQT:
+		created = time.Unix(int64(secs), 0).UTC()
 	}
 	if scale != 0 && dur/scale < uint64(math.MaxInt64/int64(time.Second)) {
 		d = time.Duration(dur/scale)*time.Second + time.Duration(dur%scale)*time.Second/time.Duration(scale)
@@ -518,6 +532,7 @@ type qtTags struct {
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
 	keywords                                  []string
+	lensModel                                 string
 }
 
 // merge fills t's empty fields from o.
@@ -533,6 +548,9 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.model == "" {
 		t.model = o.model
+	}
+	if t.lensModel == "" {
+		t.lensModel = o.lensModel
 	}
 	if t.nikonDate == "" {
 		t.nikonDate = o.nikonDate
@@ -585,6 +603,7 @@ const (
 	keyLocation  = "com.apple.quicktime.location.ISO6709"
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
+	keyLensModel = "com.apple.quicktime.camera.lens_model"
 	keyContentID = "com.apple.quicktime.content.identifier"
 	keyTitle     = "com.apple.quicktime.title"
 	keyDesc      = "com.apple.quicktime.description"
@@ -643,6 +662,8 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case keyModel:
 			dst = &t.model
+		case keyLensModel:
+			dst = &t.lensModel
 		case keyContentID:
 			dst = &t.contentID
 		case keyTitle:
@@ -709,7 +730,7 @@ func parseKeys(b []byte) []string {
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
 // readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
-// desc and keyw.
+// ©des and desc, ©xyz and keyw.
 func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	var t qtTags
 	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
@@ -732,6 +753,14 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 			} else {
 				t.title = first(t.title, s)
 			}
+		case "\xa9xyz":
+			// ISO 6709 text, as Android cameras and ExifTool's ItemList
+			// GPSCoordinates have it.
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			t.location = first(t.location, s)
 		case "keyw":
 			if t.keywords == nil {
 				vs, err := readDataStrings(r, it)

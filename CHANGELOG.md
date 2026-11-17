@@ -7,6 +7,18 @@
 - `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
   `NCDT`): make, model, and the recording's start as the date where Keys
   and user data have none, as ExifTool reads them.
+
+- `Video.LensModel`: the Keys entry
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it.
+- `Camera.LensModel` falls back to a Canon maker note's LensModel (tag
+  0x0095) when the Exif IFD has none, as ExifTool reads it.
+
+- `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
+  can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
+  `uuid` box when it fits, else moved to the user data's `XMP_`, the box
+  freed. `PlanMetadata`'s XMP part takes movies too. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 - `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
   the date's precision, with its offset when known, or removes them. A
   date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in
@@ -29,6 +41,22 @@
   corrected in XMP in the same edit. See [docs/xmp.md](docs/xmp.md).
 
 ### Fixed
+
+- `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
+  Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
+  GPSCoordinates). Such videos had no place. See
+  [docs/quicktime.md](docs/quicktime.md).
+
+- A movie header date written from 1970 instead of 1904 (some MP4s
+  forwarded by messengers, some phones) is read from 1970, as ExifTool
+  reads it, instead of 66 years early (1946–1951 for 2012–2017). See
+  [docs/quicktime.md](docs/quicktime.md).
+
+- An XMP title or description edit of a PNG also sets the PNG's own
+  `Title` and `Description` text chunks (`tEXt`, `zTXt`, `iTXt`) where it
+  has them, or removes them. ExifTool's `-Title` writes these, and viewers
+  read them; before, they kept the old text. See
+  [docs/png-webp.md](docs/png-webp.md).
 
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's

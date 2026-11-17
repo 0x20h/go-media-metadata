@@ -227,6 +227,15 @@ func (m *pngMetadata) readXMP(r io.ReaderAt) ([]byte, error) {
 // where the PNG specification puts eXIf. Further chunks of the kind are
 // removed, so no old value stays in the file.
 func planPNGChunk(r io.ReaderAt, size int64, kind metadataKind, edit func(old []byte) ([]byte, error)) (*Plan, error) {
+	e, err := pngChunkSplices(r, size, kind, edit)
+	if err != nil {
+		return nil, err
+	}
+	return e.plan(r, size), nil
+}
+
+// pngChunkSplices are planPNGChunk's splices, sorted.
+func pngChunkSplices(r io.ReaderAt, size int64, kind metadataKind, edit func(old []byte) ([]byte, error)) (*spliceEdit, error) {
 	m, err := readPNGMetadata(r, size)
 	if err != nil {
 		return nil, err
@@ -288,7 +297,100 @@ func planPNGChunk(r io.ReaderAt, size int64, kind metadataKind, edit func(old []
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
+	return e, nil
+}
+
+// planPNGXMP plans an XMP edit of a PNG. A title or description it sets
+// is also written to the PNG's own text chunks of that keyword ("Title",
+// "Description": tEXt, zTXt or iTXt, as ExifTool writes PNG:Title), where
+// the PNG has them, so no reader of PNG text finds the old value; "" removes
+// them. None is added: the XMP holds the value.
+func planPNGXMP(r io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
+	e, err := pngChunkSplices(r, size, kindXMP, func(old []byte) ([]byte, error) { return EditXMP(old, edit) })
+	if err != nil {
+		return nil, err
+	}
+	if edit.Title == nil && edit.Description == nil {
+		return e.plan(r, size), nil
+	}
+	chunks, err := pngChunks(r, size)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range chunks {
+		typ := string(c.typ[:])
+		if typ != "tEXt" && typ != "zTXt" && typ != "iTXt" {
+			continue
+		}
+		head := make([]byte, min(c.n, 80))
+		if _, err := r.ReadAt(head, c.data()); err != nil {
+			return nil, fmt.Errorf("%w: reading a %s chunk: %v", ErrMalformed, typ, err)
+		}
+		k := bytes.IndexByte(head, 0)
+		if k < 0 {
+			continue
+		}
+		var v *string
+		switch string(head[:k]) {
+		case "Title":
+			v = edit.Title
+		case "Description":
+			v = edit.Description
+		}
+		if v == nil {
+			continue
+		}
+		var data []byte
+		if *v != "" {
+			old, err := readChunk(r, c.data(), c.n)
+			if err != nil {
+				return nil, err
+			}
+			data, typ = pngText(typ, old, string(head[:k]), *v)
+		}
+		s := splice{at: c.at, del: c.end() - c.at}
+		if data != nil {
+			s.data = pngChunkBytes(typ, data)
+		}
+		e.add(s)
+	}
+	if err := e.sorted(); err != nil {
+		return nil, err
+	}
 	return e.plan(r, size), nil
+}
+
+// pngText is a text chunk's new data and type: keyword's value as s. A
+// tEXt stays tEXt when s is Latin-1 (PNG's text there); otherwise, and for
+// an iTXt, an uncompressed iTXt in UTF-8, keeping an old iTXt's language
+// and translated keyword. A zTXt becomes a tEXt or iTXt: uncompressed, so
+// no old text stays in a compressed stream.
+func pngText(typ string, old []byte, keyword, s string) ([]byte, string) {
+	if typ != "iTXt" {
+		if latin1, ok := toLatin1(s); ok {
+			return append(append([]byte(keyword), 0), latin1...), "tEXt"
+		}
+	}
+	b := append([]byte(keyword), 0, 0, 0) // uncompressed, method 0
+	if t, ok := parseITXt(old); typ == "iTXt" && ok {
+		b = append(b, t.head[len(keyword)+3:]...) // language and translated keyword
+	} else {
+		b = append(b, 0, 0)
+	}
+	return append(b, s...), "iTXt"
+}
+
+// toLatin1 encodes s in ISO 8859-1 without control characters other than
+// line feed, as PNG's tEXt has it; ok is false for text that can't be.
+func toLatin1(s string) ([]byte, bool) {
+	out := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xFF || r < 0x20 && r != '\n' || r >= 0x7F && r < 0xA0 {
+			return nil, false
+		}
+		out = append(out, byte(r))
+	}
+	return out, true
 }
 
 // xmpITXt is the data of an uncompressed iTXt chunk holding XMP.

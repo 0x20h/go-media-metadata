@@ -97,7 +97,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		// The place: Keys, ©xyz, loci (ExifTool's composite of it), XMP.
 		var lat, lon, alt float64
 		hasGPS, hasAlt, tol := false, false, 1e-6
-		for _, k := range []string{"Keys:GPSCoordinates", "UserData:GPSCoordinates"} {
+		for _, k := range []string{"Keys:GPSCoordinates", "ItemList:GPSCoordinates", "UserData:GPSCoordinates"} {
 			if f := strings.Fields(str(k)); !hasGPS && len(f) >= 2 {
 				lat, _ = strconv.ParseFloat(f[0], 64)
 				lon, _ = strconv.ParseFloat(f[1], 64)
