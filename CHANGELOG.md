@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## v0.2.3 (2026-11-17)
+
+No breaking changes.
+
+### Added
+
+- `RewriteMovie`, `PlanRewriteMovie` and `IndexFirst`: a QuickTime or MP4
+  movie rewritten with its index (`moov`) first, as `ffmpeg -c copy
+  -movflags +faststart` does, without decoding a sample. Chunk offsets
+  move with their data (an `stco` becomes a `co64` when it must);
+  `RewriteOptions` leaves the metadata out and zeroes the times. See
+  [docs/quicktime.md](docs/quicktime.md).
+
+### Faster reads
+
+The read calls and allocations of `ReadAll` and the single readers, the
+same values read:
+
+- **HEIC:** the meta box is read and parsed once for every value, about
+  half the bytes read. Boxes already in memory are walked without a
+  reader: `ReadAll` on an iPhone HEIC makes 227 allocations instead of
+  414.
+- **Movies:** the movie box is read in one call (up to 1 MB): `ReadAll`
+  on a MOV makes 9 read calls instead of 61, on an MP4 10 instead of 49.
+- **JPEG:** the first 16 KB are read in one call, and each marker's
+  header in one more: `ReadAll` makes 3 read calls instead of 28.
+- **XMP:** parsing a packet for reading drops the whitespace between
+  elements: 215 allocations instead of 396 on a typical packet.
+
+### Behaviour worth knowing
+
+- `Plan.InPlace` is false for a movie rewrite that moves the media data,
+  even when the file keeps its size.
+
 ## v0.2.2 (2026-11-17)
 
 No breaking changes.

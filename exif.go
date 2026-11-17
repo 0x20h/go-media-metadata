@@ -1,7 +1,6 @@
 package mediameta
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -38,11 +37,11 @@ func idatBody(meta []byte) int64 {
 // idatPayload is where the idat box's payload starts in the meta box held
 // in meta and how long it is; -1 without one.
 func idatPayload(meta []byte) (int64, int64) {
-	top, err := bmff.ReadBoxes(bytes.NewReader(meta), 0, int64(len(meta)))
+	top, err := bmff.ParseBoxes(meta, 0, int64(len(meta)))
 	if err != nil || len(top) != 1 || top[0].BodyLen() < 4 {
 		return -1, 0
 	}
-	kids, err := bmff.ReadBoxes(bytes.NewReader(meta), top[0].Body()+4, top[0].End())
+	kids, err := bmff.ParseBoxes(meta, top[0].Body()+4, top[0].End())
 	if err != nil {
 		return -1, 0
 	}

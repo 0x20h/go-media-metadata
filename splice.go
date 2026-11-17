@@ -18,6 +18,10 @@ type splice struct {
 // aren't copied, so an old value that's replaced is gone from the result.
 type spliceEdit struct {
 	splices []splice
+	// copyBuf, when set, is how many bytes at most each read of the
+	// source takes (io.Copy's otherwise): a movie's media data goes in
+	// large chunks.
+	copyBuf int
 }
 
 func (e *spliceEdit) add(s splice) { e.splices = append(e.splices, s) }
@@ -43,10 +47,33 @@ func (e *spliceEdit) delta() int64 {
 // write streams the source with the splices applied.
 func (e *spliceEdit) write(src io.ReaderAt, size int64, dst io.Writer) (int64, error) {
 	var n, pos int64
+	var buf []byte
 	copyTo := func(end int64) error {
-		m, err := io.Copy(dst, io.NewSectionReader(src, pos, end-pos))
-		n += m
-		return err
+		if e.copyBuf == 0 {
+			m, err := io.Copy(dst, io.NewSectionReader(src, pos, end-pos))
+			n += m
+			return err
+		}
+		for at := pos; at < end; {
+			if want := min(int64(e.copyBuf), end-at); int64(len(buf)) < want {
+				buf = make([]byte, want)
+			}
+			k := min(int64(len(buf)), end-at)
+			r, err := src.ReadAt(buf[:k], at)
+			if int64(r) == k {
+				err = nil
+			}
+			m, werr := dst.Write(buf[:r])
+			n += int64(m)
+			at += int64(m)
+			if err != nil {
+				return err
+			}
+			if werr != nil {
+				return werr
+			}
+		}
+		return nil
 	}
 	for _, s := range e.splices {
 		if err := copyTo(s.at); err != nil {

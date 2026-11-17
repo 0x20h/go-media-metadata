@@ -2,4 +2,3 @@
 #   <benchmark name prefix> <unit> <most rise> <reason...>
 # unit: allocs/op, read-B/op or readcalls/op. A PR that adds a line says
 # why in its description; the line goes again once the change is on main.
-BenchmarkReadAllJPEG read-B/op 16384 one 16 KB read window over a JPEG's start instead of a read per segment marker (#fix-3); goes once on main
