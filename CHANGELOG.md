@@ -27,6 +27,10 @@
 
 ### Fixed
 
+- A movie header date written from 1970 instead of 1904 (some MP4s
+  forwarded by messengers, some phones) is read from 1970, as ExifTool
+  reads it, instead of 66 years early (1946–1951 for 2012–2017). See
+  [docs/quicktime.md](docs/quicktime.md).
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's
   3GPP `titl` and `dscp` kept their old values, and a removal left them.

@@ -42,6 +42,11 @@ Where each field comes from, in order of preference:
   `ReadXMP` returns it too.
 - **The movie header**, for the date, as a last resort. That date is in
   UTC.
+  - Its seconds count from 1904. Some writers (forwarded or re-encoded
+    MP4s, some phones) count from 1970 instead.
+  - A value below 1970's in 1904 seconds is read from 1970, as ExifTool
+    reads it without its `QuickTimeUTC` option, rather than as a date
+    before 1970.
 
 Locations are ISO 6709 strings and dates ISO 8601. Keywords are split at
 commas. A rating is −1 (rejected) to 5, written as text or as an integer.
