@@ -48,6 +48,10 @@ cp "$TMP/base.mp4" "$OUT/titles.mp4"
 et "$OUT/titles.mp4" "-UserData:Title=User title" "-UserData:Description=User description" \
   "-ItemList:Title=Item title" "-ItemList:Description=Item description" "-Keys:Title=Keys title"
 
+# A position in the item list (©xyz), as Android cameras write it.
+cp "$TMP/base.mp4" "$OUT/itemlist-gps.mp4"
+et "$OUT/itemlist-gps.mp4" "-ItemList:GPSCoordinates=-33.8568, 151.2153, 5"
+
 # Turned: the track matrix (ffmpeg's display_rotation counts
 # anticlockwise; these are 90 and 270 clockwise).
 ff -display_rotation 270 -i "$TMP/base.mp4" -c copy "$OUT/rotate90.mp4"

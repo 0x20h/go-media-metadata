@@ -109,6 +109,10 @@ var qtEpoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 // broken field, not a date.
 const maxQTSeconds = 496 * 366 * 86400
 
+// unixEpochQT is 1970-01-01 in seconds since 1904: 66 years and 17 leap
+// days.
+const unixEpochQT = (66*365 + 17) * 86400
+
 // ReadVideo reads the metadata of the QuickTime or MP4 movie in r (size
 // bytes). It reads box headers and the few small boxes the fields come
 // from: not the media data, and not the sample tables.
@@ -384,8 +388,14 @@ func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 		return
 	}
 	// Up to the year 2400: anything later is a broken field, not a date.
-	if secs != 0 && secs < maxQTSeconds {
+	// Some writers count from 1970 instead of 1904 (Unix time): a value
+	// below 1970's in 1904 seconds is read from 1970, as ExifTool reads
+	// it, rather than as a date before 1970.
+	switch {
+	case secs >= unixEpochQT && secs < maxQTSeconds:
 		created = qtEpoch.Add(time.Duration(secs) * time.Second)
+	case secs != 0 && secs < unixEpochQT:
+		created = time.Unix(int64(secs), 0).UTC()
 	}
 	if scale != 0 && dur/scale < uint64(math.MaxInt64/int64(time.Second)) {
 		d = time.Duration(dur/scale)*time.Second + time.Duration(dur%scale)*time.Second/time.Duration(scale)
@@ -713,7 +723,7 @@ func parseKeys(b []byte) []string {
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
 // readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
-// desc and keyw.
+// ©des and desc, ©xyz and keyw.
 func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	var t qtTags
 	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
@@ -736,6 +746,14 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 			} else {
 				t.title = first(t.title, s)
 			}
+		case "\xa9xyz":
+			// ISO 6709 text, as Android cameras and ExifTool's ItemList
+			// GPSCoordinates have it.
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			t.location = first(t.location, s)
 		case "keyw":
 			if t.keywords == nil {
 				vs, err := readDataStrings(r, it)
