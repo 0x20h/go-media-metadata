@@ -14,7 +14,8 @@ import (
 type MetadataEdit struct {
 	Exif *ExifEdit
 	XMP  *XMPEdit
-	// IPTC is written in JPEG only; another format refuses it with
+	// IPTC is written in JPEG (its APP13) and PNG (a raw profile text
+	// chunk, as ExifTool writes it); another format refuses it with
 	// ErrUnsupported.
 	IPTC *IPTCEdit
 }
@@ -106,8 +107,11 @@ func PlanMetadata(src io.ReaderAt, size int64, edit MetadataEdit) (*Plan, error)
 // planIPTCEdit plans edit applied to a JPEG's IPTC-IIM data (new data
 // where it has none).
 func planIPTCEdit(src io.ReaderAt, size int64, edit IPTCEdit) (*Plan, error) {
+	if isPNG(src, size) {
+		return planPNGIPTC(src, size, edit)
+	}
 	if !isJPEG(src, size) {
-		return nil, fmt.Errorf("%w: IPTC-IIM in a file that isn't a JPEG", ErrUnsupported)
+		return nil, fmt.Errorf("%w: IPTC-IIM in a file that isn't a JPEG or PNG", ErrUnsupported)
 	}
 	old, err := ReadIPTC(src, size)
 	if err != nil {

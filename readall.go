@@ -131,6 +131,7 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			} else {
 				m.Exif, exifErr = pm.readExif(r)
 				packet, xmpErr = pm.readXMP(r)
+				iim, iptcErr = pm.readIPTC(r)
 			}
 			m.Size, m.Errors.Size = pngImageSize(r, size)
 			m.Orientation = orientationOfExif(m.Exif, exifErr, &m.Errors)

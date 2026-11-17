@@ -12,6 +12,15 @@ most 65536 of them.
   as hex. Without an `eXIf` chunk, that Exif is read, as ExifTool reads
   it. An Exif edit then writes an `eXIf` chunk, starting from that Exif,
   and removes the raw profile, so no old value stays in it.
+- **IPTC** is a `zTXt` (or `tEXt`) chunk with the keyword `Raw profile
+  type iptc`, as ImageMagick and ExifTool write it: hex of Photoshop image
+  resources whose 0x0404 holds the IIM data, or of the IIM data alone.
+  `ReadIPTC` and `ReadAll` read it. `MetadataEdit.IPTC` edits it with
+  `EditIPTC`, as for JPEG:
+  - The chunk is replaced, and other image resources in it are kept.
+  - It's added before the image data (as a `zTXt`, as ExifTool writes it)
+    where there's none.
+  - It's removed when no IIM data is left.
 - **XMP** is an `iTXt` chunk with the keyword `XML:com.adobe.xmp` (XMP
   Part 3, 1.1.5), compressed or not. The first chunk of each kind is the
   one read.

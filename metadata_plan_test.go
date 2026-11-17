@@ -132,13 +132,14 @@ func TestPlanMetadataInPlace(t *testing.T) {
 	checkPlan(t, file, p)
 }
 
-// IPTC in a file that isn't a JPEG is refused, and nothing is planned.
+// IPTC in a file that isn't a JPEG or PNG is refused, and nothing is
+// planned.
 func TestPlanMetadataIPTCOnlyInJPEG(t *testing.T) {
-	file := testPNG(t)
+	file := readFile(t, "testdata/webp/lossy.webp")
 	_, err := PlanMetadata(bytes.NewReader(file), int64(len(file)), MetadataEdit{
 		XMP: &XMPEdit{Title: ptr("x")}, IPTC: &IPTCEdit{Title: ptr("x")}})
 	if !errors.Is(err, ErrUnsupported) {
-		t.Errorf("IPTC in a PNG: %v", err)
+		t.Errorf("IPTC in a WebP: %v", err)
 	}
 }
 
@@ -156,6 +157,8 @@ func FuzzPlanMetadata(f *testing.F) {
 	for _, file := range rawProfilePNGs(f) {
 		f.Add(file)
 	}
+	iim, _ := EditIPTC(nil, IPTCEdit{Title: ptr("Old"), Keywords: &[]string{"a"}})
+	f.Add(pngWithChunks(f, rawProfileChunk(rawProfileIPTC, "IPTC", writeIRBs([]irb{{sig: [4]byte{'8', 'B', 'I', 'M'}, id: irbIPTC, name: []byte{0, 0}, data: iim}}))))
 	// A HEIC with two XMP items (the primary's and the gain map's).
 	if b, err := os.ReadFile("testdata/heif-xmp/primary-and-gainmap.heic"); err == nil {
 		f.Add(b)
