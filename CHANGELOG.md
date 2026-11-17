@@ -4,6 +4,20 @@
 
 ### Added
 
+- `ReadPNGText` and `Metadata.PNG`: a PNG's Title and Description text
+  chunks (`tEXt`, `zTXt`, `iTXt`) and its `tIME` (the last modification),
+  as ExifTool reads them. `ReadAll`'s title and description fall back to
+  them. See [docs/png-webp.md](docs/png-webp.md).
+
+- `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
+  `NCDT`): make, model, and the recording's start as the date where Keys
+  and user data have none, as ExifTool reads them.
+
+- `Video.LensModel`: the Keys entry
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it.
+- `Camera.LensModel` falls back to a Canon maker note's LensModel (tag
+  0x0095) when the Exif IFD has none, as ExifTool reads it.
+
 - `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
   can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
   `uuid` box when it fits, else moved to the user data's `XMP_`, the box
@@ -36,6 +50,20 @@
 - `VideoEdit.GPS` adds the user data's `©xyz` when the movie has none, as
   ExifTool does, so readers that don't read Keys (Android's) find the
   place. Before, only an existing `©xyz` was updated.
+
+- A PNG's Exif in an ImageMagick raw profile text chunk (`Raw profile
+  type exif`, hex) is read when there's no `eXIf`, as ExifTool reads it.
+  An Exif edit moves it to an `eXIf` chunk and removes the raw profile.
+
+- `Camera`'s exposure fields (ExposureTime, FNumber, ISO, focal lengths)
+  are read from IFD0 when the Exif IFD hasn't got them, as some Samsung
+  cameras write them and ExifTool reads them.
+
+- `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
+  Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
+  GPSCoordinates). Such videos had no place. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 - A movie header date written from 1970 instead of 1904 (some MP4s
   forwarded by messengers, some phones) is read from 1970, as ExifTool
   reads it, instead of 66 years early (1946–1951 for 2012–2017). See

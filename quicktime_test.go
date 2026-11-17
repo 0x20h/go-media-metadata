@@ -269,6 +269,7 @@ func FuzzReadVideo(f *testing.F) {
 	}
 	// Transport streams, cut to their first packets: the tables, the SPS
 	// and the MDPM.
+	f.Add(nctgSeedMovie())
 	_, broken := brokenMovies(f)
 	for _, b := range broken {
 		f.Add(b)

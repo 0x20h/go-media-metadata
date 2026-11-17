@@ -64,6 +64,9 @@ type Video struct {
 	// com.apple.quicktime.make and .model, else the user data's ©mak and
 	// ©mod.
 	Make, Model string
+	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
+	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
+	LensModel string
 
 	// ContentIdentifier is the Keys entry
 	// com.apple.quicktime.content.identifier, which pairs a Live Photo's
@@ -206,6 +209,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.Created, v.OffsetKnown = at, true
 	} else if at, ok := parseISO8601(udta.created); ok {
 		v.Created, v.OffsetKnown = at, true
+	} else if at, _, ok := parseExifDate(udta.nikonDate); ok {
+		// Nikon's recording start: the camera's clock time, no offset.
+		v.Created, v.OffsetKnown = at, false
 	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
 		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
@@ -222,6 +228,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
+	v.LensModel = keys.lensModel
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
 	v.Title = first(keys.title, udta.title)
 	v.Description = first(keys.description, udta.description)
@@ -520,10 +527,12 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	nikonDate                                 string // Nikon NCTG's DateTimeOriginal
 	loci                                      *GPS   // 3GPP loci
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
 	keywords                                  []string
+	lensModel                                 string
 }
 
 // merge fills t's empty fields from o.
@@ -539,6 +548,12 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.model == "" {
 		t.model = o.model
+	}
+	if t.lensModel == "" {
+		t.lensModel = o.lensModel
+	}
+	if t.nikonDate == "" {
+		t.nikonDate = o.nikonDate
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -588,6 +603,7 @@ const (
 	keyLocation  = "com.apple.quicktime.location.ISO6709"
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
+	keyLensModel = "com.apple.quicktime.camera.lens_model"
 	keyContentID = "com.apple.quicktime.content.identifier"
 	keyTitle     = "com.apple.quicktime.title"
 	keyDesc      = "com.apple.quicktime.description"
@@ -646,6 +662,8 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case keyModel:
 			dst = &t.model
+		case keyLensModel:
+			dst = &t.lensModel
 		case keyContentID:
 			dst = &t.contentID
 		case keyTitle:
@@ -712,7 +730,7 @@ func parseKeys(b []byte) []string {
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
 // readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
-// desc and keyw.
+// ©des and desc, ©xyz and keyw.
 func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	var t qtTags
 	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
@@ -735,6 +753,14 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 			} else {
 				t.title = first(t.title, s)
 			}
+		case "\xa9xyz":
+			// ISO 6709 text, as Android cameras and ExifTool's ItemList
+			// GPSCoordinates have it.
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			t.location = first(t.location, s)
 		case "keyw":
 			if t.keywords == nil {
 				vs, err := readDataStrings(r, it)
@@ -903,6 +929,12 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.title
 		case "\xa9des":
 			dst = &t.description
+		case "NCDT":
+			// Nikon's tags: an NCTG box in NCDT (see parseNCTG).
+			if err := readNCDT(r, k, &t); err != nil {
+				return t, err
+			}
+			continue
 		case "titl", "dscp":
 			// 3GPP strings (TS 26.244 8.1), as ExifTool writes UserData
 			// Title and Description in an MP4.
@@ -1207,4 +1239,56 @@ func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP
 		}
 	}
 	return x
+}
+
+// readNCDT reads the NCTG box in a Nikon NCDT box of the user data: its
+// make, model and recording start (into t where they're unset).
+func readNCDT(r io.ReaderAt, ncdt bmff.Box, t *qtTags) error {
+	kids, err := bmff.ReadBoxes(r, ncdt.Body(), ncdt.End())
+	if err != nil {
+		return nil // a broken NCDT is skipped, as other user data is
+	}
+	b, ok := bmff.Find(kids, bmff.T("NCTG"))
+	if !ok {
+		return nil
+	}
+	data, err := readBox(r, b, maxLeafBox)
+	if err != nil {
+		return err
+	}
+	make_, model, dto := parseNCTG(data)
+	t.make, t.model = first(t.make, make_), first(t.model, model)
+	t.nikonDate = first(t.nikonDate, dto)
+	return nil
+}
+
+// parseNCTG reads Nikon's NCTG records (as ExifTool documents its Nikon
+// NCTG tags): each a 32-bit tag, a 16-bit Exif format code, a 16-bit
+// count, then the value, big-endian. Make (1), Model (2) and
+// DateTimeOriginal (0x12, the recording's start: Exif date text, the
+// camera's clock time) are read.
+func parseNCTG(b []byte) (make_, model, dto string) {
+	for pos := 0; pos+8 <= len(b); {
+		tag := binary.BigEndian.Uint32(b[pos:])
+		typ := binary.BigEndian.Uint16(b[pos+4:])
+		count := int(binary.BigEndian.Uint16(b[pos+6:]))
+		size := typeSize(typ) * count
+		pos += 8
+		if typeSize(typ) == 0 || size > len(b)-pos {
+			return
+		}
+		if typ == typeASCII {
+			s, _ := ascii(field{typ: typ, count: count, value: b[pos : pos+size]})
+			switch tag {
+			case 0x01:
+				make_ = s
+			case 0x02:
+				model = s
+			case 0x12:
+				dto = s
+			}
+		}
+		pos += size
+	}
+	return
 }
