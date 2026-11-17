@@ -74,6 +74,21 @@ func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byt
 	if int64(len(out)) > size {
 		e.add(splice{at: size, data: out[size:]})
 	}
+	// The image data, as HashImageData takes it, must stay as it is. In a
+	// file whose strips or tiles claim bytes the metadata uses (or run
+	// past the end, over what's appended), the edit is refused.
+	var ranges [][2]int64
+	h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
+	if err := h.raw(); err == nil {
+		for _, s := range e.splices {
+			end := s.at + max(s.del, 1) // an insert at the end touches the byte after
+			for _, rg := range ranges {
+				if s.at < rg[1] && rg[0] < end {
+					return nil, fmt.Errorf("%w: a TIFF whose image data overlaps its metadata (at %d)", ErrUnsupported, s.at)
+				}
+			}
+		}
+	}
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
