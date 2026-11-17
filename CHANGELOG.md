@@ -33,6 +33,11 @@
 
 ### Fixed
 
+- A movie header date written from 1970 instead of 1904 (some MP4s
+  forwarded by messengers, some phones) is read from 1970, as ExifTool
+  reads it, instead of 66 years early (1946–1951 for 2012–2017). See
+  [docs/quicktime.md](docs/quicktime.md).
+
 - An XMP title or description edit of a PNG also sets the PNG's own
   `Title` and `Description` text chunks (`tEXt`, `zTXt`, `iTXt`) where it
   has them, or removes them. ExifTool's `-Title` writes these, and viewers
