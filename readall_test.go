@@ -229,3 +229,21 @@ func FuzzReadAll(f *testing.F) {
 		})
 	})
 }
+
+// ReadAll of JPEGs with full metadata: Exif, XMP (regions, people, where
+// and when) and IPTC, the parse an import pays per photo.
+func BenchmarkReadAllJPEG(b *testing.B) {
+	for _, name := range []string{"all.jpg", "regions-full.jpg", "xmp-where-when.jpg"} {
+		data := readFile(b, filepath.Join("testdata/exiftool", name))
+		b.Run(name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(data)}
+			b.ReportAllocs()
+			for range b.N {
+				if _, err := ReadAll(cr, int64(len(data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			reportReads(b, cr)
+		})
+	}
+}
