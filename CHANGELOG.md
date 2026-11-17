@@ -27,6 +27,10 @@
 
 ### Fixed
 
+- `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
+  Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
+  GPSCoordinates). Such videos had no place. See
+  [docs/quicktime.md](docs/quicktime.md).
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's
   3GPP `titl` and `dscp` kept their old values, and a removal left them.

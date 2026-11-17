@@ -23,7 +23,8 @@ Where each field comes from, in order of preference:
   (`title`), description (`description`), keywords (`keywords`) and
   rating (`rating.user`).
 - **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
-  for the title, `©des` or `desc` for the description, `keyw`.
+  for the title, `©des` or `desc` for the description, `©xyz` for the
+  place (ISO 6709, as Android cameras write it), `keyw`.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
