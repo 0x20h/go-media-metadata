@@ -33,6 +33,9 @@
 
 ### Fixed
 
+- `VideoEdit.GPS` adds the user data's `©xyz` when the movie has none, as
+  ExifTool does, so readers that don't read Keys (Android's) find the
+  place. Before, only an existing `©xyz` was updated.
 - A movie header date written from 1970 instead of 1904 (some MP4s
   forwarded by messengers, some phones) is read from 1970, as ExifTool
   reads it, instead of 66 years early (1946–1951 for 2012–2017). See

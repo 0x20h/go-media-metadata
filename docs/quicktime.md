@@ -119,8 +119,11 @@ Where each value is written:
   six decimals and the altitude where there is one. A movie without
   Keys metadata gets a QuickTime-style `meta` box in `moov`, which
   ExifTool and FFmpeg read in MOV and MP4 files alike.
-- **User data** `©day` and `©xyz`, where the movie has them, so they
-  agree. Missing entries aren't added.
+- **User data** `©day` and `©xyz`:
+  - `©day` is updated where the movie has one, so the two agree.
+  - `©xyz` is also added when the movie has none (and `udta` with it), as
+    ExifTool writes UserData GPSCoordinates. Readers that don't read
+    Keys, Android's among them, look there.
 - **The movie header's creation time** (`mvhd`), in UTC, where its
   field can hold it.
 

@@ -508,7 +508,16 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		if err := keys.set(keyLocation, s); err != nil {
 			return err
 		}
+		// The user data's ©xyz too, added where there's none, as ExifTool
+		// writes it: readers that don't read Keys (Android's) look there.
+		if udta == nil && moov.child(bmff.T("udta")) == nil {
+			udta = &qtNode{typ: bmff.T("udta")}
+			moov.kids = append(moov.kids, udta)
+		}
 		if udta != nil {
+			if udta.child(bmff.T("\xa9xyz")) == nil {
+				udta.kids = append(udta.kids, &qtNode{typ: bmff.T("\xa9xyz")})
+			}
 			setUdtaText(udta, "\xa9xyz", s)
 		}
 	}
