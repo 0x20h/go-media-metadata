@@ -26,7 +26,8 @@ type Video struct {
 	// Created is when the video was recorded. The first of these the file
 	// has: the Keys entry com.apple.quicktime.creationdate (a local time
 	// with its offset, so OffsetKnown is true), the user data's ©day (the
-	// same, when it carries an offset), the movie's XMP (in TakenFrom's
+	// same, when it carries an offset), Nikon's or Canon's camera tags (a
+	// clock time, OffsetKnown false), the movie's XMP (in TakenFrom's
 	// order: exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate;
 	// OffsetKnown as written), or the movie header's creation time (in
 	// UTC, OffsetKnown true). Zero without any.
@@ -63,7 +64,8 @@ type Video struct {
 
 	// Make and Model are the recording device's: the Keys entries
 	// com.apple.quicktime.make and .model, else the user data's ©mak and
-	// ©mod.
+	// ©mod, else Nikon's NCTG, else the Exif of a Canon movie's thumbnail.
+	// An AVI's come from Nikon's nctg chunk.
 	Make, Model string
 	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
 	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
@@ -182,7 +184,7 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	if err != nil {
 		return v, err
 	}
-	var keys, udta qtTags
+	var keys, udta, canon qtTags
 	var mvhdCreated time.Time
 	video, movieTurned := false, false
 	for _, k := range kids {
@@ -214,8 +216,12 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 				return v, err
 			}
 			udta.merge(t)
+		case bmff.T("uuid"):
+			canon.merge(readCanonUUID(r, k))
 		}
 	}
+	// Canon's tags come after the user data's.
+	udta.merge(canon)
 
 	// The movie's XMP, read only when the fields before it are missing.
 	// Each source parsed once, in order; the movie's XMP read only when
@@ -229,6 +235,9 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	} else if at, _, ok := parseExifDate(udta.nikonDate); ok {
 		// Nikon's recording start: the camera's clock time, no offset.
 		v.Created, v.OffsetKnown = at, false
+	} else if !udta.canonTaken.IsZero() {
+		// Canon's: its thumbnail's Exif, a clock time as a rule.
+		v.Created, v.OffsetKnown = udta.canonTaken, udta.canonOffsetKnown
 	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
 		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
@@ -544,7 +553,9 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
-	nikonDate                                 string // Nikon NCTG's DateTimeOriginal
+	nikonDate                                 string    // Nikon NCTG's DateTimeOriginal
+	canonTaken                                time.Time // Canon's thumbnail Exif DateTimeOriginal
+	canonOffsetKnown                          bool
 	loci                                      *GPS   // 3GPP loci
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
@@ -571,6 +582,9 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.nikonDate == "" {
 		t.nikonDate = o.nikonDate
+	}
+	if t.canonTaken.IsZero() {
+		t.canonTaken, t.canonOffsetKnown = o.canonTaken, o.canonOffsetKnown
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -1256,6 +1270,48 @@ func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP
 		}
 	}
 	return x
+}
+
+// canonUUID is the uuid of the box in moov where Canon cameras keep their
+// tags (CNCV, CNTH, as ExifTool documents them).
+var canonUUID = []byte{0x85, 0xC0, 0xB6, 0x87, 0x82, 0x0F, 0x11, 0xE0, 0x81, 0x11, 0xF4, 0xCE, 0x46, 0x2B, 0x6A, 0x48}
+
+// maxCanonThumb caps the thumbnail read for its Exif.
+const maxCanonThumb = 1 << 20
+
+// readCanonUUID reads the make, model and date taken of a Canon movie: the
+// Exif of the thumbnail JPEG in the CNDA box, the one box of CNTH (what
+// follows it there is padding, not boxes). Anything else, or a box that
+// doesn't parse, gives nothing.
+func readCanonUUID(r io.ReaderAt, b bmff.Box) qtTags {
+	var t qtTags
+	if b.HeaderLen < 24 {
+		return t
+	}
+	var id [16]byte
+	if _, err := r.ReadAt(id[:], b.Body()-16); err != nil || !bytes.Equal(id[:], canonUUID) {
+		return t
+	}
+	kids, _ := bmff.ReadBoxesLenient(r, b.Body(), b.End())
+	cnth, ok := bmff.Find(kids, bmff.T("CNTH"))
+	if !ok {
+		return t
+	}
+	inner, _ := bmff.ReadBoxesLenient(r, cnth.Body(), cnth.End())
+	if len(inner) == 0 || inner[0].Type != bmff.T("CNDA") {
+		return t
+	}
+	jpeg, err := readBox(r, inner[0], maxCanonThumb)
+	if err != nil {
+		return t
+	}
+	x, err := ReadExif(bytes.NewReader(jpeg), int64(len(jpeg)))
+	if err != nil {
+		return t
+	}
+	t.make, t.model = strings.TrimSpace(x.Camera.Make), strings.TrimSpace(x.Camera.Model)
+	t.canonTaken, t.canonOffsetKnown = x.DateTimeOriginal, x.OffsetKnown
+	return t
 }
 
 // readNCDT reads the NCTG box in a Nikon NCDT box of the user data: its

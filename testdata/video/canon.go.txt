@@ -1,0 +1,50 @@
+// Adds the uuid box Canon cameras write in moov to an MP4 made by ffmpeg
+// (whose moov is last, so no chunk offset moves): as moov's first child,
+// with a version (CNCV), CNDM, and CNTH holding the thumbnail JPEG (CNDA)
+// and then padding that isn't boxes, up to CNTH's size. moov's size
+// grows by the box's.
+//
+// Usage: go run canon.go <in.mp4> <thumbnail.jpg> <out.mp4>
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"os"
+)
+
+func box(typ string, parts ...[]byte) []byte {
+	body := bytes.Join(parts, nil)
+	return append(binary.BigEndian.AppendUint32(nil, uint32(8+len(body))), append([]byte(typ), body...)...)
+}
+
+func main() {
+	in, _ := os.ReadFile(os.Args[1])
+	thumb, _ := os.ReadFile(os.Args[2])
+	cnda := box("CNDA", thumb)
+	// The padding: bytes after CNDA that a box walker would misread (a
+	// size past CNTH's end).
+	pad := make([]byte, 4096-len(cnda)%4096)
+	copy(pad, []byte{0x00, 0x10, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff})
+	uuid := box("uuid",
+		[]byte{0x85, 0xc0, 0xb6, 0x87, 0x82, 0x0f, 0x11, 0xe0, 0x81, 0x11, 0xf4, 0xce, 0x46, 0x2b, 0x6a, 0x48},
+		box("CNCV", []byte("CanonMP4_002/01.00.00/00.00.00")),
+		box("CNDM", []byte{0xff, 0xd8, 0xff, 0xd9}),
+		box("CNTH", cnda, pad))
+	// The top-level moov box.
+	at := 0
+	for at+8 <= len(in) && string(in[at+4:at+8]) != "moov" {
+		at += int(binary.BigEndian.Uint32(in[at:]))
+	}
+	if at+8 > len(in) {
+		panic("no moov")
+	}
+	n := binary.BigEndian.Uint32(in[at:])
+	out := append([]byte(nil), in[:at+8]...)
+	out = append(out, uuid...)
+	out = append(out, in[at+8:]...)
+	binary.BigEndian.PutUint32(out[at:], n+uint32(len(uuid)))
+	if err := os.WriteFile(os.Args[3], out, 0o644); err != nil {
+		panic(err)
+	}
+}

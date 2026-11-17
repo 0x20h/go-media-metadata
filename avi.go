@@ -14,7 +14,7 @@ import (
 // list (hdrl) has the main header (avih: the frame rate and count, the
 // size); an IDIT chunk the recording date, as cameras write it; the INFO
 // list the title (INAM), a comment (ICMT), keywords (IKEY) and a creation
-// date (ICRD).
+// date (ICRD); Nikon's ncdt list the make, model and date taken (nctg).
 
 // errAVIReadOnly is the error of a write to an AVI file.
 var errAVIReadOnly = fmt.Errorf("%w: an AVI file is read only", ErrUnsupported)
@@ -102,7 +102,7 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 	if err != nil && len(top) == 0 {
 		return v, err
 	}
-	var icrd string
+	var icrd, nikonDate string
 	for _, c := range top {
 		switch {
 		case c.list && c.id == "hdrl":
@@ -139,6 +139,19 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 					v.Created = at
 				}
 			}
+		case c.list && c.id == "ncdt":
+			// Nikon's tags (ExifTool's Nikon AVI tags): an nctg chunk.
+			kids, _ := aviChunks(r, c.at, c.at+c.n)
+			for _, k := range kids {
+				if k.id != "nctg" {
+					continue
+				}
+				if b, err := readAVIChunk(r, k); err == nil {
+					make_, model, dto := parseNikonAVITags(b)
+					v.Make, v.Model = first(v.Make, make_), first(v.Model, model)
+					nikonDate = first(nikonDate, dto)
+				}
+			}
 		case c.list && c.id == "INFO":
 			kids, _ := aviChunks(r, c.at, c.at+c.n)
 			for _, k := range kids {
@@ -161,6 +174,12 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 			}
 		}
 	}
+	// Nikon's DateTimeOriginal: the camera's clock time, no offset.
+	if v.Created.IsZero() {
+		if at, _, ok := parseExifDate(nikonDate); ok {
+			v.Created = at
+		}
+	}
 	// ICRD, when it holds a whole date: a year alone would read as 1
 	// January, more precise than written.
 	if v.Created.IsZero() && len(icrd) >= len("2006-01-02") {
@@ -172,6 +191,30 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.Width, v.Height = 0, 0
 	}
 	return v, nil
+}
+
+// parseNikonAVITags reads a Nikon AVI's nctg records: each a 16-bit tag
+// and a 16-bit size, little-endian, then that many bytes of value. Make
+// is tag 3, Model 4, DateTimeOriginal 0x13, each a string.
+func parseNikonAVITags(b []byte) (make_, model, dto string) {
+	for at := 0; at+4 <= len(b); {
+		tag := binary.LittleEndian.Uint16(b[at:])
+		n := int(binary.LittleEndian.Uint16(b[at+2:]))
+		at += 4
+		if at+n > len(b) {
+			break
+		}
+		switch s := aviText(b[at : at+n]); tag {
+		case 0x03:
+			make_ = s
+		case 0x04:
+			model = s
+		case 0x13:
+			dto = s
+		}
+		at += n
+	}
+	return make_, model, dto
 }
 
 func mustRead(r io.ReaderAt, at, n int64) []byte {
