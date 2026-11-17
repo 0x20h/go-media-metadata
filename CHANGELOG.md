@@ -4,6 +4,9 @@
 
 ### Added
 
+- `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
+  `NCDT`): make, model, and the recording's start as the date where Keys
+  and user data have none, as ExifTool reads them.
 - `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
   the date's precision, with its offset when known, or removes them. A
   date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in

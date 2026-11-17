@@ -202,6 +202,9 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.Created, v.OffsetKnown = at, true
 	} else if at, ok := parseISO8601(udta.created); ok {
 		v.Created, v.OffsetKnown = at, true
+	} else if at, _, ok := parseExifDate(udta.nikonDate); ok {
+		// Nikon's recording start: the camera's clock time, no offset.
+		v.Created, v.OffsetKnown = at, false
 	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
 		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
@@ -510,6 +513,7 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	nikonDate                                 string // Nikon NCTG's DateTimeOriginal
 	loci                                      *GPS   // 3GPP loci
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
@@ -529,6 +533,9 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.model == "" {
 		t.model = o.model
+	}
+	if t.nikonDate == "" {
+		t.nikonDate = o.nikonDate
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -893,6 +900,12 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.title
 		case "\xa9des":
 			dst = &t.description
+		case "NCDT":
+			// Nikon's tags: an NCTG box in NCDT (see parseNCTG).
+			if err := readNCDT(r, k, &t); err != nil {
+				return t, err
+			}
+			continue
 		case "titl", "dscp":
 			// 3GPP strings (TS 26.244 8.1), as ExifTool writes UserData
 			// Title and Description in an MP4.
@@ -1197,4 +1210,56 @@ func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP
 		}
 	}
 	return x
+}
+
+// readNCDT reads the NCTG box in a Nikon NCDT box of the user data: its
+// make, model and recording start (into t where they're unset).
+func readNCDT(r io.ReaderAt, ncdt bmff.Box, t *qtTags) error {
+	kids, err := bmff.ReadBoxes(r, ncdt.Body(), ncdt.End())
+	if err != nil {
+		return nil // a broken NCDT is skipped, as other user data is
+	}
+	b, ok := bmff.Find(kids, bmff.T("NCTG"))
+	if !ok {
+		return nil
+	}
+	data, err := readBox(r, b, maxLeafBox)
+	if err != nil {
+		return err
+	}
+	make_, model, dto := parseNCTG(data)
+	t.make, t.model = first(t.make, make_), first(t.model, model)
+	t.nikonDate = first(t.nikonDate, dto)
+	return nil
+}
+
+// parseNCTG reads Nikon's NCTG records (as ExifTool documents its Nikon
+// NCTG tags): each a 32-bit tag, a 16-bit Exif format code, a 16-bit
+// count, then the value, big-endian. Make (1), Model (2) and
+// DateTimeOriginal (0x12, the recording's start: Exif date text, the
+// camera's clock time) are read.
+func parseNCTG(b []byte) (make_, model, dto string) {
+	for pos := 0; pos+8 <= len(b); {
+		tag := binary.BigEndian.Uint32(b[pos:])
+		typ := binary.BigEndian.Uint16(b[pos+4:])
+		count := int(binary.BigEndian.Uint16(b[pos+6:]))
+		size := typeSize(typ) * count
+		pos += 8
+		if typeSize(typ) == 0 || size > len(b)-pos {
+			return
+		}
+		if typ == typeASCII {
+			s, _ := ascii(field{typ: typ, count: count, value: b[pos : pos+size]})
+			switch tag {
+			case 0x01:
+				make_ = s
+			case 0x02:
+				model = s
+			case 0x12:
+				dto = s
+			}
+		}
+		pos += size
+	}
+	return
 }
