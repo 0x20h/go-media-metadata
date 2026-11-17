@@ -94,7 +94,8 @@ var editAll = ExifEdit{
 	// Within the BMP: ExifTool reads XP tags as UCS-2 (a surrogate pair
 	// comes out as two code points), and agrees here. TestEditExifText
 	// checks the pair's bytes.
-	XPTitle: ptr("Café 東京"),
+	XPTitle:    ptr("Café 東京"),
+	XPKeywords: &[]string{"See", "Brücke", "雪"},
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -107,6 +108,9 @@ func checkEdited(t *testing.T, data []byte, e ExifEdit) {
 	}
 	if s := e.XPTitle; s != nil && x.XPTitle != *s {
 		t.Errorf("XPTitle %q, want %q", x.XPTitle, *s)
+	}
+	if ks := e.XPKeywords; ks != nil && x.XPKeywords != strings.Join(*ks, ";") {
+		t.Errorf("XPKeywords %q, want %q", x.XPKeywords, *ks)
 	}
 	if e.Orientation != 0 && x.Orientation != e.Orientation {
 		t.Errorf("orientation %d, want %d", x.Orientation, e.Orientation)
@@ -332,14 +336,15 @@ func TestEditExifAgreesWithExifTool(t *testing.T) {
 			got, err := exec.Command(tool, "-validate", "-warning", "-error", "-a", "-s", "-n",
 				"-EXIF:Orientation", "-EXIF:DateTimeOriginal", "-EXIF:OffsetTimeOriginal", "-EXIF:SubSecTimeOriginal",
 				"-Composite:GPSLatitude", "-Composite:GPSLongitude", "-Composite:GPSAltitude",
-				"-IFD0:ImageDescription", "-IFD0:XPTitle", p).CombinedOutput()
+				"-IFD0:ImageDescription", "-IFD0:XPTitle", "-IFD0:XPKeywords", p).CombinedOutput()
 			if err != nil {
 				t.Fatalf("exiftool: %v\n%s", err, got)
 			}
 			s := string(got)
 			for _, want := range []string{"Orientation                     : 8", "2024:02:29 08:07:06", "+05:30",
 				"SubSecTimeOriginal              : 5", "GPSLatitude                     : -33.8568", "GPSLongitude                    : 151.2153",
-				"ImageDescription                : " + *editAll.ImageDescription, "XPTitle                         : " + *editAll.XPTitle} {
+				"ImageDescription                : " + *editAll.ImageDescription, "XPTitle                         : " + *editAll.XPTitle,
+				"XPKeywords                      : " + strings.Join(*editAll.XPKeywords, ";")} {
 				if !strings.Contains(s, want) {
 					t.Errorf("%v: ExifTool lacks %q:\n%s", order, want, s)
 				}

@@ -11,6 +11,13 @@
 
 ### Added
 
+- `ExifEdit.XPKeywords` writes IFD0's XPKeywords, Windows' keywords
+  (joined by `;`, UTF-16 as `XPTitle`), or removes them. Reading them
+  into `ReadAll`'s keywords was already in place. See
+  [docs/exif.md](docs/exif.md).
+
+### Added
+
 - `ReadVideo` (and `ReadAll`) read the make, model and date taken of
   Canon MP4 files, from the Exif of the thumbnail in their `uuid` box,
   and of Nikon AVI files, from the `nctg` chunk of their `ncdt` list, as

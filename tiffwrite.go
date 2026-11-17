@@ -52,6 +52,12 @@ type ExifEdit struct {
 	// character's low 16 bits). nil leaves the tag as it is; "" removes
 	// it. Text with a NUL, or that isn't UTF-8, is refused.
 	ImageDescription, XPTitle *string
+	// XPKeywords sets IFD0's XPKeywords tag (Windows' keywords): the
+	// keywords joined by ";", written as XPTitle is. nil leaves the tag as
+	// it is; an empty list removes it. A keyword that is empty, holds a
+	// ";" or a NUL, or isn't UTF-8 is refused. ReadAll takes these
+	// keywords only when XMP and IPTC have none.
+	XPKeywords *[]string
 }
 
 // Exif and GPS tags written here, besides those read.
@@ -102,6 +108,13 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 	for _, s := range []*string{edit.ImageDescription, edit.XPTitle} {
 		if s != nil && (!utf8.ValidString(*s) || strings.IndexByte(*s, 0) >= 0) {
 			return nil, fmt.Errorf("mediameta: text that isn't UTF-8 without NUL")
+		}
+	}
+	if ks := edit.XPKeywords; ks != nil {
+		for _, k := range *ks {
+			if k == "" || !utf8.ValidString(k) || strings.ContainsAny(k, ";\x00") {
+				return nil, fmt.Errorf("mediameta: keyword %q: empty, or not UTF-8 without \";\" and NUL", k)
+			}
 		}
 	}
 	created := len(tiff) == 0
@@ -180,16 +193,10 @@ func EditExif(tiff []byte, edit ExifEdit) ([]byte, error) {
 		}
 	}
 	if s := edit.XPTitle; s != nil {
-		if *s == "" {
-			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, remove: true})
-		} else {
-			var b []byte
-			for _, u := range utf16.Encode([]rune(*s)) {
-				b = binary.LittleEndian.AppendUint16(b, u)
-			}
-			b = append(b, 0, 0)
-			ifd0 = append(ifd0, tiffChange{tag: tagXPTitle, typ: typeByte, count: uint32(len(b)), value: b})
-		}
+		ifd0 = append(ifd0, xpChange(tagXPTitle, *s))
+	}
+	if ks := edit.XPKeywords; ks != nil {
+		ifd0 = append(ifd0, xpChange(tagXPKeywords, strings.Join(*ks, ";")))
 	}
 	// The sub-IFDs' pointers are checked against the data as it is,
 	// before anything is appended: one that leads past its end would
@@ -644,4 +651,18 @@ func (w *tiffWriter) apply(off uint32, has bool, changes []tiffChange) (uint32, 
 		w.drop(ifdStart, ifdEnd, true)
 	}
 	return at, nil
+}
+
+// xpChange sets one of IFD0's Windows tags to s: UTF-16 little-endian in
+// BYTE data, NUL-terminated; "" removes it.
+func xpChange(tag uint16, s string) tiffChange {
+	if s == "" {
+		return tiffChange{tag: tag, remove: true}
+	}
+	var b []byte
+	for _, u := range utf16.Encode([]rune(s)) {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	b = append(b, 0, 0)
+	return tiffChange{tag: tag, typ: typeByte, count: uint32(len(b)), value: b}
 }
