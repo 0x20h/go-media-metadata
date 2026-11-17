@@ -51,8 +51,7 @@ func ParseMeta(b []byte) (*Meta, error) {
 	if len(b) > MaxMeta {
 		return nil, fmt.Errorf("%w: meta box of %d bytes", ErrMalformed, len(b))
 	}
-	r := bytes.NewReader(b)
-	top, err := ReadBoxes(r, 0, int64(len(b)))
+	top, err := ParseBoxes(b, 0, int64(len(b)))
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +65,7 @@ func ParseMeta(b []byte) (*Meta, error) {
 	}
 	m := &Meta{Version: body[0], Flags: binary.BigEndian.Uint32(body[:4]) & 0xFFFFFF, large: mb.Large(),
 		ItemTypes: map[uint32]Type{}}
-	kids, err := ReadBoxes(bytes.NewReader(body), 4, int64(len(body)))
+	kids, err := ParseBoxes(body, 4, int64(len(body)))
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +141,7 @@ func (m *Meta) parseIinf(b []byte) error {
 	if int64(len(b)) < start {
 		return fmt.Errorf("%w: short iinf", ErrMalformed)
 	}
-	entries, err := ReadBoxes(bytes.NewReader(b), start, int64(len(b)))
+	entries, err := ParseBoxes(b, start, int64(len(b)))
 	if err != nil {
 		return err
 	}
@@ -181,7 +180,7 @@ func (m *Meta) parseIref(b []byte) error {
 		return fmt.Errorf("%w: short iref", ErrMalformed)
 	}
 	wide := b[0] != 0
-	refs, err := ReadBoxes(bytes.NewReader(b), 4, int64(len(b)))
+	refs, err := ParseBoxes(b, 4, int64(len(b)))
 	if err != nil {
 		return err
 	}
@@ -432,7 +431,7 @@ type PropRef struct {
 
 func parseIPrp(b []byte, large bool) (*IPrp, error) {
 	p := &IPrp{large: large}
-	kids, err := ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+	kids, err := ParseBoxes(b, 0, int64(len(b)))
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +442,7 @@ func parseIPrp(b []byte, large bool) (*IPrp, error) {
 		case k.Type == T("ipco") && !sawIpco:
 			sawIpco = true
 			p.ipcoLarge = k.Large()
-			props, err := ReadBoxes(bytes.NewReader(kb), 0, int64(len(kb)))
+			props, err := ParseBoxes(kb, 0, int64(len(kb)))
 			if err != nil {
 				return nil, err
 			}
