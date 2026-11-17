@@ -38,6 +38,13 @@ type benchFile struct {
 
 // benchFiles are the sample files plus synthetic layouts that take the
 // slower write paths: an irot appended, and a wide ipma.
+// reportReads reports the bytes read and the read calls made per
+// operation, the I/O the bench gate holds steady.
+func reportReads(b *testing.B, cr *countingReader) {
+	b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+	b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+}
+
 func benchFiles(tb testing.TB) []benchFile {
 	var out []benchFile
 	for _, p := range []string{
@@ -71,8 +78,7 @@ func BenchmarkReadOrientation(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 	}
 }
@@ -88,8 +94,7 @@ func BenchmarkReadImageSize(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 	}
 }
@@ -107,7 +112,7 @@ func BenchmarkHashImageData(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+			reportReads(b, cr)
 		})
 	}
 }
