@@ -208,7 +208,7 @@ func BenchmarkPlanVideoRotation(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+	reportReads(b, cr)
 }
 
 // ExifTool and FFmpeg's ffprobe read the rotation written. Each runs where
