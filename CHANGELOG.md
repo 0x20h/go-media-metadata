@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- `VideoEdit.GPS` adds the user data's `©xyz` when the movie has none, as
+  ExifTool does, so readers that don't read Keys (Android's) find the
+  place. Before, only an existing `©xyz` was updated.
+
 - A PNG's Exif in an ImageMagick raw profile text chunk (`Raw profile
   type exif`, hex) is read when there's no `eXIf`, as ExifTool reads it.
   An Exif edit moves it to an `eXIf` chunk and removes the raw profile.
