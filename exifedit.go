@@ -31,6 +31,12 @@ func planExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
 	if isJPEG(src, size) {
 		return planJPEGExif(src, size, func(old []byte) ([]byte, error) { return EditExif(old, edit) })
 	}
+	if isTIFF, err := tiffFileEditable(src, size); isTIFF {
+		if err != nil {
+			return nil, err
+		}
+		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return EditExif(file, edit) })
+	}
 	// A PNG or WebP keeps any "Exif\0\0" before its TIFF data; its Exif
 	// Orientation is how it's shown, so it's set here too.
 	p, ok, err := planChunked(src, size, kindExif, func(old []byte) ([]byte, error) {

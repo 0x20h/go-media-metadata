@@ -129,7 +129,9 @@ One naming scheme covers every write:
   a file.
 
 Edits of a file's Exif, XMP and IPTC fields go through `PlanMetadata` and
-`SetMetadata`, with only the parts needed. The orientation and rotation
+`SetMetadata`, with only the parts needed: in HEIF, JPEG, PNG, WebP, TIFF
+and DNG (IPTC in JPEG only; a movie's fields through `PlanVideoMetadata`).
+The orientation and rotation
 functions take every format the package writes (HEIF, JPEG, PNG, WebP,
 camera RAW, QuickTime and MP4) and look at the file to tell which.
 

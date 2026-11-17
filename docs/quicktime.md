@@ -129,9 +129,19 @@ The title, description, keywords and rating:
   Keywords are one comma-separated value, because ExifTool reads only one
   value of an entry, so a keyword can't contain a comma. A rating is
   written as text, −1 to 5.
-- **User data** `©nam` and `©des`, and an **MP4 item list**'s `©nam`,
-  `desc` and `keyw`, where the movie has them. They are set to the same
-  values, or removed with them. None is added.
+- **An MP4 item list** (`udta/meta/ilst`, as ffmpeg and ExifTool write
+  it): `©nam` for the title and `©des` for the description, as ExifTool
+  writes ItemList Title and Description. They're added to an item list
+  the movie has, so players that read only the item list show the new
+  values. `desc` and `keyw` are updated where they are. A movie without an
+  item list doesn't get one; Apple's Keys hold the values there.
+- **User data:** QuickTime text `©nam` and `©des`, and the 3GPP strings
+  `titl` and `dscp` (as ExifTool writes an MP4's UserData Title and
+  Description; their language is kept). These are updated where the movie
+  has them.
+
+Every place is set to the same value, or removed with it, so no reader
+finds an old title or description.
 
 ### In place where it can be
 
