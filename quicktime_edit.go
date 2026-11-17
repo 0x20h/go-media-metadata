@@ -419,18 +419,51 @@ func (n *qtNode) encode() []byte {
 	if n.raw != nil {
 		return n.raw
 	}
-	var content []byte
-	content = append(content, n.pre...)
+	// One buffer for the whole tree: its size first, then every box
+	// appended to it.
+	return n.appendTo(make([]byte, 0, n.encodedLen()))
+}
+
+// contentLen is the length of n's payload as encode writes it.
+func (n *qtNode) contentLen() int {
+	l := len(n.pre)
 	if n.kids != nil {
 		for _, k := range n.kids {
-			content = append(content, k.encode()...)
+			l += k.encodedLen()
 		}
 	} else {
-		content = append(content, n.body...)
+		l += len(n.body)
 	}
-	large := n.large || len(content)+8 > math.MaxUint32
-	out := bmff.AppendHeader(make([]byte, 0, len(content)+16), n.typ, len(content), large)
-	return append(out, content...)
+	return l
+}
+
+// encodedLen is the length of n as encode writes it, header included.
+func (n *qtNode) encodedLen() int {
+	if n.raw != nil {
+		return len(n.raw)
+	}
+	l := n.contentLen()
+	if n.large || l+8 > math.MaxUint32 {
+		return l + 16
+	}
+	return l + 8
+}
+
+// appendTo appends n as encode writes it.
+func (n *qtNode) appendTo(dst []byte) []byte {
+	if n.raw != nil {
+		return append(dst, n.raw...)
+	}
+	l := n.contentLen()
+	dst = bmff.AppendHeader(dst, n.typ, l, n.large || l+8 > math.MaxUint32)
+	dst = append(dst, n.pre...)
+	if n.kids != nil {
+		for _, k := range n.kids {
+			dst = k.appendTo(dst)
+		}
+		return dst
+	}
+	return append(dst, n.body...)
 }
 
 func (n *qtNode) parsed() bool { return n.raw == nil }
