@@ -27,6 +27,9 @@
 
 ### Fixed
 
+- `Camera`'s exposure fields (ExposureTime, FNumber, ISO, focal lengths)
+  are read from IFD0 when the Exif IFD hasn't got them, as some Samsung
+  cameras write them and ExifTool reads them.
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's
   3GPP `titl` and `dscp` kept their old values, and a removal left them.

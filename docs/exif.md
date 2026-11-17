@@ -27,6 +27,10 @@ pages).
   - `Make` and `Model` from IFD0, `LensMake` and `LensModel` from the Exif
     IFD. Each is the text as written, placeholders such as `----`
     included.
+  - The exposure tags (ExposureTime, FNumber, ISO, focal lengths) are the
+    Exif IFD's. Some cameras, Samsung's among them, put them in IFD0
+    instead; they're read from there when the Exif IFD hasn't got them,
+    as ExifTool reads them.
   - `ISO` is PhotographicSensitivity (ISOSpeedRatings), its first value.
     When that is 65535 (Exif's "65535 or more"), the
     RecommendedExposureIndex or ISOSpeed that SensitivityType names is
