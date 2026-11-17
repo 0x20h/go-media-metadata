@@ -7,6 +7,11 @@ most 65536 of them.
 
 - **Exif** is the `eXIf` chunk. Its payload is TIFF data; a leading
   `Exif\0\0`, which some writers add, is accepted and kept.
+- **Exif in a raw profile:** ImageMagick writes Exif into a `tEXt` or
+  `zTXt` chunk with the keyword `Raw profile type exif` (or `... APP1`),
+  as hex. Without an `eXIf` chunk, that Exif is read, as ExifTool reads
+  it. An Exif edit then writes an `eXIf` chunk, starting from that Exif,
+  and removes the raw profile, so no old value stays in it.
 - **XMP** is an `iTXt` chunk with the keyword `XML:com.adobe.xmp` (XMP
   Part 3, 1.1.5), compressed or not. The first chunk of each kind is the
   one read.

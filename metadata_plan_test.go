@@ -153,6 +153,9 @@ func FuzzPlanMetadata(f *testing.F) {
 	for _, file := range chunkedFiles(f) {
 		f.Add(file)
 	}
+	for _, file := range rawProfilePNGs(f) {
+		f.Add(file)
+	}
 	// A HEIC with two XMP items (the primary's and the gain map's).
 	if b, err := os.ReadFile("testdata/heif-xmp/primary-and-gainmap.heic"); err == nil {
 		f.Add(b)

@@ -27,6 +27,9 @@
 
 ### Fixed
 
+- A PNG's Exif in an ImageMagick raw profile text chunk (`Raw profile
+  type exif`, hex) is read when there's no `eXIf`, as ExifTool reads it.
+  An Exif edit moves it to an `eXIf` chunk and removes the raw profile.
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's
   3GPP `titl` and `dscp` kept their old values, and a removal left them.
