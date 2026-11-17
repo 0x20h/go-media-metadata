@@ -11,7 +11,9 @@ Apple's QuickTime File Format, and MP4 on the ISO base media file format
 - duration
 - GPS position
 - orientation and size of the first video track
-- make and model of the recording device
+- make and model of the recording device, and its lens (Keys
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it;
+  ExifTool's Keys CameraLensModel)
 - content identifier that pairs a Live Photo's video with its still
   image
 - title, description, keywords and rating
@@ -23,7 +25,12 @@ Where each field comes from, in order of preference:
   (`title`), description (`description`), keywords (`keywords`) and
   rating (`rating.user`).
 - **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
-  for the title, `©des` or `desc` for the description, `keyw`.
+  for the title, `©des` or `desc` for the description, `©xyz` for the
+  place (ISO 6709, as Android cameras write it), `keyw`.
+- **Nikon's tags** (an `NCTG` box in the user data's `NCDT`, as Nikon
+  cameras write MOV files): Make, Model and DateTimeOriginal, the
+  recording's start in the camera's clock time, without an offset. They
+  come after Keys and the user data's own entries, before XMP.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
@@ -42,6 +49,11 @@ Where each field comes from, in order of preference:
   `ReadXMP` returns it too.
 - **The movie header**, for the date, as a last resort. That date is in
   UTC.
+  - Its seconds count from 1904. Some writers (forwarded or re-encoded
+    MP4s, some phones) count from 1970 instead.
+  - A value below 1970's in 1904 seconds is read from 1970, as ExifTool
+    reads it without its `QuickTimeUTC` option, rather than as a date
+    before 1970.
 
 Locations are ISO 6709 strings and dates ISO 8601. Keywords are split at
 commas. A rating is −1 (rejected) to 5, written as text or as an integer.
@@ -179,6 +191,28 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   and none after removal. The decoded frames must be the same, and the
   validation must find nothing new.
 - A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.
+
+## Writing the movie's XMP: people and face regions
+
+`VideoEdit.XMP` (an `XMPEdit`) edits the movie's XMP packet with
+`EditXMP`. Use it for what Keys and user data don't hold: people
+(`PersonInImage`), face regions, and the XMP mirror of the other fields.
+`PlanMetadata`'s XMP part does the same for a movie.
+
+The packet is edited where it is:
+- **A top-level `uuid` box** (`BE7ACFCB-…`, as MP4 files have it): in
+  place, padded with spaces, when the new packet fits.
+- **When it doesn't fit,** the box becomes a `free` box of the same size,
+  zeroed, and the packet moves to the user data's `XMP_`. That's inside
+  `moov`, which grows as for the other fields (into free space after it,
+  or with the chunk offsets moved). Nothing else in the file moves.
+- **The user data's `XMP_`** (QuickTime): edited there. A movie with both
+  gets both edited, so neither keeps old values.
+- **A movie without a packet** gets one in `XMP_`.
+
+The media data is copied byte for byte. A movie has no Exif or IPTC to
+edit: `PlanMetadata`'s Exif part is refused with `ErrUnsupported`, and the
+date and place are `VideoEdit`'s.
 
 ## AVI and MPEG program streams
 
