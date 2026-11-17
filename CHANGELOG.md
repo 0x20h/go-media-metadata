@@ -4,6 +4,11 @@
 
 ### Added
 
+- `Video.LensModel`: the Keys entry
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it.
+- `Camera.LensModel` falls back to a Canon maker note's LensModel (tag
+  0x0095) when the Exif IFD has none, as ExifTool reads it.
+
 - `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
   can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
   `uuid` box when it fits, else moved to the user data's `XMP_`, the box
