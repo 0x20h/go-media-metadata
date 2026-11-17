@@ -712,7 +712,7 @@ func parseKeys(b []byte) []string {
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
 // readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
-// desc and keyw.
+// ©des and desc, ©xyz and keyw.
 func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	var t qtTags
 	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
@@ -735,6 +735,14 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 			} else {
 				t.title = first(t.title, s)
 			}
+		case "\xa9xyz":
+			// ISO 6709 text, as Android cameras and ExifTool's ItemList
+			// GPSCoordinates have it.
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			t.location = first(t.location, s)
 		case "keyw":
 			if t.keywords == nil {
 				vs, err := readDataStrings(r, it)

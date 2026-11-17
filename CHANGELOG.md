@@ -33,6 +33,11 @@
 
 ### Fixed
 
+- `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
+  Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
+  GPSCoordinates). Such videos had no place. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 - A movie header date written from 1970 instead of 1904 (some MP4s
   forwarded by messengers, some phones) is read from 1970, as ExifTool
   reads it, instead of 66 years early (1946–1951 for 2012–2017). See
