@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `RewriteMovie`, `PlanRewriteMovie` and `IndexFirst`: a QuickTime or MP4
+  movie rewritten with its index (`moov`) first, as `ffmpeg -c copy
+  -movflags +faststart` does, without decoding a sample. Chunk offsets
+  move with their data (an `stco` becomes a `co64` when it must);
+  `RewriteOptions` leaves the metadata out and zeroes the times. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 ## v0.2.2 (2026-11-17)
 
 No breaking changes.

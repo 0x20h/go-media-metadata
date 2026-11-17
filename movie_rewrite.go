@@ -215,6 +215,9 @@ func rewriteBoxes(src io.ReaderAt, size int64) ([]bmff.Box, error) {
 	return top, nil
 }
 
+// rewriteCopyBuf is how much of the media data a rewrite reads at a time.
+const rewriteCopyBuf = 1 << 20
+
 // rewritePlan is the rewrite as splices of the source: moov's new bytes
 // after ftyp (or first), the old moov and the boxes left out removed; the
 // boxes kept stay in their order, so their bytes are copied as they are.
@@ -223,7 +226,7 @@ func rewritePlan(src io.ReaderAt, size int64, top []bmff.Box, mi, ftyp int, keep
 	for _, i := range keep {
 		kept[i] = true
 	}
-	e := &spliceEdit{}
+	e := &spliceEdit{copyBuf: rewriteCopyBuf}
 	at := int64(0)
 	if ftyp >= 0 {
 		at = top[ftyp].End()
