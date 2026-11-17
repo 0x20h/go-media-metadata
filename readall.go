@@ -5,6 +5,7 @@ import (
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 	"io"
 	"strings"
+	"sync"
 )
 
 // Metadata is everything ReadAll reads from a file: the fields a media
@@ -111,6 +112,11 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 		switch kind := detectFormatTop(r, size, top); kind {
 		case formatJPEG:
 			m.Format = "JPEG"
+			// The metadata segments are at the start: one read of up to
+			// 16 KB serves the many small reads of the segments in it.
+			w := newReadWindow(r, size)
+			defer w.release()
+			r := io.ReaderAt(w)
 			f, err := parseJPEG(r, size)
 			if err != nil {
 				m.Errors.Exif, m.Errors.Size = err, err
@@ -266,4 +272,39 @@ func firstOf(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// readWindowSize is how much of a file's start readWindow holds.
+const readWindowSize = 16 << 10
+
+// readWindow serves reads within a file's first readWindowSize bytes
+// from one read of them, the others from the file. Its buffer is pooled:
+// nothing read through it keeps a slice of it.
+type readWindow struct {
+	r io.ReaderAt
+	n int64 // the bytes held, 0 when the read failed
+	b [readWindowSize]byte
+}
+
+var readWindows = sync.Pool{New: func() any { return new(readWindow) }}
+
+func newReadWindow(r io.ReaderAt, size int64) *readWindow {
+	w := readWindows.Get().(*readWindow)
+	w.r, w.n = r, min(size, readWindowSize)
+	if n, err := r.ReadAt(w.b[:w.n], 0); err != nil && (err != io.EOF || int64(n) != w.n) {
+		w.n = 0
+	}
+	return w
+}
+
+func (w *readWindow) ReadAt(p []byte, off int64) (int, error) {
+	if off >= 0 && off+int64(len(p)) <= w.n {
+		return copy(p, w.b[off:]), nil
+	}
+	return w.r.ReadAt(p, off)
+}
+
+func (w *readWindow) release() {
+	w.r, w.n = nil, 0
+	readWindows.Put(w)
 }
