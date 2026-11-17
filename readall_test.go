@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"errors"
+	"github.com/0x20h/go-media-metadata/internal/bmff/qtbuild"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -230,4 +231,30 @@ func FuzzReadAll(f *testing.F) {
 			}
 		})
 	})
+}
+
+// ReadAll of movies: the I/O and allocations ReadAll spends on a movie's
+// boxes, moov first and last, and a corpus movie with Keys.
+func BenchmarkReadAllVideo(b *testing.B) {
+	files := map[string][]byte{"keys.mov": readFile(b, "testdata/video/keys.mov")}
+	for _, first := range []bool{true, false} {
+		o := qtbuild.Default()
+		o.MoovFirst, o.MediaSize = first, 1<<20
+		f, _, _ := qtbuild.Build(o)
+		files[map[bool]string{true: "qtbuild-moov-first", false: "qtbuild-moov-last"}[first]] = f
+	}
+	for _, name := range []string{"keys.mov", "qtbuild-moov-first", "qtbuild-moov-last"} {
+		data := files[name]
+		b.Run(name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(data)}
+			b.ReportAllocs()
+			for range b.N {
+				if _, err := ReadAll(cr, int64(len(data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+		})
+	}
 }
