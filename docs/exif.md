@@ -26,7 +26,9 @@ pages).
   writes no capture data):
   - `Make` and `Model` from IFD0, `LensMake` and `LensModel` from the Exif
     IFD. Each is the text as written, placeholders such as `----`
-    included.
+    included. A Canon camera's lens is in its maker note (tag 0x0095)
+    where the Exif IFD has no LensModel; that one is read then, as
+    ExifTool reads it.
   - `ISO` is PhotographicSensitivity (ISOSpeedRatings), its first value.
     When that is 65535 (Exif's "65535 or more"), the
     RecommendedExposureIndex or ISOSpeed that SensitivityType names is

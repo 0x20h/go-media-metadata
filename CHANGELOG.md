@@ -4,6 +4,10 @@
 
 ### Added
 
+- `Video.LensModel`: the Keys entry
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it.
+- `Camera.LensModel` falls back to a Canon maker note's LensModel (tag
+  0x0095) when the Exif IFD has none, as ExifTool reads it.
 - `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
   the date's precision, with its offset when known, or removes them. A
   date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in

@@ -11,7 +11,9 @@ Apple's QuickTime File Format, and MP4 on the ISO base media file format
 - duration
 - GPS position
 - orientation and size of the first video track
-- make and model of the recording device
+- make and model of the recording device, and its lens (Keys
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it;
+  ExifTool's Keys CameraLensModel)
 - content identifier that pairs a Live Photo's video with its still
   image
 - title, description, keywords and rating

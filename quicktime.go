@@ -64,6 +64,9 @@ type Video struct {
 	// com.apple.quicktime.make and .model, else the user data's ©mak and
 	// ©mod.
 	Make, Model string
+	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
+	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
+	LensModel string
 
 	// ContentIdentifier is the Keys entry
 	// com.apple.quicktime.content.identifier, which pairs a Live Photo's
@@ -218,6 +221,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
+	v.LensModel = keys.lensModel
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
 	v.Title = first(keys.title, udta.title)
 	v.Description = first(keys.description, udta.description)
@@ -514,6 +518,7 @@ type qtTags struct {
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
 	keywords                                  []string
+	lensModel                                 string
 }
 
 // merge fills t's empty fields from o.
@@ -529,6 +534,9 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.model == "" {
 		t.model = o.model
+	}
+	if t.lensModel == "" {
+		t.lensModel = o.lensModel
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -578,6 +586,7 @@ const (
 	keyLocation  = "com.apple.quicktime.location.ISO6709"
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
+	keyLensModel = "com.apple.quicktime.camera.lens_model"
 	keyContentID = "com.apple.quicktime.content.identifier"
 	keyTitle     = "com.apple.quicktime.title"
 	keyDesc      = "com.apple.quicktime.description"
@@ -636,6 +645,8 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case keyModel:
 			dst = &t.model
+		case keyLensModel:
+			dst = &t.lensModel
 		case keyContentID:
 			dst = &t.contentID
 		case keyTitle:
