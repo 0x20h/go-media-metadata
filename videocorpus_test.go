@@ -31,7 +31,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 	out, err := exec.Command(tool, append([]string{"-j", "-n", "-G1", "-api", "QuickTimeUTC", "-Keys:all", "-UserData:all", "-ItemList:all",
 		"-XMP-exif:all", "-XMP-photoshop:DateCreated", "-XMP-xmp:CreateDate", "-QuickTime:CreateDate", "-QuickTime:Duration",
 		"-Track1:ImageWidth", "-Track1:ImageHeight", "-Composite:Rotation", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-		"-Composite:GPSAltitude"}, paths...)...).Output()
+		"-Composite:GPSAltitude", "-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal"}, paths...)...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +57,10 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 			t.Fatalf("%s: %v", path, err)
 		}
 
-		// The date: Keys, ©day, XMP, the movie header.
+		// The date: Keys, ©day, a Canon thumbnail's Exif (ExifTool's
+		// first sub-document), XMP, the movie header.
 		var wantDate string
-		for _, k := range []string{"Keys:CreationDate", "UserData:ContentCreateDate", "XMP-exif:DateTimeOriginal",
+		for _, k := range []string{"Keys:CreationDate", "UserData:ContentCreateDate", "ExifIFD:DateTimeOriginal", "XMP-exif:DateTimeOriginal",
 			"XMP-photoshop:DateCreated", "XMP-xmp:CreateDate", "QuickTime:CreateDate"} {
 			if s := str(k); s != "" && !strings.HasPrefix(s, "0000") {
 				wantDate = s
@@ -97,7 +98,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		// The place: Keys, ©xyz, loci (ExifTool's composite of it), XMP.
 		var lat, lon, alt float64
 		hasGPS, hasAlt, tol := false, false, 1e-6
-		for _, k := range []string{"Keys:GPSCoordinates", "UserData:GPSCoordinates"} {
+		for _, k := range []string{"Keys:GPSCoordinates", "ItemList:GPSCoordinates", "UserData:GPSCoordinates"} {
 			if f := strings.Fields(str(k)); !hasGPS && len(f) >= 2 {
 				lat, _ = strconv.ParseFloat(f[0], 64)
 				lon, _ = strconv.ParseFloat(f[1], 64)
@@ -156,10 +157,10 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		if sw != int(w) || sh != int(h) {
 			t.Errorf("%s: shown %d×%d, want %v×%v", path, sw, sh, w, h)
 		}
-		if mk := first(str("Keys:Make"), str("UserData:Make")); v.Make != mk {
+		if mk := first(first(str("Keys:Make"), str("UserData:Make")), str("IFD0:Make")); v.Make != mk {
 			t.Errorf("%s: make %q, ExifTool %q", path, v.Make, mk)
 		}
-		if md := first(str("Keys:Model"), str("UserData:Model")); v.Model != md {
+		if md := first(first(str("Keys:Model"), str("UserData:Model")), str("IFD0:Model")); v.Model != md {
 			t.Errorf("%s: model %q, ExifTool %q", path, v.Model, md)
 		}
 		if v.ContentIdentifier != str("Keys:ContentIdentifier") {

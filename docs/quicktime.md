@@ -11,7 +11,9 @@ Apple's QuickTime File Format, and MP4 on the ISO base media file format
 - duration
 - GPS position
 - orientation and size of the first video track
-- make and model of the recording device
+- make and model of the recording device, and its lens (Keys
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it;
+  ExifTool's Keys CameraLensModel)
 - content identifier that pairs a Live Photo's video with its still
   image
 - title, description, keywords and rating
@@ -23,7 +25,18 @@ Where each field comes from, in order of preference:
   (`title`), description (`description`), keywords (`keywords`) and
   rating (`rating.user`).
 - **An MP4 item list** (a `meta` box of handler `mdir` in `udta`): `©nam`
-  for the title, `©des` or `desc` for the description, `keyw`.
+  for the title, `©des` or `desc` for the description, `©xyz` for the
+  place (ISO 6709, as Android cameras write it), `keyw`.
+- **Nikon's tags** (an `NCTG` box in the user data's `NCDT`, as Nikon
+  cameras write MOV files): Make, Model and DateTimeOriginal, the
+  recording's start in the camera's clock time, without an offset. They
+  come after Keys and the user data's own entries, before XMP.
+- **Canon's tags** (a `uuid` box in `moov`,
+  `85C0B687-820F-11E0-8111-F4CE462B6A48`, as Canon cameras write MP4
+  files): Make, Model and DateTimeOriginal from the Exif of the thumbnail
+  JPEG in its `CNTH` box (`CNDA`, CNTH's one box; what follows it there is
+  padding). The date is the camera's clock time, without an offset unless
+  the Exif has one. They come after Nikon's.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
@@ -42,6 +55,11 @@ Where each field comes from, in order of preference:
   `ReadXMP` returns it too.
 - **The movie header**, for the date, as a last resort. That date is in
   UTC.
+  - Its seconds count from 1904. Some writers (forwarded or re-encoded
+    MP4s, some phones) count from 1970 instead.
+  - A value below 1970's in 1904 seconds is read from 1970, as ExifTool
+    reads it without its `QuickTimeUTC` option, rather than as a date
+    before 1970.
 
 Locations are ISO 6709 strings and dates ISO 8601. Keywords are split at
 commas. A rating is −1 (rejected) to 5, written as text or as an integer.
@@ -62,6 +80,7 @@ CC0, made by its `make.sh`. Each holds the metadata in one place:
 
 - Keys (date with offset, GPS, make, model, content identifier);
 - the user data (`©day`, `©xyz`, `©mak`, `©mod`);
+- Canon's `uuid` box with a thumbnail and its Exif;
 - 3GPP `loci` in a 3GP;
 - XMP only, in an MP4's `uuid` box and in a MOV's `XMP_`;
 - tracks turned 90° and 270°.
@@ -114,8 +133,11 @@ Where each value is written:
   six decimals and the altitude where there is one. A movie without
   Keys metadata gets a QuickTime-style `meta` box in `moov`, which
   ExifTool and FFmpeg read in MOV and MP4 files alike.
-- **User data** `©day` and `©xyz`, where the movie has them, so they
-  agree. Missing entries aren't added.
+- **User data** `©day` and `©xyz`:
+  - `©day` is updated where the movie has one, so the two agree.
+  - `©xyz` is also added when the movie has none (and `udta` with it), as
+    ExifTool writes UserData GPSCoordinates. Readers that don't read
+    Keys, Android's among them, look there.
 - **The movie header's creation time** (`mvhd`), in UTC, where its
   field can hold it.
 
@@ -129,9 +151,19 @@ The title, description, keywords and rating:
   Keywords are one comma-separated value, because ExifTool reads only one
   value of an entry, so a keyword can't contain a comma. A rating is
   written as text, −1 to 5.
-- **User data** `©nam` and `©des`, and an **MP4 item list**'s `©nam`,
-  `desc` and `keyw`, where the movie has them. They are set to the same
-  values, or removed with them. None is added.
+- **An MP4 item list** (`udta/meta/ilst`, as ffmpeg and ExifTool write
+  it): `©nam` for the title and `©des` for the description, as ExifTool
+  writes ItemList Title and Description. They're added to an item list
+  the movie has, so players that read only the item list show the new
+  values. `desc` and `keyw` are updated where they are. A movie without an
+  item list doesn't get one; Apple's Keys hold the values there.
+- **User data:** QuickTime text `©nam` and `©des`, and the 3GPP strings
+  `titl` and `dscp` (as ExifTool writes an MP4's UserData Title and
+  Description; their language is kept). These are updated where the movie
+  has them.
+
+Every place is set to the same value, or removed with it, so no reader
+finds an old title or description.
 
 ### In place where it can be
 
@@ -170,6 +202,93 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   validation must find nothing new.
 - A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.
 
+## Writing the movie's XMP: people and face regions
+
+`VideoEdit.XMP` (an `XMPEdit`) edits the movie's XMP packet with
+`EditXMP`. Use it for what Keys and user data don't hold: people
+(`PersonInImage`), face regions, and the XMP mirror of the other fields.
+`PlanMetadata`'s XMP part does the same for a movie.
+
+The packet is edited where it is:
+- **A top-level `uuid` box** (`BE7ACFCB-…`, as MP4 files have it): in
+  place, padded with spaces, when the new packet fits.
+- **When it doesn't fit,** the box becomes a `free` box of the same size,
+  zeroed, and the packet moves to the user data's `XMP_`. That's inside
+  `moov`, which grows as for the other fields (into free space after it,
+  or with the chunk offsets moved). Nothing else in the file moves.
+- **The user data's `XMP_`** (QuickTime): edited there. A movie with both
+  gets both edited, so neither keeps old values.
+- **A movie without a packet** gets one in `XMP_`.
+
+The media data is copied byte for byte. A movie has no Exif or IPTC to
+edit: `PlanMetadata`'s Exif part is refused with `ErrUnsupported`, and the
+date and place are `VideoEdit`'s.
+
+## Rewriting a movie with its index first: RewriteMovie
+
+`RewriteMovie` writes a movie with its index (`moov`) right after `ftyp`,
+before the media data, as streaming and quick opening want it: what
+`ffmpeg -c copy -movflags +faststart` does, without FFmpeg and without
+decoding a sample. `IndexFirst` tells whether a movie already is so;
+`PlanRewriteMovie` is the plan of the rewrite, which `Plan.WriteTo`
+writes.
+
+```go
+err := mediameta.RewriteMovie(src, size, dst, mediameta.RewriteOptions{
+	StripMetadata: true, // leave the metadata out
+	ZeroTimes:     true, // and the creation and modification times
+})
+```
+
+- **Layout:** `ftyp`, `moov`, then the other top-level boxes in their
+  order. Top-level `free`, `skip` and `wide` boxes are left out.
+- **Offsets:** the chunk offsets (`stco`, `co64`) move with the boxes they
+  point into, wherever those go; several `mdat`s are fine. An `stco`
+  whose offsets the move pushes past 32 bits becomes a `co64`, which
+  grows `moov`, so the offsets are laid out again, as FFmpeg does.
+- **StripMetadata** leaves out:
+  - `moov`'s and each track's `udta` and `meta` (Keys, item lists,
+    user data such as `©xyz` and `loci`, `XMP_`)
+  - the XMP `uuid` box
+  - a top-level `meta` or `udta`
+
+  What plays the movie stays: `mvhd`, `tkhd` (with the rotation matrix),
+  `mdhd`, `hdlr`, `stsd` (`colr`, `mdcv`, `clli` in it), `edts`, `tref`,
+  `sgpd` and `sbgp`.
+- **ZeroTimes** sets the creation and modification times of `mvhd`, every
+  `tkhd` and every `mdhd` to 0. They're kept otherwise.
+- **Unchanged:** a movie that is already so, with nothing to strip or
+  zero, gives an in-place plan without patches. A rewrite that moves
+  `moov` isn't in place, even when the size stays.
+- **Refused:**
+  - fragmented movies (`moof`, `mvex`, `sidx`, `mfra`)
+  - sample auxiliary information offsets (`saio`)
+  - media data in other files (a `dref` entry that isn't self-contained)
+  - a `moov` over 64 MB
+  - a top-level `meta` that would move and isn't stripped (its item
+    locations would point where it was)
+  - a chunk offset outside the boxes kept (`ErrMalformed`)
+
+  These give `ErrUnsupported`, unless marked otherwise; a file that isn't
+  a movie gives `ErrUnknownFormat`.
+- **Memory:** bounded by `moov`. The media data is copied in 1 MB reads.
+
+Tested on synthetic layouts:
+- `moov` first and last
+- a 64-bit `mdat` header, `co64`, and the promotion to it (on a sparse
+  4 GB movie)
+- two `mdat`s with `moov` between them
+- `free` and `skip`, `uuid` boxes on either side of `mdat`
+- a size-0 last box
+
+Also tested on H.264 and HEVC with AAC, in MP4 and MOV, tagged by
+ExifTool. The checks:
+- the same frames (`framemd5`) and streams as the source and as ffmpeg's
+  fast start
+- the same media-data hash
+- ExifTool finds none of the tags once stripped, and only the rotation
+  remains
+
 ## AVI and MPEG program streams
 
 Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
@@ -180,8 +299,11 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
   - The duration and size come from the main header (`avih`): frames ×
     microseconds per frame.
   - The recording date is the `IDIT` chunk (asctime or Exif layout), else
-    the INFO list's `ICRD` when it holds a whole date. A year alone isn't
-    taken: it would read as 1 January.
+    Nikon's DateTimeOriginal, else the INFO list's `ICRD` when it holds a
+    whole date. A year alone isn't taken: it would read as 1 January.
+  - The make, model and DateTimeOriginal of Nikon compact cameras come from
+    the `nctg` chunk of their `ncdt` list: records of a 16-bit tag and a
+    16-bit size, little-endian, then the value. Without an offset.
   - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
     keywords `IKEY`, split at `;` or `,`.
 - **MPEG program streams** (`.mpg`, `.vob`):

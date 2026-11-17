@@ -55,7 +55,7 @@ func checkPlan(t *testing.T, file []byte, p *Plan) {
 	if p.Size != int64(len(file)) {
 		t.Fatalf("Size %d, the file has %d", p.Size, len(file))
 	}
-	if p.InPlace != (p.NewSize == p.Size) {
+	if p.InPlace && p.NewSize != p.Size || !p.InPlace && p.NewSize == p.Size && !p.moves {
 		t.Fatalf("InPlace %v with Size %d, NewSize %d", p.InPlace, p.Size, p.NewSize)
 	}
 	end := int64(-1)
@@ -202,6 +202,8 @@ func TestPlanRotationReadsLittle(t *testing.T) {
 func FuzzPlanRotation(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
+	f.Add(tinyTIFF(binary.LittleEndian, true))
+	f.Add(tinyTIFF(binary.BigEndian, false))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			for _, deg := range []int{0, 90, 180} {
@@ -254,7 +256,7 @@ func BenchmarkPlanRotation(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+			reportReads(b, cr)
 		})
 	}
 }

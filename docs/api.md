@@ -129,7 +129,9 @@ One naming scheme covers every write:
   a file.
 
 Edits of a file's Exif, XMP and IPTC fields go through `PlanMetadata` and
-`SetMetadata`, with only the parts needed. The orientation and rotation
+`SetMetadata`, with only the parts needed: in HEIF, JPEG, PNG, WebP, TIFF
+and DNG (IPTC in JPEG and PNG; a movie's fields through `PlanVideoMetadata`).
+The orientation and rotation
 functions take every format the package writes (HEIF, JPEG, PNG, WebP,
 camera RAW, QuickTime and MP4) and look at the file to tell which.
 
@@ -169,7 +171,7 @@ An edit that changes nothing gives an in-place plan with no patches.
 type MetadataEdit struct {
 	Exif *ExifEdit
 	XMP  *XMPEdit
-	IPTC *IPTCEdit // JPEG only
+	IPTC *IPTCEdit // JPEG and PNG
 }
 func PlanMetadata(src io.ReaderAt, size int64, edit MetadataEdit) (*Plan, error)
 func SetMetadata(src io.ReaderAt, size int64, dst io.Writer, edit MetadataEdit) error
@@ -191,7 +193,8 @@ caller writes the file once, all or nothing:
 - **Memory:** a part that changes the file's size is held in memory, the
   file as it makes it, for the parts after it and for `WriteTo`. A part
   in place is read through its patches, with no copy.
-- **IPTC outside JPEG:** refused with `ErrUnsupported`.
+- **IPTC outside JPEG and PNG:** refused with `ErrUnsupported`. A PNG's
+  IPTC is a raw profile text chunk (see [png-webp](png-webp.md)).
 
 ### Old values don't stay
 

@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"errors"
+	"github.com/0x20h/go-media-metadata/internal/bmff/qtbuild"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -160,8 +161,7 @@ func BenchmarkReadAll(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 		b.Run(f.name+"/separate", func(b *testing.B) {
 			cr := &countingReader{r: bytes.NewReader(f.data)}
@@ -177,8 +177,7 @@ func BenchmarkReadAll(b *testing.B) {
 				_, _ = ReadOrientation(cr, n)
 				_ = TakenFrom(x, xmp, IPTC{})
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 	}
 }
@@ -194,7 +193,9 @@ func FuzzReadAll(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	sentinel := func(err error) bool {
-		return err == nil || errors.Is(err, ErrUnknownFormat) || errors.Is(err, ErrMalformed) || errors.Is(err, ErrUnsupported)
+		// ErrXMPRepaired comes with the fields read: a note, not a failure.
+		return err == nil || errors.Is(err, ErrUnknownFormat) || errors.Is(err, ErrMalformed) || errors.Is(err, ErrUnsupported) ||
+			errors.Is(err, ErrXMPRepaired)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
@@ -230,4 +231,47 @@ func FuzzReadAll(f *testing.F) {
 			}
 		})
 	})
+}
+
+// ReadAll of movies: the I/O and allocations ReadAll spends on a movie's
+// boxes, moov first and last, and a corpus movie with Keys.
+func BenchmarkReadAllVideo(b *testing.B) {
+	files := map[string][]byte{"keys.mov": readFile(b, "testdata/video/keys.mov")}
+	for _, first := range []bool{true, false} {
+		o := qtbuild.Default()
+		o.MoovFirst, o.MediaSize = first, 1<<20
+		f, _, _ := qtbuild.Build(o)
+		files[map[bool]string{true: "qtbuild-moov-first", false: "qtbuild-moov-last"}[first]] = f
+	}
+	for _, name := range []string{"keys.mov", "qtbuild-moov-first", "qtbuild-moov-last"} {
+		data := files[name]
+		b.Run(name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(data)}
+			b.ReportAllocs()
+			for range b.N {
+				if _, err := ReadAll(cr, int64(len(data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			reportReads(b, cr)
+		})
+	}
+}
+
+// ReadAll of JPEGs with full metadata: Exif, XMP (regions, people, where
+// and when) and IPTC, the parse an import pays per photo.
+func BenchmarkReadAllJPEG(b *testing.B) {
+	for _, name := range []string{"all.jpg", "regions-full.jpg", "xmp-where-when.jpg"} {
+		data := readFile(b, filepath.Join("testdata/exiftool", name))
+		b.Run(name, func(b *testing.B) {
+			cr := &countingReader{r: bytes.NewReader(data)}
+			b.ReportAllocs()
+			for range b.N {
+				if _, err := ReadAll(cr, int64(len(data))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			reportReads(b, cr)
+		})
+	}
 }

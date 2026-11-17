@@ -269,11 +269,12 @@ func FuzzReadVideo(f *testing.F) {
 	}
 	// Transport streams, cut to their first packets: the tables, the SPS
 	// and the MDPM.
+	f.Add(nctgSeedMovie())
 	_, broken := brokenMovies(f)
 	for _, b := range broken {
 		f.Add(b)
 	}
-	for _, p := range []string{"testdata/avi/idit.avi", "testdata/mpegps/mpeg2.mpg"} {
+	for _, p := range []string{"testdata/avi/idit.avi", "testdata/avi/nikon.avi", "testdata/mpegps/mpeg2.mpg"} {
 		if b, err := os.ReadFile(p); err == nil {
 			f.Add(b[:min(len(b), 16<<10)])
 		}
@@ -318,7 +319,7 @@ func BenchmarkReadVideo(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
+			reportReads(b, cr)
 		})
 	}
 }

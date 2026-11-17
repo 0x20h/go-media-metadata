@@ -48,6 +48,15 @@ type VideoEdit struct {
 	// removes it.
 	Rating       *int
 	RemoveRating bool
+	// XMP edits the movie's XMP packet with EditXMP, for what Keys and
+	// user data don't hold: people (PersonInImage), face regions, and the
+	// XMP mirror of the other fields. The packet is edited where it is:
+	// a top-level uuid box (as MP4 files have it), when the new packet
+	// fits there, and the user data's XMP_ (QuickTime). One that doesn't
+	// fit its uuid box moves to XMP_, the box becoming a free box of its
+	// size. A movie without a packet gets one in XMP_. nil leaves the XMP
+	// as it is.
+	XMP *XMPEdit
 }
 
 // check reports what's wrong with an edit.
@@ -168,6 +177,12 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if err := applyVideoEdit(moov, edit); err != nil {
 		return nil, err
 	}
+	var uuidSplice *splice
+	if x := edit.XMP; x != nil && *x != (XMPEdit{}) {
+		if uuidSplice, err = editMovieXMP(src, top, moov, *x); err != nil {
+			return nil, err
+		}
+	}
 	enc := moov.encode()
 	delta := int64(len(enc)) - moovBox.Size
 
@@ -202,7 +217,97 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 		}
 		e.add(splice{at: moovBox.Offset, del: moovBox.Size, data: enc})
 	}
+	if uuidSplice != nil {
+		e.add(*uuidSplice)
+		if err := e.sorted(); err != nil {
+			return nil, err
+		}
+	}
 	return e.plan(src, size), nil
+}
+
+// editMovieXMP applies edit to a movie's XMP packets (see VideoEdit.XMP):
+// the user data's XMP_ in moov, changed in the tree, and a top-level uuid
+// box, changed by the splice it returns (nil when there's none to change).
+func editMovieXMP(src io.ReaderAt, top []bmff.Box, moov *qtNode, edit XMPEdit) (*splice, error) {
+	var uuid *bmff.Box
+	for i, b := range top {
+		if b.Type != bmff.T("uuid") || b.HeaderLen < 24 {
+			continue
+		}
+		var id [16]byte
+		if _, err := src.ReadAt(id[:], b.Body()-16); err != nil {
+			return nil, fmt.Errorf("%w: reading uuid: %v", ErrMalformed, err)
+		}
+		if bytes.Equal(id[:], xmpUUID) {
+			uuid = &top[i]
+			break
+		}
+	}
+	udta := moov.child(bmff.T("udta"))
+	if udta != nil && !udta.parsed() {
+		return nil, fmt.Errorf("%w: user data that can't be edited", ErrUnsupported)
+	}
+	var xmpNode *qtNode // the user data's XMP_, if any
+	if udta != nil {
+		xmpNode = udta.child(bmff.T("XMP_"))
+	}
+	var out *splice
+	var moved []byte // a uuid box's edited packet that didn't fit it
+	if uuid != nil {
+		if uuid.BodyLen() > maxXMP || uuid.HeaderLen != 24 {
+			return nil, fmt.Errorf("%w: an XMP uuid box of %d bytes", ErrUnsupported, uuid.BodyLen())
+		}
+		old := make([]byte, uuid.BodyLen())
+		if _, err := src.ReadAt(old, uuid.Body()); err != nil {
+			return nil, fmt.Errorf("%w: reading XMP: %v", ErrMalformed, err)
+		}
+		packet, err := EditXMP(old, edit)
+		if err != nil {
+			return nil, err
+		}
+		if padded, ok := padTo(packet, len(old), ' '); ok {
+			if !bytes.Equal(padded, old) {
+				out = &splice{at: uuid.Body(), del: int64(len(old)), data: padded}
+			}
+		} else {
+			// Too long for its box: the box becomes free space, zeroed, and
+			// the packet goes to the user data, inside moov, which can grow
+			// without moving anything else.
+			free := bmff.AppendHeader(nil, bmff.T("free"), int(uuid.Size-8), false)
+			out = &splice{at: uuid.Offset, del: uuid.Size, data: append(free, make([]byte, uuid.Size-8)...)}
+			moved = packet
+		}
+	}
+	switch {
+	case xmpNode != nil && moved != nil:
+		// The uuid box's packet was the one read: it replaces this one.
+		xmpNode.setPayload(moved)
+	case xmpNode != nil:
+		// Both kept in step, so neither has old values.
+		old := xmpNode.payload()
+		packet, err := EditXMP(old, edit)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(packet, old) {
+			xmpNode.setPayload(packet)
+		}
+	case uuid == nil || moved != nil:
+		packet := moved
+		if packet == nil {
+			var err error
+			if packet, err = EditXMP(nil, edit); err != nil {
+				return nil, err
+			}
+		}
+		if udta == nil {
+			udta = &qtNode{typ: bmff.T("udta")}
+			moov.kids = append(moov.kids, udta)
+		}
+		udta.kids = append(udta.kids, &qtNode{typ: bmff.T("XMP_"), body: packet})
+	}
+	return out, nil
 }
 
 // SetVideoMetadata writes to dst the QuickTime or MP4 movie in src (size bytes)
@@ -275,7 +380,7 @@ var qtContainers = map[bmff.Type]bool{
 // with an explicit size where theirs is 0 ("to the end"), so a box
 // added after one doesn't end up inside it.
 func parseQTNode(b []byte, depth int) (*qtNode, error) {
-	boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+	boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
 	if err != nil || len(boxes) != 1 {
 		return nil, fmt.Errorf("%w: a box that doesn't parse", ErrMalformed)
 	}
@@ -293,7 +398,7 @@ func parseQTNode(b []byte, depth int) (*qtNode, error) {
 			start += 4
 		}
 	}
-	kids, err := bmff.ReadBoxes(bytes.NewReader(b), start, int64(len(b)))
+	kids, err := bmff.ParseBoxes(b, start, int64(len(b)))
 	if err != nil {
 		// A container this package can't walk (udta with a trailing
 		// zero, say) is kept as it was, and not edited.
@@ -314,18 +419,51 @@ func (n *qtNode) encode() []byte {
 	if n.raw != nil {
 		return n.raw
 	}
-	var content []byte
-	content = append(content, n.pre...)
+	// One buffer for the whole tree: its size first, then every box
+	// appended to it.
+	return n.appendTo(make([]byte, 0, n.encodedLen()))
+}
+
+// contentLen is the length of n's payload as encode writes it.
+func (n *qtNode) contentLen() int {
+	l := len(n.pre)
 	if n.kids != nil {
 		for _, k := range n.kids {
-			content = append(content, k.encode()...)
+			l += k.encodedLen()
 		}
 	} else {
-		content = append(content, n.body...)
+		l += len(n.body)
 	}
-	large := n.large || len(content)+8 > math.MaxUint32
-	out := bmff.AppendHeader(make([]byte, 0, len(content)+16), n.typ, len(content), large)
-	return append(out, content...)
+	return l
+}
+
+// encodedLen is the length of n as encode writes it, header included.
+func (n *qtNode) encodedLen() int {
+	if n.raw != nil {
+		return len(n.raw)
+	}
+	l := n.contentLen()
+	if n.large || l+8 > math.MaxUint32 {
+		return l + 16
+	}
+	return l + 8
+}
+
+// appendTo appends n as encode writes it.
+func (n *qtNode) appendTo(dst []byte) []byte {
+	if n.raw != nil {
+		return append(dst, n.raw...)
+	}
+	l := n.contentLen()
+	dst = bmff.AppendHeader(dst, n.typ, l, n.large || l+8 > math.MaxUint32)
+	dst = append(dst, n.pre...)
+	if n.kids != nil {
+		for _, k := range n.kids {
+			dst = k.appendTo(dst)
+		}
+		return dst
+	}
+	return append(dst, n.body...)
 }
 
 func (n *qtNode) parsed() bool { return n.raw == nil }
@@ -345,7 +483,7 @@ func (n *qtNode) payload() []byte {
 	if n.raw == nil {
 		return n.body
 	}
-	boxes, err := bmff.ReadBoxes(bytes.NewReader(n.raw), 0, int64(len(n.raw)))
+	boxes, err := bmff.ParseBoxes(n.raw, 0, int64(len(n.raw)))
 	if err != nil || len(boxes) != 1 {
 		return nil
 	}
@@ -403,7 +541,16 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		if err := keys.set(keyLocation, s); err != nil {
 			return err
 		}
+		// The user data's ©xyz too, added where there's none, as ExifTool
+		// writes it: readers that don't read Keys (Android's) look there.
+		if udta == nil && moov.child(bmff.T("udta")) == nil {
+			udta = &qtNode{typ: bmff.T("udta")}
+			moov.kids = append(moov.kids, udta)
+		}
 		if udta != nil {
+			if udta.child(bmff.T("\xa9xyz")) == nil {
+				udta.kids = append(udta.kids, &qtNode{typ: bmff.T("\xa9xyz")})
+			}
 			setUdtaText(udta, "\xa9xyz", s)
 		}
 	}
@@ -419,12 +566,20 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		return nil
 	}
 	items := itemList(udta)
+	// Every place a reader finds the title and description gets the new
+	// value, so none keeps the old one: Keys; the item list's ©nam, and
+	// ©des (ExifTool's ItemList Description) and desc; the user data's
+	// QuickTime text (©nam, ©des) and 3GPP strings (titl, dscp). An item
+	// list gets ©nam and ©des when it has none (ExifTool writes them);
+	// Keys are added when missing, as before; the rest are updated where
+	// they are.
 	for _, f := range [...]struct {
-		v               *string
-		key, udta, item string
+		v              *string
+		key, udta, gpp string
+		items          [2]string // set (added when missing), updated
 	}{
-		{edit.Title, keyTitle, "\xa9nam", "\xa9nam"},
-		{edit.Description, keyDesc, "\xa9des", "desc"},
+		{edit.Title, keyTitle, "\xa9nam", "titl", [2]string{"\xa9nam", ""}},
+		{edit.Description, keyDesc, "\xa9des", "dscp", [2]string{"\xa9des", "desc"}},
 	} {
 		if f.v == nil {
 			continue
@@ -435,9 +590,14 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 			}
 			if udta != nil {
 				removeKids(udta, bmff.T(f.udta))
+				removeKids(udta, bmff.T(f.gpp))
 			}
 			if items != nil {
-				removeKids(items, bmff.T(f.item))
+				for _, it := range f.items {
+					if it != "" {
+						removeKids(items, bmff.T(it))
+					}
+				}
 			}
 			continue
 		}
@@ -446,8 +606,12 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 		}
 		if udta != nil {
 			setUdtaText(udta, f.udta, *f.v)
+			setGppText(udta, f.gpp, *f.v)
 		}
-		setItem(items, f.item, *f.v)
+		addItem(items, f.items[0], *f.v)
+		if f.items[1] != "" {
+			setItem(items, f.items[1], *f.v)
+		}
 	}
 	if kw := edit.Keywords; kw != nil {
 		if len(*kw) == 0 {
@@ -503,6 +667,39 @@ func setItem(ilst *qtNode, typ, s string) {
 			return
 		}
 	}
+}
+
+// addItem sets item typ of an item list to UTF-8 text s, adding the item
+// when the list has none.
+func addItem(ilst *qtNode, typ, s string) {
+	if ilst == nil {
+		return
+	}
+	for _, it := range ilst.kids {
+		if it.typ == bmff.T(typ) {
+			setItem(ilst, typ, s)
+			return
+		}
+	}
+	ilst.kids = append(ilst.kids, &qtNode{typ: bmff.T(typ), kids: []*qtNode{textData(s)}})
+}
+
+// setGppText sets a 3GPP asset string box of the user data (titl, dscp:
+// TS 26.244 8.1) to UTF-8 text s, keeping its language, where there is
+// one.
+func setGppText(udta *qtNode, typ, s string) {
+	n := udta.child(bmff.T(typ))
+	if n == nil {
+		return
+	}
+	old := n.payload()
+	lang := []byte{0x55, 0xc4} // undetermined
+	if len(old) >= 6 {
+		lang = old[4:6]
+	}
+	p := make([]byte, 4, 4+2+len(s)+1) // version and flags 0
+	p = append(append(append(p, lang...), s...), 0)
+	n.setPayload(p)
 }
 
 // textData is a data box of UTF-8 text (type 1, locale 0).
@@ -668,11 +865,11 @@ func (k *keysNode) set(name, s string) error {
 	// Keep the item's other boxes; replace its first data box.
 	if it.raw != nil {
 		b := it.raw
-		boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+		boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
 		if err != nil || len(boxes) != 1 {
 			return fmt.Errorf("%w: an ilst item that doesn't parse", ErrMalformed)
 		}
-		kids, err := bmff.ReadBoxes(bytes.NewReader(b), boxes[0].Body(), boxes[0].End())
+		kids, err := bmff.ParseBoxes(b, boxes[0].Body(), boxes[0].End())
 		if err != nil {
 			return fmt.Errorf("%w: an ilst item that doesn't parse", ErrMalformed)
 		}

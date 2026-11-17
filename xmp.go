@@ -89,6 +89,12 @@ type XMPEdit struct {
 	// Precision (PrecisionSecond when unset), with its fraction of a
 	// second when it has one, and its offset when OffsetKnown.
 	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
+	// GPS sets exif:GPSLatitude, exif:GPSLongitude and, with HasAltitude,
+	// exif:GPSAltitude and exif:GPSAltitudeRef (1 below sea level), the
+	// position ParseXMP reads; without HasAltitude an old altitude is
+	// removed. RemoveGPS removes all four. nil leaves them as they are.
+	GPS       *GPS
+	RemoveGPS bool
 }
 
 // Namespaces of the properties read and written.
@@ -116,16 +122,27 @@ type xmpDoc struct {
 	nodes []*xmlNode
 	rdf   *xmlNode // the rdf:RDF element
 	rdfIn scope    // the scope inside rdf:RDF
+	// descs and descScopes are descriptions(), kept while fields reads a
+	// doc that nothing changes; nil otherwise.
+	descs      []*xmlNode
+	descScopes []scope
 }
 
 func parseXMPDoc(packet []byte) (*xmpDoc, error) {
+	return parseXMPDocMode(packet, true)
+}
+
+// parseXMPDocMode is parseXMPDoc; without keepSpace, text that is only
+// white space is left out of the tree: what ParseXMP reads doesn't
+// change (values are trimmed), what an edit writes back would.
+func parseXMPDocMode(packet []byte, keepSpace bool) (*xmpDoc, error) {
 	if len(packet) > maxXMP {
 		return nil, fmt.Errorf("%w: XMP of %d bytes", ErrUnsupported, len(packet))
 	}
 	if !utf8.Valid(packet) {
 		return nil, fmt.Errorf("%w: XMP that isn't UTF-8", ErrMalformed)
 	}
-	nodes, err := parseXML(packet)
+	nodes, err := parseXML(packet, keepSpace)
 	if err != nil {
 		return nil, err
 	}
@@ -169,9 +186,15 @@ type prop struct {
 // descriptions are the rdf:Description elements with the scope inside
 // each.
 func (d *xmpDoc) descriptions() ([]*xmlNode, []scope) {
+	if d.descs != nil {
+		return d.descs, d.descScopes
+	}
 	var ds []*xmlNode
 	var ss []scope
-	for _, n := range elements(d.rdf) {
+	for _, n := range d.rdf.kids {
+		if n.kind != elemNode {
+			continue
+		}
 		in := d.rdfIn.enter(n)
 		if uri, _ := in.ns(n.name, false); uri == nsRDF && n.name.Local == "Description" {
 			ds = append(ds, n)
@@ -194,8 +217,8 @@ func (d *xmpDoc) props(ns, local string) []prop {
 				out = append(out, prop{desc: desc, in: ss[i], attr: j})
 			}
 		}
-		for _, k := range elements(desc) {
-			if k.name.Local != local {
+		for _, k := range desc.kids {
+			if k.kind != elemNode || k.name.Local != local {
 				continue
 			}
 			if uri, _ := ss[i].enter(k).ns(k.name, false); uri == ns {
@@ -284,10 +307,10 @@ func (d *xmpDoc) langAlt(ns, local string) string {
 // A packet that is malformed only by characters XML doesn't allow reads
 // leniently: ParseXMP returns its fields with ErrXMPRepaired.
 func ParseXMP(packet []byte) (XMP, error) {
-	d, err := parseXMPDoc(packet)
+	d, err := parseXMPDocMode(packet, false)
 	if errors.Is(err, ErrMalformed) && len(packet) <= maxXMP {
 		if fixed, changed := repairXML(packet); changed {
-			if d, err2 := parseXMPDoc(fixed); err2 == nil {
+			if d, err2 := parseXMPDocMode(fixed, false); err2 == nil {
 				return d.fields(), ErrXMPRepaired
 			}
 		}
@@ -299,6 +322,10 @@ func ParseXMP(packet []byte) (XMP, error) {
 }
 
 func (d *xmpDoc) fields() XMP {
+	// The descriptions once for every property read here; the doc isn't
+	// changed while they're kept.
+	d.descs, d.descScopes = d.descriptions()
+	defer func() { d.descs, d.descScopes = nil, nil }()
 	var x XMP
 	x.Title = d.langAlt(nsDC, "title")
 	x.Description = d.langAlt(nsDC, "description")
@@ -369,6 +396,12 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if edit.GPS != nil && edit.RemoveGPS {
+		return nil, fmt.Errorf("mediameta: GPS and RemoveGPS together")
+	}
+	if g := edit.GPS; g != nil && !validGPS(g) {
+		return nil, fmt.Errorf("mediameta: GPS position %+v out of range", *g)
+	}
 	if err := checkRegions(edit.Regions); err != nil {
 		return nil, err
 	}
@@ -416,6 +449,26 @@ func EditXMP(packet []byte, edit XMPEdit) ([]byte, error) {
 			changed = d.remove(p.ns, p.local) || changed
 		default:
 			changed = d.setSimple(p.ns, p.local, formatXMPDate(*p.d)) || changed
+		}
+	}
+	if g := edit.GPS; g != nil {
+		changed = d.setSimple(nsExif, "GPSLatitude", formatXMPCoord(g.Latitude, 'N', 'S')) || changed
+		changed = d.setSimple(nsExif, "GPSLongitude", formatXMPCoord(g.Longitude, 'E', 'W')) || changed
+		if g.HasAltitude {
+			ref := "0"
+			if g.Altitude < 0 {
+				ref = "1"
+			}
+			changed = d.setSimple(nsExif, "GPSAltitude", formatXMPRational(math.Abs(g.Altitude))) || changed
+			changed = d.setSimple(nsExif, "GPSAltitudeRef", ref) || changed
+		} else {
+			changed = d.remove(nsExif, "GPSAltitude") || changed
+			changed = d.remove(nsExif, "GPSAltitudeRef") || changed
+		}
+	}
+	if edit.RemoveGPS {
+		for _, local := range [...]string{"GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSAltitudeRef"} {
+			changed = d.remove(nsExif, local) || changed
 		}
 	}
 	if edit.Regions != nil {

@@ -94,6 +94,9 @@ jobs:
           - FuzzReadGIF
           - FuzzReadBMP
           - FuzzReadMatroska
+          - FuzzReadAll
+          - FuzzParseXMPLenient
+          - FuzzParseXMPReadMode
           - FuzzOrientationAnyFormat
     steps:
       - uses: actions/checkout@v5

@@ -118,6 +118,13 @@ func (f *jpegFile) photoshopSegments(r io.ReaderAt) ([]jpegSegment, []irb, error
 // the Photoshop image resource 0x0404 in its APP13 segments. Nil without
 // one. ParseIPTC reads its fields.
 func ReadIPTC(r io.ReaderAt, size int64) ([]byte, error) {
+	if isPNG(r, size) {
+		m, err := readPNGMetadata(r, size)
+		if err != nil {
+			return nil, err
+		}
+		return m.readIPTC(r)
+	}
 	f, err := parseJPEG(r, size)
 	if err != nil {
 		return nil, err

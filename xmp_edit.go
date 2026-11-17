@@ -25,8 +25,20 @@ func planXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 		}
 		return planJPEGXMP(src, size, packet)
 	}
+	if isPNG(src, size) {
+		return planPNGXMP(src, size, edit)
+	}
 	if p, ok, err := planChunked(src, size, kindXMP, apply); ok {
 		return p, err
+	}
+	if isTIFF, err := tiffFileEditable(src, size); isTIFF {
+		if err != nil {
+			return nil, err
+		}
+		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return editTIFFXMP(file, edit) })
+	}
+	if detectFormat(src, size) == formatMovie {
+		return PlanVideoMetadata(src, size, VideoEdit{XMP: &edit})
 	}
 	f, err := parseHEIF(src, size)
 	if err != nil {

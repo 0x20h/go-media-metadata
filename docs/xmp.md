@@ -154,6 +154,9 @@ type XMPEdit struct {
 	// photoshop:DateCreated, xmp:CreateDate, exif:DateTimeOriginal,
 	// xmp:ModifyDate: nil leaves; a zero Time removes
 	DateCreated, CreateDate, DateTimeOriginal, ModifyDate *Date
+
+	GPS       *GPS // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
+	RemoveGPS bool
 }
 ```
 
@@ -170,7 +173,19 @@ Dates are written in the XMP Date form:
 A date edit through `ExifEdit` alone leaves the XMP dates as they were. A
 reader that takes XMP first then sees the old date. To keep both in step,
 set them in one `MetadataEdit`, as ExifTool does when it's given both
-groups. Keywords
+groups.
+
+A position is written as ExifTool writes it:
+- **Coordinates:** XMP GPSCoordinate form, whole degrees then minutes to
+  six decimals (`52,31.20048N`), a few centimetres.
+- **Altitude:** with `HasAltitude`, a reduced rational to a tenth of a
+  millimetre (`25/2`), with `exif:GPSAltitudeRef` 1 below sea level.
+  Without `HasAltitude`, an old altitude is removed.
+- **Removal:** `RemoveGPS` removes all four properties.
+- **Refused:** a position out of range.
+
+As with dates, a GPS edit through `ExifEdit` alone leaves an older XMP
+position in place. Set both in one `MetadataEdit`. Keywords
 and hierarchical keywords are separate properties: setting one leaves the
 other, so a caller that keeps them in step sets both.
 

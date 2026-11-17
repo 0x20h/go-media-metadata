@@ -4,14 +4,139 @@
 
 ### Added
 
+- `ReadVideo` (and `ReadAll`) read the make, model and date taken of
+  Canon MP4 files, from the Exif of the thumbnail in their `uuid` box,
+  and of Nikon AVI files, from the `nctg` chunk of their `ncdt` list, as
+  ExifTool reads them. See [docs/quicktime.md](docs/quicktime.md).
+
+## v0.2.3 (2026-11-17)
+
+No breaking changes.
+
+### Added
+
+- `RewriteMovie`, `PlanRewriteMovie` and `IndexFirst`: a QuickTime or MP4
+  movie rewritten with its index (`moov`) first, as `ffmpeg -c copy
+  -movflags +faststart` does, without decoding a sample. Chunk offsets
+  move with their data (an `stco` becomes a `co64` when it must);
+  `RewriteOptions` leaves the metadata out and zeroes the times. See
+  [docs/quicktime.md](docs/quicktime.md).
+
+### Faster reads
+
+The read calls and allocations of `ReadAll` and the single readers, the
+same values read:
+
+- **HEIC:** the meta box is read and parsed once for every value, about
+  half the bytes read. Boxes already in memory are walked without a
+  reader: `ReadAll` on an iPhone HEIC makes 227 allocations instead of
+  414.
+- **Movies:** the movie box is read in one call (up to 1 MB): `ReadAll`
+  on a MOV makes 9 read calls instead of 61, on an MP4 10 instead of 49.
+- **JPEG:** the first 16 KB are read in one call, and each marker's
+  header in one more: `ReadAll` makes 3 read calls instead of 28.
+- **XMP:** parsing a packet for reading drops the whitespace between
+  elements: 215 allocations instead of 396 on a typical packet.
+
+### Behaviour worth knowing
+
+- `Plan.InPlace` is false for a movie rewrite that moves the media data,
+  even when the file keeps its size.
+
+## v0.2.2 (2026-11-17)
+
+No breaking changes.
+
+### Added
+
+- A PNG's IPTC (the `Raw profile type iptc` text chunk ImageMagick and
+  ExifTool write) is read by `ReadIPTC` and `ReadAll`, and written by
+  `MetadataEdit.IPTC`, as ExifTool writes it. An edited PNG no longer
+  keeps old IPTC next to new XMP. See [docs/png-webp.md](docs/png-webp.md).
+- `ReadPNGText` and `Metadata.PNG`: a PNG's Title and Description text
+  chunks (`tEXt`, `zTXt`, `iTXt`) and its `tIME` (the last modification),
+  as ExifTool reads them. `ReadAll`'s title and description fall back to
+  them. See [docs/png-webp.md](docs/png-webp.md).
+
+- `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
+  `NCDT`): make, model, and the recording's start as the date where Keys
+  and user data have none, as ExifTool reads them.
+
+- `Video.LensModel`: the Keys entry
+  `com.apple.quicktime.camera.lens_model`, as iPhones write it.
+- `Camera.LensModel` falls back to a Canon maker note's LensModel (tag
+  0x0095) when the Exif IFD has none, as ExifTool reads it.
+
+- `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
+  can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
+  `uuid` box when it fits, else moved to the user data's `XMP_`, the box
+  freed. `PlanMetadata`'s XMP part takes movies too. See
+  [docs/quicktime.md](docs/quicktime.md).
+
+- `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
+  the date's precision, with its offset when known, or removes them. A
+  date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in
+  the same edit. See [docs/iptc.md](docs/iptc.md).
+
+- `PlanMetadata` and `SetMetadata` write Exif and XMP to TIFF and DNG files,
+  which were refused with a misleading error. Values change where they
+  fit and are appended where they don't; image data and every offset into
+  it stay, so the image data hash doesn't change. Camera RAWs with a maker
+  note (CR2, NEF, ARW) are refused. See [docs/raw.md](docs/raw.md).
 - `XMPEdit` writes dates: `DateCreated`, `CreateDate`,
   `DateTimeOriginal` and `ModifyDate` (`photoshop:DateCreated`,
   `xmp:CreateDate`, `exif:DateTimeOriginal`, `xmp:ModifyDate`). Each is
   written to its precision, with its offset when known, or removed. A
   date corrected in Exif can now be corrected in XMP in the same edit. See
   [docs/xmp.md](docs/xmp.md).
+- `XMPEdit` writes a position: `GPS` sets `exif:GPSLatitude`,
+  `exif:GPSLongitude` and the altitude as ExifTool writes them;
+  `RemoveGPS` removes them. A place corrected in Exif can now be
+  corrected in XMP in the same edit. See [docs/xmp.md](docs/xmp.md).
 
 ### Fixed
+
+- `VideoEdit.GPS` adds the user data's `©xyz` when the movie has none, as
+  ExifTool does, so readers that don't read Keys (Android's) find the
+  place. Before, only an existing `©xyz` was updated.
+
+- A PNG's Exif in an ImageMagick raw profile text chunk (`Raw profile
+  type exif`, hex) is read when there's no `eXIf`, as ExifTool reads it.
+  An Exif edit moves it to an `eXIf` chunk and removes the raw profile.
+
+- `Camera`'s exposure fields (ExposureTime, FNumber, ISO, focal lengths)
+  are read from IFD0 when the Exif IFD hasn't got them, as some Samsung
+  cameras write them and ExifTool reads them.
+
+- `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
+  Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
+  GPSCoordinates). Such videos had no place. See
+  [docs/quicktime.md](docs/quicktime.md).
+
+- A movie header date written from 1970 instead of 1904 (some MP4s
+  forwarded by messengers, some phones) is read from 1970, as ExifTool
+  reads it, instead of 66 years early (1946–1951 for 2012–2017). See
+  [docs/quicktime.md](docs/quicktime.md).
+
+- An XMP title or description edit of a PNG also sets the PNG's own
+  `Title` and `Description` text chunks (`tEXt`, `zTXt`, `iTXt`) where it
+  has them, or removes them. ExifTool's `-Title` writes these, and viewers
+  read them; before, they kept the old text. See
+  [docs/png-webp.md](docs/png-webp.md).
+
+- `VideoEdit` writes the title and description everywhere ExifTool and
+  `ReadVideo` read them. Before, an item list's `©des` and the user data's
+  3GPP `titl` and `dscp` kept their old values, and a removal left them.
+  An item list the movie has gets `©nam` and `©des` when it lacks them,
+  as ExifTool writes them, so players that read only the item list show
+  the new values. See [docs/quicktime.md](docs/quicktime.md).
+
+- `SetOrientation`, `SetRotation` and their plans set the orientation of
+  a TIFF or DNG whose IFD0 has no Orientation tag, which was refused (ErrUnsupported).
+  Most scanners' and converters' TIFFs have none. A copy of IFD0 with the
+  tag goes to the end of the file and the header points to it, so no
+  other byte moves and every offset stays valid. ExifTool validates the
+  result as it did the source. See [docs/raw.md](docs/raw.md).
 
 - `ReadVideo` reads a movie's description from an item list's `©des`
   and from the 3GPP `dscp` box in user data (and the title from `titl`),

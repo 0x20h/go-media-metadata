@@ -2,8 +2,10 @@ package mediameta
 
 import (
 	"errors"
+	"github.com/0x20h/go-media-metadata/internal/bmff"
 	"io"
 	"strings"
+	"sync"
 )
 
 // Metadata is everything ReadAll reads from a file: the fields a media
@@ -56,6 +58,11 @@ type Metadata struct {
 
 	// Exif, XMP and IPTC are the standards as parsed, empty where the file
 	// has none or one that couldn't be read (see Errors).
+	// PNG is a PNG's own text metadata (its Title and Description text
+	// chunks, its tIME), zero for other formats. Title and Description
+	// fall back to it after XMP, IPTC and Exif.
+	PNG PNGText
+
 	Exif Exif
 	XMP  XMP
 	IPTC IPTC
@@ -95,16 +102,21 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 	var m Metadata
 	var exifErr, xmpErr, iptcErr error
 	var packet, iim []byte
-	if f, herr := parseHEIF(r, size); herr == nil {
+	if f, top, herr := parseHEIFBoxes(r, size); herr == nil {
 		m.Format = "HEIF"
 		m.Exif, exifErr = f.exif(r, size)
 		packet, xmpErr = f.xmp(r, size)
 		m.Size, m.Errors.Size = f.imageSize()
 		m.Orientation, m.Errors.Orientation = f.orientation()
 	} else {
-		switch detectFormat(r, size) {
+		switch kind := detectFormatTop(r, size, top); kind {
 		case formatJPEG:
 			m.Format = "JPEG"
+			// The metadata segments are at the start: one read of up to
+			// 16 KB serves the many small reads of the segments in it.
+			w := newReadWindow(r, size)
+			defer w.release()
+			r := io.ReaderAt(w)
 			f, err := parseJPEG(r, size)
 			if err != nil {
 				m.Errors.Exif, m.Errors.Size = err, err
@@ -118,11 +130,15 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 		case formatPNG:
 			m.Format = "PNG"
 			pm, err := readPNGMetadata(r, size)
+			if err == nil {
+				m.PNG = readPNGText(r, pm.chunks)
+			}
 			if err != nil {
 				exifErr, xmpErr = err, err
 			} else {
 				m.Exif, exifErr = pm.readExif(r)
 				packet, xmpErr = pm.readXMP(r)
+				iim, iptcErr = pm.readIPTC(r)
 			}
 			m.Size, m.Errors.Size = pngImageSize(r, size)
 			m.Orientation = orientationOfExif(m.Exif, exifErr, &m.Errors)
@@ -138,13 +154,16 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			m.Size, m.Errors.Size = bmpImageSize(r, size)
 			m.Orientation = 1
 		case formatWebP, formatJXL, formatRAW:
-			m.Format = map[format]string{formatWebP: "WebP", formatJXL: "JPEG XL", formatRAW: "RAW"}[detectFormat(r, size)]
+			m.Format = map[format]string{formatWebP: "WebP", formatJXL: "JPEG XL", formatRAW: "RAW"}[kind]
 			m.Exif, exifErr = ReadExif(r, size)
 			packet, xmpErr = ReadXMP(r, size)
 			m.Size, m.Errors.Size = ReadImageSize(r, size)
 			m.Orientation, m.Errors.Orientation = ReadOrientation(r, size)
 		case formatMovie, formatTS, formatMatroska, formatAVI, formatMPEGPS:
-			return readAllVideo(r, size)
+			if kind != formatMovie {
+				top = nil // boxes that read as boxes, but not a movie's
+			}
+			return readAllVideo(r, size, kind, top)
 		default:
 			if startsWithFtyp(r, size) && errors.Is(herr, ErrMalformed) {
 				return m, herr
@@ -193,8 +212,8 @@ func (m *Metadata) summarize() {
 		m.GPS = x.GPS
 	}
 	m.Camera = e.Camera
-	m.Title = firstOf(x.Title, i.Title, e.XPTitle)
-	m.Description = firstOf(x.Description, i.Description, e.ImageDescription, e.XPComment, e.XPSubject, m.Description)
+	m.Title = firstOf(x.Title, i.Title, e.XPTitle, m.PNG.Title)
+	m.Description = firstOf(x.Description, i.Description, e.ImageDescription, e.XPComment, e.XPSubject, m.PNG.Description, m.Description)
 	switch {
 	case x.Keywords != nil:
 		m.Keywords = x.Keywords
@@ -213,9 +232,9 @@ func (m *Metadata) summarize() {
 }
 
 // readAllVideo is ReadAll of a movie or a transport stream: ReadVideo's.
-func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
+func readAllVideo(r io.ReaderAt, size int64, kind format, top []bmff.Box) (Metadata, error) {
 	m := Metadata{Format: "QuickTime"}
-	switch detectFormat(r, size) {
+	switch kind {
 	case formatTS:
 		m.Format = "MPEG-TS"
 	case formatMatroska:
@@ -225,7 +244,7 @@ func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
 	case formatMPEGPS:
 		m.Format = "MPEG-PS"
 	}
-	v, err := ReadVideo(r, size)
+	v, err := readVideoTop(r, size, top)
 	if err != nil {
 		m.Errors.Video = err
 		return m, nil
@@ -253,4 +272,39 @@ func firstOf(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// readWindowSize is how much of a file's start readWindow holds.
+const readWindowSize = 16 << 10
+
+// readWindow serves reads within a file's first readWindowSize bytes
+// from one read of them, the others from the file. Its buffer is pooled:
+// nothing read through it keeps a slice of it.
+type readWindow struct {
+	r io.ReaderAt
+	n int64 // the bytes held, 0 when the read failed
+	b [readWindowSize]byte
+}
+
+var readWindows = sync.Pool{New: func() any { return new(readWindow) }}
+
+func newReadWindow(r io.ReaderAt, size int64) *readWindow {
+	w := readWindows.Get().(*readWindow)
+	w.r, w.n = r, min(size, readWindowSize)
+	if n, err := r.ReadAt(w.b[:w.n], 0); err != nil && (err != io.EOF || int64(n) != w.n) {
+		w.n = 0
+	}
+	return w
+}
+
+func (w *readWindow) ReadAt(p []byte, off int64) (int, error) {
+	if off >= 0 && off+int64(len(p)) <= w.n {
+		return copy(p, w.b[off:]), nil
+	}
+	return w.r.ReadAt(p, off)
+}
+
+func (w *readWindow) release() {
+	w.r, w.n = nil, 0
+	readWindows.Put(w)
 }

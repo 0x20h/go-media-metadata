@@ -9,6 +9,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -25,7 +26,8 @@ type Video struct {
 	// Created is when the video was recorded. The first of these the file
 	// has: the Keys entry com.apple.quicktime.creationdate (a local time
 	// with its offset, so OffsetKnown is true), the user data's ©day (the
-	// same, when it carries an offset), the movie's XMP (in TakenFrom's
+	// same, when it carries an offset), Nikon's or Canon's camera tags (a
+	// clock time, OffsetKnown false), the movie's XMP (in TakenFrom's
 	// order: exif:DateTimeOriginal, photoshop:DateCreated, xmp:CreateDate;
 	// OffsetKnown as written), or the movie header's creation time (in
 	// UTC, OffsetKnown true). Zero without any.
@@ -62,8 +64,12 @@ type Video struct {
 
 	// Make and Model are the recording device's: the Keys entries
 	// com.apple.quicktime.make and .model, else the user data's ©mak and
-	// ©mod.
+	// ©mod, else Nikon's NCTG, else the Exif of a Canon movie's thumbnail.
+	// An AVI's come from Nikon's nctg chunk.
 	Make, Model string
+	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
+	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
+	LensModel string
 
 	// ContentIdentifier is the Keys entry
 	// com.apple.quicktime.content.identifier, which pairs a Live Photo's
@@ -106,17 +112,30 @@ var qtEpoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 // broken field, not a date.
 const maxQTSeconds = 496 * 366 * 86400
 
+// unixEpochQT is 1970-01-01 in seconds since 1904: 66 years and 17 leap
+// days.
+const unixEpochQT = (66*365 + 17) * 86400
+
 // ReadVideo reads the metadata of the QuickTime or MP4 movie in r (size
 // bytes). It reads box headers and the few small boxes the fields come
 // from: not the media data, and not the sample tables.
 func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
+	return readVideoTop(r, size, nil)
+}
+
+// readVideoTop is ReadVideo of a movie whose top-level boxes a caller has
+// read already (strictly, as bmff.ReadBoxes reads them); nil reads them.
+func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	var v Video
 	if size < 8 {
 		return v, errNotQuickTime
 	}
 	// A transport stream is tried once the file isn't a movie, so a
 	// movie's read costs no more than it did.
-	top, err := movieBoxes(r, size)
+	var err error
+	if top == nil {
+		top, err = movieBoxes(r, size)
+	}
 	if err != nil {
 		if isTS(r, size) && !looksLikeMovie(r, size) {
 			return readTSVideo(r, size)
@@ -154,11 +173,18 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	if !ok {
 		return v, fmt.Errorf("%w: no movie box", ErrMalformed)
 	}
+	// The movie box in one read, when it's at most maxMoovRead: the many
+	// small reads of the boxes in it are served from that; reads outside
+	// it (an MP4's XMP uuid box) go to the file.
+	if s := readSpan(r, moov.Offset, moov.Size); s != nil {
+		defer s.release()
+		r = s
+	}
 	kids, err := bmff.ReadBoxes(r, moov.Body(), moov.End())
 	if err != nil {
 		return v, err
 	}
-	var keys, udta qtTags
+	var keys, udta, canon qtTags
 	var mvhdCreated time.Time
 	video, movieTurned := false, false
 	for _, k := range kids {
@@ -190,8 +216,12 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 				return v, err
 			}
 			udta.merge(t)
+		case bmff.T("uuid"):
+			canon.merge(readCanonUUID(r, k))
 		}
 	}
+	// Canon's tags come after the user data's.
+	udta.merge(canon)
 
 	// The movie's XMP, read only when the fields before it are missing.
 	// Each source parsed once, in order; the movie's XMP read only when
@@ -202,6 +232,12 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 		v.Created, v.OffsetKnown = at, true
 	} else if at, ok := parseISO8601(udta.created); ok {
 		v.Created, v.OffsetKnown = at, true
+	} else if at, _, ok := parseExifDate(udta.nikonDate); ok {
+		// Nikon's recording start: the camera's clock time, no offset.
+		v.Created, v.OffsetKnown = at, false
+	} else if !udta.canonTaken.IsZero() {
+		// Canon's: its thumbnail's Exif, a clock time as a rule.
+		v.Created, v.OffsetKnown = udta.canonTaken, udta.canonOffsetKnown
 	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
 		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
@@ -218,6 +254,7 @@ func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
+	v.LensModel = keys.lensModel
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
 	v.Title = first(keys.title, udta.title)
 	v.Description = first(keys.description, udta.description)
@@ -380,8 +417,14 @@ func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 		return
 	}
 	// Up to the year 2400: anything later is a broken field, not a date.
-	if secs != 0 && secs < maxQTSeconds {
+	// Some writers count from 1970 instead of 1904 (Unix time): a value
+	// below 1970's in 1904 seconds is read from 1970, as ExifTool reads
+	// it, rather than as a date before 1970.
+	switch {
+	case secs >= unixEpochQT && secs < maxQTSeconds:
 		created = qtEpoch.Add(time.Duration(secs) * time.Second)
+	case secs != 0 && secs < unixEpochQT:
+		created = time.Unix(int64(secs), 0).UTC()
 	}
 	if scale != 0 && dur/scale < uint64(math.MaxInt64/int64(time.Second)) {
 		d = time.Duration(dur/scale)*time.Second + time.Duration(dur%scale)*time.Second/time.Duration(scale)
@@ -510,10 +553,14 @@ func matrixOrientation(m [9]int32) Orientation {
 // qtTags are the metadata values a movie's Keys or user data carry.
 type qtTags struct {
 	created, location, make, model, contentID string
+	nikonDate                                 string    // Nikon NCTG's DateTimeOriginal
+	canonTaken                                time.Time // Canon's thumbnail Exif DateTimeOriginal
+	canonOffsetKnown                          bool
 	loci                                      *GPS   // 3GPP loci
 	xmp                                       []byte // an XMP packet
 	title, description, rating                string
 	keywords                                  []string
+	lensModel                                 string
 }
 
 // merge fills t's empty fields from o.
@@ -529,6 +576,15 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.model == "" {
 		t.model = o.model
+	}
+	if t.lensModel == "" {
+		t.lensModel = o.lensModel
+	}
+	if t.nikonDate == "" {
+		t.nikonDate = o.nikonDate
+	}
+	if t.canonTaken.IsZero() {
+		t.canonTaken, t.canonOffsetKnown = o.canonTaken, o.canonOffsetKnown
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -578,6 +634,7 @@ const (
 	keyLocation  = "com.apple.quicktime.location.ISO6709"
 	keyMake      = "com.apple.quicktime.make"
 	keyModel     = "com.apple.quicktime.model"
+	keyLensModel = "com.apple.quicktime.camera.lens_model"
 	keyContentID = "com.apple.quicktime.content.identifier"
 	keyTitle     = "com.apple.quicktime.title"
 	keyDesc      = "com.apple.quicktime.description"
@@ -636,6 +693,8 @@ func readMetaKeys(r io.ReaderAt, meta bmff.Box) (qtTags, error) {
 			dst = &t.make
 		case keyModel:
 			dst = &t.model
+		case keyLensModel:
+			dst = &t.lensModel
 		case keyContentID:
 			dst = &t.contentID
 		case keyTitle:
@@ -702,7 +761,7 @@ func parseKeys(b []byte) []string {
 // readDataString reads the text value of an ilst item's first data box:
 // UTF-8 (type 1) or UTF-16 (type 2) text. "" for any other type.
 // readItemList reads an MP4 item list (a meta box of handler mdir): ©nam,
-// desc and keyw.
+// ©des and desc, ©xyz and keyw.
 func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 	var t qtTags
 	ib, ok := bmff.Find(metaKids, bmff.T("ilst"))
@@ -725,6 +784,14 @@ func readItemList(r io.ReaderAt, metaKids []bmff.Box) (qtTags, error) {
 			} else {
 				t.title = first(t.title, s)
 			}
+		case "\xa9xyz":
+			// ISO 6709 text, as Android cameras and ExifTool's ItemList
+			// GPSCoordinates have it.
+			s, err := readDataString(r, it)
+			if err != nil {
+				return t, err
+			}
+			t.location = first(t.location, s)
 		case "keyw":
 			if t.keywords == nil {
 				vs, err := readDataStrings(r, it)
@@ -893,6 +960,12 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.title
 		case "\xa9des":
 			dst = &t.description
+		case "NCDT":
+			// Nikon's tags: an NCTG box in NCDT (see parseNCTG).
+			if err := readNCDT(r, k, &t); err != nil {
+				return t, err
+			}
+			continue
 		case "titl", "dscp":
 			// 3GPP strings (TS 26.244 8.1), as ExifTool writes UserData
 			// Title and Description in an MP4.
@@ -1197,4 +1270,145 @@ func movieXMPOnce(r io.ReaderAt, size int64, top []bmff.Box, udta qtTags, x *XMP
 		}
 	}
 	return x
+}
+
+// canonUUID is the uuid of the box in moov where Canon cameras keep their
+// tags (CNCV, CNTH, as ExifTool documents them).
+var canonUUID = []byte{0x85, 0xC0, 0xB6, 0x87, 0x82, 0x0F, 0x11, 0xE0, 0x81, 0x11, 0xF4, 0xCE, 0x46, 0x2B, 0x6A, 0x48}
+
+// maxCanonThumb caps the thumbnail read for its Exif.
+const maxCanonThumb = 1 << 20
+
+// readCanonUUID reads the make, model and date taken of a Canon movie: the
+// Exif of the thumbnail JPEG in the CNDA box, the one box of CNTH (what
+// follows it there is padding, not boxes). Anything else, or a box that
+// doesn't parse, gives nothing.
+func readCanonUUID(r io.ReaderAt, b bmff.Box) qtTags {
+	var t qtTags
+	if b.HeaderLen < 24 {
+		return t
+	}
+	var id [16]byte
+	if _, err := r.ReadAt(id[:], b.Body()-16); err != nil || !bytes.Equal(id[:], canonUUID) {
+		return t
+	}
+	kids, _ := bmff.ReadBoxesLenient(r, b.Body(), b.End())
+	cnth, ok := bmff.Find(kids, bmff.T("CNTH"))
+	if !ok {
+		return t
+	}
+	inner, _ := bmff.ReadBoxesLenient(r, cnth.Body(), cnth.End())
+	if len(inner) == 0 || inner[0].Type != bmff.T("CNDA") {
+		return t
+	}
+	jpeg, err := readBox(r, inner[0], maxCanonThumb)
+	if err != nil {
+		return t
+	}
+	x, err := ReadExif(bytes.NewReader(jpeg), int64(len(jpeg)))
+	if err != nil {
+		return t
+	}
+	t.make, t.model = strings.TrimSpace(x.Camera.Make), strings.TrimSpace(x.Camera.Model)
+	t.canonTaken, t.canonOffsetKnown = x.DateTimeOriginal, x.OffsetKnown
+	return t
+}
+
+// readNCDT reads the NCTG box in a Nikon NCDT box of the user data: its
+// make, model and recording start (into t where they're unset).
+func readNCDT(r io.ReaderAt, ncdt bmff.Box, t *qtTags) error {
+	kids, err := bmff.ReadBoxes(r, ncdt.Body(), ncdt.End())
+	if err != nil {
+		return nil // a broken NCDT is skipped, as other user data is
+	}
+	b, ok := bmff.Find(kids, bmff.T("NCTG"))
+	if !ok {
+		return nil
+	}
+	data, err := readBox(r, b, maxLeafBox)
+	if err != nil {
+		return err
+	}
+	make_, model, dto := parseNCTG(data)
+	t.make, t.model = first(t.make, make_), first(t.model, model)
+	t.nikonDate = first(t.nikonDate, dto)
+	return nil
+}
+
+// parseNCTG reads Nikon's NCTG records (as ExifTool documents its Nikon
+// NCTG tags): each a 32-bit tag, a 16-bit Exif format code, a 16-bit
+// count, then the value, big-endian. Make (1), Model (2) and
+// DateTimeOriginal (0x12, the recording's start: Exif date text, the
+// camera's clock time) are read.
+func parseNCTG(b []byte) (make_, model, dto string) {
+	for pos := 0; pos+8 <= len(b); {
+		tag := binary.BigEndian.Uint32(b[pos:])
+		typ := binary.BigEndian.Uint16(b[pos+4:])
+		count := int(binary.BigEndian.Uint16(b[pos+6:]))
+		size := typeSize(typ) * count
+		pos += 8
+		if typeSize(typ) == 0 || size > len(b)-pos {
+			return
+		}
+		if typ == typeASCII {
+			s, _ := ascii(field{typ: typ, count: count, value: b[pos : pos+size]})
+			switch tag {
+			case 0x01:
+				make_ = s
+			case 0x02:
+				model = s
+			case 0x12:
+				dto = s
+			}
+		}
+		pos += size
+	}
+	return
+}
+
+// maxMoovRead is the largest movie box ReadVideo reads in one call; a
+// larger one (long movies' sample tables) is read box by box.
+const maxMoovRead = 1 << 20
+
+// spanReader serves reads within [base, base+len(b)) from b, read in one
+// call, and the others from r. Its buffer is pooled: nothing read through
+// it keeps a slice of it.
+type spanReader struct {
+	r    io.ReaderAt
+	base int64
+	b    []byte
+}
+
+var spanReaders = sync.Pool{New: func() any { return new(spanReader) }}
+
+// readSpan reads [at, at+n) of r into a pooled spanReader; nil when n is
+// past maxMoovRead or the read fails (r is then read as before).
+func readSpan(r io.ReaderAt, at, n int64) *spanReader {
+	if n <= 0 || n > maxMoovRead {
+		return nil
+	}
+	s := spanReaders.Get().(*spanReader)
+	if int64(cap(s.b)) < n {
+		s.b = make([]byte, n)
+	}
+	s.b = s.b[:n]
+	if _, err := r.ReadAt(s.b, at); err != nil {
+		s.b = s.b[:0]
+		spanReaders.Put(s)
+		return nil
+	}
+	s.r, s.base = r, at
+	return s
+}
+
+func (s *spanReader) ReadAt(p []byte, off int64) (int, error) {
+	if off >= s.base && off+int64(len(p)) <= s.base+int64(len(s.b)) {
+		return copy(p, s.b[off-s.base:]), nil
+	}
+	return s.r.ReadAt(p, off)
+}
+
+func (s *spanReader) release() {
+	s.r, s.b = nil, s.b[:0]
+	spanReaders.Put(s)
 }
