@@ -18,6 +18,20 @@ A new chunk goes right after `IHDR`, before the image data, where the
 specification puts `eXIf`. Further chunks of the same kind are removed,
 so no old value stays in the file.
 
+**PNG text.** A PNG can also hold its title and description in text
+chunks with the keywords `Title` and `Description` (`tEXt`, `zTXt` or
+`iTXt`). ExifTool's `-Title` writes those (PNG:Title), and image viewers
+read them. An XMP edit that sets a title or description also sets these
+chunks where the PNG has them, so no reader finds the old text:
+- A `tEXt` stays `tEXt` when the text is Latin-1, and becomes an
+  uncompressed `iTXt` (UTF-8) when it isn't.
+- An `iTXt` keeps its language and translated keyword.
+- A `zTXt` is replaced uncompressed, so no old text stays in a compressed
+  stream.
+- An empty value removes the chunks.
+
+The XMP holds the value, so no text chunk is added to a PNG without one.
+
 ## WebP
 
 RIFF chunks (WebP container specification) are walked, at most 65536 of
