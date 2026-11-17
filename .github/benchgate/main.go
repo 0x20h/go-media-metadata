@@ -1,7 +1,8 @@
 // Command benchgate compares two sets of `go test -bench -benchmem`
 // results, base and head, and exits 1 on a clear regression:
 //
-//   - allocs/op or read-B/op higher at all (both are deterministic);
+//   - allocs/op, read-B/op or readcalls/op higher at all (all three are
+//     deterministic), beyond what allow.txt allows (see allowances);
 //   - B/op more than 10% higher;
 //   - ns/op more than 25% higher at the median, with head's fastest run
 //     still slower than base's median (shared runners are noisy).
@@ -9,6 +10,12 @@
 // Benchmarks only in one of the two files are listed and not compared.
 //
 // Usage: go run ./.github/benchgate base.txt head.txt
+//
+// allow.txt, next to this file, lists rises a change may make on purpose,
+// one per line: a benchmark name (a prefix of it, as the report prints
+// it), a unit, the most it may rise by in that unit, and the reason.
+// Lines starting with # are comments. A PR that adds one says why; the
+// file is emptied again once the change is on main and is the new base.
 package main
 
 import (
@@ -88,6 +95,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+	allow, err := readAllowances(allowFile())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	var names []string
 	for n := range head {
 		names = append(names, n)
@@ -101,7 +113,7 @@ func main() {
 			fmt.Printf("%-60s new, not compared\n", n)
 			continue
 		}
-		for _, unit := range []string{"ns/op", "B/op", "allocs/op", "read-B/op"} {
+		for _, unit := range []string{"ns/op", "B/op", "allocs/op", "read-B/op", "readcalls/op"} {
 			bv, hv := b[unit], head[n][unit]
 			if len(bv) == 0 || len(hv) == 0 {
 				continue
@@ -113,8 +125,8 @@ func main() {
 			}
 			var bad bool
 			switch unit {
-			case "allocs/op", "read-B/op":
-				bad = hm > bm
+			case "allocs/op", "read-B/op", "readcalls/op":
+				bad = hm > bm+allowed(allow, n, unit)
 			case "B/op":
 				bad = hm > bm*1.10
 			case "ns/op":
@@ -135,4 +147,63 @@ func main() {
 	if failed {
 		os.Exit(1)
 	}
+}
+
+// allowance is a rise allow.txt allows: of unit, in the benchmarks whose
+// name starts with prefix.
+type allowance struct {
+	prefix, unit string
+	max          float64
+}
+
+// allowFile is allow.txt next to this program's source.
+func allowFile() string {
+	if p := os.Getenv("BENCHGATE_ALLOW"); p != "" {
+		return p
+	}
+	return ".github/benchgate/allow.txt"
+}
+
+// readAllowances reads allow.txt; a missing file allows nothing.
+func readAllowances(path string) ([]allowance, error) {
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []allowance
+	for i, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) < 4 {
+			return nil, fmt.Errorf("%s:%d: want a benchmark, a unit, a most and a reason", path, i+1)
+		}
+		max, err := strconv.ParseFloat(f[2], 64)
+		if err != nil || max < 0 {
+			return nil, fmt.Errorf("%s:%d: %q isn't a rise", path, i+1, f[2])
+		}
+		switch f[1] {
+		case "allocs/op", "read-B/op", "readcalls/op":
+		default:
+			return nil, fmt.Errorf("%s:%d: unit %q can't be allowed a rise", path, i+1, f[1])
+		}
+		out = append(out, allowance{f[0], f[1], max})
+	}
+	return out, nil
+}
+
+// allowed is the rise allowed for unit in benchmark name.
+func allowed(allow []allowance, name, unit string) float64 {
+	m := 0.0
+	for _, a := range allow {
+		if a.unit == unit && strings.HasPrefix(name, a.prefix) {
+			m = max(m, a.max)
+		}
+	}
+	return m
 }

@@ -160,8 +160,7 @@ func BenchmarkReadAll(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 		b.Run(f.name+"/separate", func(b *testing.B) {
 			cr := &countingReader{r: bytes.NewReader(f.data)}
@@ -177,8 +176,7 @@ func BenchmarkReadAll(b *testing.B) {
 				_, _ = ReadOrientation(cr, n)
 				_ = TakenFrom(x, xmp, IPTC{})
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 	}
 }
