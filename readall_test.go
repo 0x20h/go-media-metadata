@@ -251,8 +251,7 @@ func BenchmarkReadAllVideo(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
-			b.ReportMetric(float64(cr.bytes)/float64(b.N), "read-B/op")
-			b.ReportMetric(float64(cr.calls)/float64(b.N), "readcalls/op")
+			reportReads(b, cr)
 		})
 	}
 }
