@@ -180,6 +180,28 @@ outgrow its 32-bit field. A `moov` over 64 MB is refused too.
   validation must find nothing new.
 - A fuzz target, `FuzzVideoEdit`, with the text edits among its edits.
 
+## Writing the movie's XMP: people and face regions
+
+`VideoEdit.XMP` (an `XMPEdit`) edits the movie's XMP packet with
+`EditXMP`. Use it for what Keys and user data don't hold: people
+(`PersonInImage`), face regions, and the XMP mirror of the other fields.
+`PlanMetadata`'s XMP part does the same for a movie.
+
+The packet is edited where it is:
+- **A top-level `uuid` box** (`BE7ACFCB-…`, as MP4 files have it): in
+  place, padded with spaces, when the new packet fits.
+- **When it doesn't fit,** the box becomes a `free` box of the same size,
+  zeroed, and the packet moves to the user data's `XMP_`. That's inside
+  `moov`, which grows as for the other fields (into free space after it,
+  or with the chunk offsets moved). Nothing else in the file moves.
+- **The user data's `XMP_`** (QuickTime): edited there. A movie with both
+  gets both edited, so neither keeps old values.
+- **A movie without a packet** gets one in `XMP_`.
+
+The media data is copied byte for byte. A movie has no Exif or IPTC to
+edit: `PlanMetadata`'s Exif part is refused with `ErrUnsupported`, and the
+date and place are `VideoEdit`'s.
+
 ## AVI and MPEG program streams
 
 Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,

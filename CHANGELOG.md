@@ -4,6 +4,12 @@
 
 ### Added
 
+- `VideoEdit.XMP` edits a movie's XMP packet, so people and face regions
+  can be written to MOV and MP4, as ExifTool does. It's edited in its MP4
+  `uuid` box when it fits, else moved to the user data's `XMP_`, the box
+  freed. `PlanMetadata`'s XMP part takes movies too. See
+  [docs/quicktime.md](docs/quicktime.md).
+
 - `IPTCEdit.DateCreated` writes 2:55 Date Created and 2:60 Time Created, to
   the date's precision, with its offset when known, or removes them. A
   date corrected in Exif and XMP can now be corrected in a JPEG's IPTC in
