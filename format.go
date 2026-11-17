@@ -31,6 +31,17 @@ const (
 // ISO base media file from its ftyp brands: a HEIF image, a CR3, or a
 // movie.
 func detectFormat(r io.ReaderAt, size int64) format {
+	return detectFormatTop(r, size, nil)
+}
+
+// detectFormatTop is detectFormat of a file whose top-level boxes a caller
+// has read (nil when it hasn't, or they don't read as boxes). A file
+// whose first box is ftyp can only be a HEIF, a movie or a CR3: the
+// signatures the other formats are told by aren't read for it.
+func detectFormatTop(r io.ReaderAt, size int64, top []bmff.Box) format {
+	if len(top) > 0 && top[0].Type == bmff.T("ftyp") {
+		return ftypFormat(r, size)
+	}
 	switch {
 	case isJPEG(r, size):
 		return formatJPEG
@@ -48,25 +59,7 @@ func detectFormat(r io.ReaderAt, size int64) format {
 		return formatRAW
 	}
 	if startsWithFtyp(r, size) {
-		var h [12]byte
-		if _, err := r.ReadAt(h[:], 0); err != nil {
-			return formatUnknown
-		}
-		if string(h[8:12]) == "crx " {
-			return formatRAW
-		}
-		n := int64(binary.BigEndian.Uint32(h[:4]))
-		if n < 16 || n > size {
-			return formatUnknown
-		}
-		ftyp := bmff.Box{Type: bmff.T("ftyp"), Offset: 0, HeaderLen: 8, Size: n}
-		if checkBrands(r, ftyp) == nil {
-			return formatHEIF
-		}
-		if checkMovie(r, []bmff.Box{ftyp}) == nil {
-			return formatMovie
-		}
-		return formatUnknown
+		return ftypFormat(r, size)
 	}
 	if looksLikeMovie(r, size) {
 		return formatMovie
@@ -88,6 +81,29 @@ func detectFormat(r io.ReaderAt, size int64) format {
 		return formatGIF
 	case isBMP(r, size):
 		return formatBMP
+	}
+	return formatUnknown
+}
+
+// ftypFormat is the format of a file that starts with an ftyp box.
+func ftypFormat(r io.ReaderAt, size int64) format {
+	var h [12]byte
+	if _, err := r.ReadAt(h[:], 0); err != nil {
+		return formatUnknown
+	}
+	if string(h[8:12]) == "crx " {
+		return formatRAW
+	}
+	n := int64(binary.BigEndian.Uint32(h[:4]))
+	if n < 16 || n > size {
+		return formatUnknown
+	}
+	ftyp := bmff.Box{Type: bmff.T("ftyp"), Offset: 0, HeaderLen: 8, Size: n}
+	if checkBrands(r, ftyp) == nil {
+		return formatHEIF
+	}
+	if checkMovie(r, []bmff.Box{ftyp}) == nil {
+		return formatMovie
 	}
 	return formatUnknown
 }

@@ -26,13 +26,28 @@ type heifFile struct {
 }
 
 func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
+	f, _, err := parseHEIFBoxes(r, size)
+	return f, err
+}
+
+// parseHEIFBoxes is parseHEIF that also returns the file's top-level
+// boxes when it walked them (nil when they don't read as boxes), whether
+// or not the file is a HEIF: ReadAll reads a movie from them without
+// walking them again.
+func parseHEIFBoxes(r io.ReaderAt, size int64) (*heifFile, []bmff.Box, error) {
 	if size < 8 {
-		return nil, errNotHEIF
+		return nil, nil, errNotHEIF
 	}
 	boxes, err := bmff.ReadBoxes(r, 0, size)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	f, err := parseHEIFFrom(r, size, boxes)
+	return f, boxes, err
+}
+
+// parseHEIFFrom is parseHEIF of a file whose top-level boxes are read.
+func parseHEIFFrom(r io.ReaderAt, size int64, boxes []bmff.Box) (*heifFile, error) {
 	if len(boxes) == 0 || boxes[0].Type != bmff.T("ftyp") {
 		return nil, errNotHEIF
 	}
@@ -62,6 +77,7 @@ func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
 		return nil, fmt.Errorf("%w: reading the meta box: %v", ErrMalformed, err)
 	}
 	f.raw = raw
+	var err error
 	if f.m, err = bmff.ParseMeta(raw); err != nil {
 		return nil, err
 	}
