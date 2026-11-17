@@ -4,6 +4,11 @@
 
 ### Added
 
+- `ReadPNGText` and `Metadata.PNG`: a PNG's Title and Description text
+  chunks (`tEXt`, `zTXt`, `iTXt`) and its `tIME` (the last modification),
+  as ExifTool reads them. `ReadAll`'s title and description fall back to
+  them. See [docs/png-webp.md](docs/png-webp.md).
+
 - `ReadVideo` reads Nikon's NCTG tags in MOV files (in the user data's
   `NCDT`): make, model, and the recording's start as the date where Keys
   and user data have none, as ExifTool reads them.
