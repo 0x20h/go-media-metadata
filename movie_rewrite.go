@@ -66,7 +66,8 @@ func RewriteMovie(src io.ReaderAt, size int64, dst io.Writer, opts RewriteOption
 // A movie that is already so (and opts change nothing) gives an in-place
 // plan without patches. Refused, with ErrUnsupported: fragmented movies
 // (moof, mvex, sidx, mfra), sample auxiliary offsets (saio), media in
-// other files (dref), a movie box over 64 MB; with ErrMalformed: a chunk
+// other files (dref), a movie box over 64 MB, a top-level meta box (with
+// item locations) that would move and isn't stripped; with ErrMalformed: a chunk
 // offset outside the boxes kept. A file that isn't a movie gives
 // ErrUnknownFormat.
 func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, error) {
@@ -168,6 +169,12 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 			}
 			t.mapped = vals
 		}
+		for _, i := range keep {
+			if top[i].Type == bmff.T("meta") && newAt[i] != top[i].Offset {
+				// Its item locations would point where it was.
+				return nil, fmt.Errorf("%w: a top-level meta box that would move (StripMetadata removes it)", ErrUnsupported)
+			}
+		}
 		if grew {
 			// The promoted tables' new size goes into the next layout.
 			for _, t := range tables {
@@ -235,7 +242,12 @@ func rewritePlan(src io.ReaderAt, size int64, top []bmff.Box, mi, ftyp int, keep
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
-	return e.plan(src, size), nil
+	p := e.plan(src, size)
+	if mi != ftyp+1 {
+		// moov moves: the boxes between moving data aren't patches.
+		p.InPlace, p.Patches, p.moves = false, nil, true
+	}
+	return p, nil
 }
 
 // mapOffset is where an offset into a kept box lands: in the same place

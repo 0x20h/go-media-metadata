@@ -28,7 +28,9 @@ type Patch struct {
 // size.
 type Plan struct {
 	// InPlace is true when the edit keeps the file's size and every
-	// change is in Patches. Otherwise only WriteTo can make the result.
+	// change is in Patches. Otherwise only WriteTo can make the result:
+	// a movie rewrite that moves the media data (PlanRewriteMovie) isn't
+	// in place even when the size stays.
 	InPlace bool
 	// Patches are sorted by Offset, don't overlap and lie in [0, Size)
 	// when InPlace. They are also the ranges a caller verifies. Empty
@@ -45,6 +47,7 @@ type Plan struct {
 	jpeg    *jpegEdit
 	splice  *spliceEdit // a PNG's or WebP's edit
 	chain   *Plan       // PlanMetadata's last part, on the file the parts before it make
+	moves   bool        // boxes move: not in place even at the same size
 }
 
 // patchMergeGap is how many unchanged bytes may separate two runs of
