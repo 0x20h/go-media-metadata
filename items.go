@@ -749,15 +749,20 @@ func (f *heifFile) itemBytes(r io.ReaderAt, size int64, id uint32) ([]byte, erro
 	if loc.DataRefIndex != 0 {
 		return nil, fmt.Errorf("%w: item %d in another file", ErrUnsupported, id)
 	}
+	// end is where the data an extent's offsets count in ends: the file,
+	// or for construction method 1 the idat box's payload. An extent of
+	// length 0 runs to it (ISO/IEC 14496-12 8.11.3.3).
 	var base int64
+	end := size
 	switch loc.ConstructionMethod {
 	case 0:
 	case 1:
-		idat, _ := idatPayload(f.raw)
+		idat, n := idatPayload(f.raw)
 		if idat < 0 {
 			return nil, fmt.Errorf("%w: item %d in an idat that isn't there", ErrMalformed, id)
 		}
 		base = f.meta.Offset + idat
+		end = min(size, base+n)
 	default:
 		return nil, fmt.Errorf("%w: item %d's construction method", ErrUnsupported, id)
 	}
@@ -766,9 +771,9 @@ func (f *heifFile) itemBytes(r io.ReaderAt, size int64, id uint32) ([]byte, erro
 		at := base + int64(loc.BaseOffset+e.Offset)
 		n := int64(e.Length)
 		if n == 0 {
-			n = size - at
+			n = end - at
 		}
-		if at < 0 || n < 0 || at > size || n > size-at || int64(len(out))+n > maxMetadataItem {
+		if at < 0 || n < 0 || at > end || n > end-at || int64(len(out))+n > maxMetadataItem {
 			return nil, fmt.Errorf("%w: item %d outside the file", ErrMalformed, id)
 		}
 		b := make([]byte, n)

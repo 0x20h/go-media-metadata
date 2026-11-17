@@ -309,7 +309,7 @@ func (h *rangeWriter) heif(f *heifFile) error {
 	}
 	items := slices.Clone(f.m.Loc.Items)
 	slices.SortStableFunc(items, func(a, b bmff.LocItem) int { return int(int64(a.ID) - int64(b.ID)) })
-	idat := int64(-1)
+	idat, idatEnd := int64(-1), int64(0)
 	for _, it := range items {
 		if !slices.Contains(heifImageTypes, f.m.ItemTypes[it.ID]) || it.DataRefIndex != 0 || it.ConstructionMethod > 1 {
 			continue
@@ -318,14 +318,19 @@ func (h *rangeWriter) heif(f *heifFile) error {
 		if it.BaseOffset > uint64(h.size) {
 			continue
 		}
+		// An extent of length 0 runs to the end of the data its offsets
+		// count in: the file, or idat's payload (ISO/IEC 14496-12
+		// 8.11.3.3).
+		end := h.size
 		if it.ConstructionMethod == 1 {
 			if idat < 0 {
-				idat = f.idatBody(h.r)
+				idat, idatEnd = f.idatBody(h.r)
 			}
 			if idat < 0 {
 				continue
 			}
 			base += idat
+			end = idatEnd
 		}
 		for _, e := range it.Extents {
 			if e.Offset > uint64(h.size) || e.Length > uint64(h.size) {
@@ -333,7 +338,10 @@ func (h *rangeWriter) heif(f *heifFile) error {
 			}
 			n := int64(e.Length)
 			if n == 0 {
-				n = h.size - (base + int64(e.Offset)) // to the end of the file
+				n = end - (base + int64(e.Offset))
+				if n < 0 {
+					continue
+				}
 			}
 			if err := h.copy(base+int64(e.Offset), n); err != nil {
 				return err
@@ -343,16 +351,17 @@ func (h *rangeWriter) heif(f *heifFile) error {
 	return nil
 }
 
-// idatBody is where the meta box's idat payload starts, -1 without one.
-func (f *heifFile) idatBody(r io.ReaderAt) int64 {
+// idatBody is where the meta box's idat payload starts and ends, -1
+// without one.
+func (f *heifFile) idatBody(r io.ReaderAt) (start, end int64) {
 	kids, err := bmff.ReadBoxes(r, f.meta.Body()+4, f.meta.End())
 	if err != nil {
-		return -1
+		return -1, 0
 	}
 	if b, ok := bmff.Find(kids, bmff.T("idat")); ok {
-		return b.Body()
+		return b.Body(), b.End()
 	}
-	return -1
+	return -1, 0
 }
 
 // jxl writes a container's codestream boxes' payloads (ISO/IEC 18181-2):
