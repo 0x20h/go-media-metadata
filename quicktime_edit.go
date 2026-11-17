@@ -48,6 +48,15 @@ type VideoEdit struct {
 	// removes it.
 	Rating       *int
 	RemoveRating bool
+	// XMP edits the movie's XMP packet with EditXMP, for what Keys and
+	// user data don't hold: people (PersonInImage), face regions, and the
+	// XMP mirror of the other fields. The packet is edited where it is:
+	// a top-level uuid box (as MP4 files have it), when the new packet
+	// fits there, and the user data's XMP_ (QuickTime). One that doesn't
+	// fit its uuid box moves to XMP_, the box becoming a free box of its
+	// size. A movie without a packet gets one in XMP_. nil leaves the XMP
+	// as it is.
+	XMP *XMPEdit
 }
 
 // check reports what's wrong with an edit.
@@ -168,6 +177,12 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if err := applyVideoEdit(moov, edit); err != nil {
 		return nil, err
 	}
+	var uuidSplice *splice
+	if x := edit.XMP; x != nil && *x != (XMPEdit{}) {
+		if uuidSplice, err = editMovieXMP(src, top, moov, *x); err != nil {
+			return nil, err
+		}
+	}
 	enc := moov.encode()
 	delta := int64(len(enc)) - moovBox.Size
 
@@ -202,7 +217,97 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 		}
 		e.add(splice{at: moovBox.Offset, del: moovBox.Size, data: enc})
 	}
+	if uuidSplice != nil {
+		e.add(*uuidSplice)
+		if err := e.sorted(); err != nil {
+			return nil, err
+		}
+	}
 	return e.plan(src, size), nil
+}
+
+// editMovieXMP applies edit to a movie's XMP packets (see VideoEdit.XMP):
+// the user data's XMP_ in moov, changed in the tree, and a top-level uuid
+// box, changed by the splice it returns (nil when there's none to change).
+func editMovieXMP(src io.ReaderAt, top []bmff.Box, moov *qtNode, edit XMPEdit) (*splice, error) {
+	var uuid *bmff.Box
+	for i, b := range top {
+		if b.Type != bmff.T("uuid") || b.HeaderLen < 24 {
+			continue
+		}
+		var id [16]byte
+		if _, err := src.ReadAt(id[:], b.Body()-16); err != nil {
+			return nil, fmt.Errorf("%w: reading uuid: %v", ErrMalformed, err)
+		}
+		if bytes.Equal(id[:], xmpUUID) {
+			uuid = &top[i]
+			break
+		}
+	}
+	udta := moov.child(bmff.T("udta"))
+	if udta != nil && !udta.parsed() {
+		return nil, fmt.Errorf("%w: user data that can't be edited", ErrUnsupported)
+	}
+	var xmpNode *qtNode // the user data's XMP_, if any
+	if udta != nil {
+		xmpNode = udta.child(bmff.T("XMP_"))
+	}
+	var out *splice
+	var moved []byte // a uuid box's edited packet that didn't fit it
+	if uuid != nil {
+		if uuid.BodyLen() > maxXMP || uuid.HeaderLen != 24 {
+			return nil, fmt.Errorf("%w: an XMP uuid box of %d bytes", ErrUnsupported, uuid.BodyLen())
+		}
+		old := make([]byte, uuid.BodyLen())
+		if _, err := src.ReadAt(old, uuid.Body()); err != nil {
+			return nil, fmt.Errorf("%w: reading XMP: %v", ErrMalformed, err)
+		}
+		packet, err := EditXMP(old, edit)
+		if err != nil {
+			return nil, err
+		}
+		if padded, ok := padTo(packet, len(old), ' '); ok {
+			if !bytes.Equal(padded, old) {
+				out = &splice{at: uuid.Body(), del: int64(len(old)), data: padded}
+			}
+		} else {
+			// Too long for its box: the box becomes free space, zeroed, and
+			// the packet goes to the user data, inside moov, which can grow
+			// without moving anything else.
+			free := bmff.AppendHeader(nil, bmff.T("free"), int(uuid.Size-8), false)
+			out = &splice{at: uuid.Offset, del: uuid.Size, data: append(free, make([]byte, uuid.Size-8)...)}
+			moved = packet
+		}
+	}
+	switch {
+	case xmpNode != nil && moved != nil:
+		// The uuid box's packet was the one read: it replaces this one.
+		xmpNode.setPayload(moved)
+	case xmpNode != nil:
+		// Both kept in step, so neither has old values.
+		old := xmpNode.payload()
+		packet, err := EditXMP(old, edit)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(packet, old) {
+			xmpNode.setPayload(packet)
+		}
+	case uuid == nil || moved != nil:
+		packet := moved
+		if packet == nil {
+			var err error
+			if packet, err = EditXMP(nil, edit); err != nil {
+				return nil, err
+			}
+		}
+		if udta == nil {
+			udta = &qtNode{typ: bmff.T("udta")}
+			moov.kids = append(moov.kids, udta)
+		}
+		udta.kids = append(udta.kids, &qtNode{typ: bmff.T("XMP_"), body: packet})
+	}
+	return out, nil
 }
 
 // SetVideoMetadata writes to dst the QuickTime or MP4 movie in src (size bytes)

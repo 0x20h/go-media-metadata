@@ -26,7 +26,9 @@ pages).
   writes no capture data):
   - `Make` and `Model` from IFD0, `LensMake` and `LensModel` from the Exif
     IFD. Each is the text as written, placeholders such as `----`
-    included.
+    included. A Canon camera's lens is in its maker note (tag 0x0095)
+    where the Exif IFD has no LensModel; that one is read then, as
+    ExifTool reads it.
   - The exposure tags (ExposureTime, FNumber, ISO, focal lengths) are the
     Exif IFD's. Some cameras, Samsung's among them, put them in IFD0
     instead; they're read from there when the Exif IFD hasn't got them,

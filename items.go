@@ -339,6 +339,13 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patc
 	if last.Size > 0xFFFFFFFF {
 		return nil, fmt.Errorf("%w: a last box of %d bytes that runs to the end of the file", ErrUnsupported, last.Size)
 	}
+	// Where the box is in the edited file: past the meta box, it moves
+	// with it. The item offsets below are already the edited file's
+	// (shiftOffsets ran), so the box's are taken in the same terms.
+	at := last.Offset
+	if at >= f.meta.End() {
+		at += delta
+	}
 	// The size field is a box header, which no item's data should cover;
 	// where one's does, patching it would change that item's data.
 	for _, it := range f.m.Loc.Items {
@@ -348,14 +355,10 @@ func (f *heifFile) closeLastBox(src io.ReaderAt, delta int64, id uint32) ([]patc
 		}
 		for _, e := range it.Extents {
 			start := it.BaseOffset + e.Offset
-			if start < uint64(last.Offset)+4 && (e.Length == 0 || start+e.Length > uint64(last.Offset)) {
+			if start < uint64(at)+4 && (e.Length == 0 || start+e.Length > uint64(at)) {
 				return nil, fmt.Errorf("%w: item %d's data covers the header of the last box", ErrUnsupported, it.ID)
 			}
 		}
-	}
-	at := last.Offset
-	if at >= f.meta.End() {
-		at += delta
 	}
 	return []patch{{at: at, data: binary.BigEndian.AppendUint32(nil, uint32(last.Size))}}, nil
 }

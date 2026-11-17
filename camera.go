@@ -1,6 +1,9 @@
 package mediameta
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 // Tags of the camera and exposure fields, read only.
 const (
@@ -53,6 +56,9 @@ func (t tiffReader) camera(ifd0, exif map[uint16]field) Camera {
 	}
 	c.Make, c.Model = text(ifd0, tagMake), text(ifd0, tagModel)
 	c.LensMake, c.LensModel = text(exif, tagLensMake), text(exif, tagLensModel)
+	if c.LensModel == "" && strings.HasPrefix(c.Make, "Canon") {
+		c.LensModel = t.canonLensModel(exif[tagMakerNote])
+	}
 	positive := func(tag uint16) float64 {
 		v, ok := t.rationals(exposureTag(exif, ifd0, tag), 1)
 		if !ok || len(v) == 0 || !(v[0] > 0) || math.IsInf(v[0], 0) {
@@ -132,4 +138,36 @@ func exposureTag(exif, ifd0 map[uint16]field, tag uint16) field {
 		return f
 	}
 	return ifd0[tag]
+}
+
+// canonLensModel reads a Canon maker note's LensModel (tag 0x0095, ASCII),
+// which Canon cameras write where Exif's own LensModel is missing, as
+// ExifTool reads it. A Canon maker note is an IFD without a header, its
+// values' offsets counted from the TIFF data's start, as Exif's are.
+func (t tiffReader) canonLensModel(mn field) string {
+	b := mn.value
+	if mn.typ != typeUndef || len(b) < 2 {
+		return ""
+	}
+	n := int(t.order.Uint16(b))
+	for i := range min(n, (len(b)-2)/12) {
+		e := b[2+12*i : 14+12*i]
+		if t.order.Uint16(e) != 0x0095 || t.order.Uint16(e[2:]) != typeASCII {
+			continue
+		}
+		count := uint64(t.order.Uint32(e[4:]))
+		v := e[8:12]
+		if count > 4 {
+			at := uint64(t.order.Uint32(e[8:]))
+			if count > 256 || at+count > uint64(len(t.data)) {
+				return ""
+			}
+			v = t.data[at : at+count]
+		} else {
+			v = v[:count]
+		}
+		s, _ := ascii(field{typ: typeASCII, count: int(count), value: v})
+		return s
+	}
+	return ""
 }
