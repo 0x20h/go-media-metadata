@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"strconv"
 )
 
 var pngSignature = []byte("\x89PNG\r\n\x1a\n")
@@ -139,6 +140,10 @@ type pngMetadata struct {
 	chunks []pngChunk
 	exif   []int // indices in chunks
 	xmp    []int
+	// rawExif is a text chunk holding Exif as ImageMagick writes it
+	// ("Raw profile type exif" or "... APP1", hex), -1 without one; read
+	// where there's no eXIf.
+	rawExif int
 }
 
 func readPNGMetadata(r io.ReaderAt, size int64) (*pngMetadata, error) {
@@ -146,11 +151,19 @@ func readPNGMetadata(r io.ReaderAt, size int64) (*pngMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &pngMetadata{chunks: chunks}
+	m := &pngMetadata{chunks: chunks, rawExif: -1}
 	for i, c := range chunks {
 		switch string(c.typ[:]) {
 		case "eXIf":
 			m.exif = append(m.exif, i)
+		case "tEXt", "zTXt":
+			if m.rawExif >= 0 || c.n < int64(len(rawProfileExif)) {
+				continue
+			}
+			kw := make([]byte, len(rawProfileExif)+1)
+			if _, err := r.ReadAt(kw, c.data()); err == nil && (string(kw) == rawProfileExif+"\x00" || string(kw) == rawProfileAPP1+"\x00") {
+				m.rawExif = i
+			}
 		case "iTXt":
 			kw := make([]byte, min(c.n, int64(len(xmpKeyword)+1)))
 			if _, err := r.ReadAt(kw, c.data()); err == nil && string(kw) == xmpKeyword+"\x00" {
@@ -182,6 +195,9 @@ func readPNGExif(r io.ReaderAt, size int64) (Exif, error) {
 // readExif reads the Exif of the PNG whose chunks m lists.
 func (m *pngMetadata) readExif(r io.ReaderAt) (Exif, error) {
 	if len(m.exif) == 0 {
+		if tiff, ok := m.rawProfile(r); ok {
+			return parseExif(tiff), nil
+		}
 		return Exif{}, nil
 	}
 	c := m.chunks[m.exif[0]]
@@ -191,6 +207,77 @@ func (m *pngMetadata) readExif(r io.ReaderAt) (Exif, error) {
 	}
 	_, tiff := tiffPayload(b)
 	return parseExif(tiff), nil
+}
+
+// The keywords of the text chunks ImageMagick puts Exif in.
+const (
+	rawProfileExif = "Raw profile type exif"
+	rawProfileAPP1 = "Raw profile type APP1"
+)
+
+// rawProfile is the TIFF data in the PNG's raw profile Exif text chunk
+// (see pngMetadata.rawExif), ok false without one that decodes. The text
+// is ImageMagick's: a newline, the profile type, a newline, the length in
+// decimal, a newline, then the data in hex with white space between, as
+// ExifTool documents it; the data is TIFF, after "Exif\0\0" or not.
+func (m *pngMetadata) rawProfile(r io.ReaderAt) ([]byte, bool) {
+	if m.rawExif < 0 {
+		return nil, false
+	}
+	c := m.chunks[m.rawExif]
+	b, err := readChunk(r, c.data(), c.n)
+	if err != nil {
+		return nil, false
+	}
+	k := bytes.IndexByte(b, 0)
+	if k < 0 {
+		return nil, false
+	}
+	text := b[k+1:]
+	if string(c.typ[:]) == "zTXt" {
+		if len(text) < 1 || text[0] != 0 {
+			return nil, false
+		}
+		zr, err := zlib.NewReader(bytes.NewReader(text[1:]))
+		if err != nil {
+			return nil, false
+		}
+		if text, err = io.ReadAll(io.LimitReader(zr, 2*maxMetadataItem+64)); err != nil {
+			return nil, false
+		}
+	}
+	// The type, the length and the hex data, each after a newline.
+	fields := bytes.SplitN(bytes.TrimLeft(text, "\n"), []byte("\n"), 3)
+	if len(fields) != 3 {
+		return nil, false
+	}
+	n, err := strconv.Atoi(string(bytes.TrimSpace(fields[1])))
+	if err != nil || n <= 0 || n > maxMetadataItem {
+		return nil, false
+	}
+	out := make([]byte, 0, n)
+	var hi byte
+	half := false
+	for _, ch := range fields[2] {
+		v := hexDigit(ch)
+		if v < 0 {
+			if ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t' {
+				continue
+			}
+			return nil, false
+		}
+		if half {
+			out = append(out, hi<<4|byte(v))
+		} else {
+			hi = byte(v)
+		}
+		half = !half
+	}
+	if half || len(out) != n {
+		return nil, false
+	}
+	_, tiff := tiffPayload(out)
+	return tiff, true
 }
 
 func readPNGXMP(r io.ReaderAt, size int64) ([]byte, error) {
@@ -265,6 +352,15 @@ func pngChunkSplices(r io.ReaderAt, size int64, kind metadataKind, edit func(old
 			old, head, compressed = t.text, t.head, t.compressed
 		}
 	}
+	// A PNG with its Exif only in a raw profile text chunk: the edit
+	// starts from that Exif, writes an eXIf chunk, and removes the text
+	// chunk, so no old value stays in it.
+	rawExif := kind == kindExif && len(idx) == 0 && m.rawExif >= 0
+	if rawExif {
+		if tiff, ok := m.rawProfile(r); ok {
+			old = tiff
+		}
+	}
 	payload, err := edit(old)
 	if err != nil {
 		return nil, err
@@ -293,6 +389,10 @@ func pngChunkSplices(r io.ReaderAt, size int64, kind metadataKind, edit func(old
 			c := m.chunks[i]
 			e.add(splice{at: c.at, del: c.end() - c.at})
 		}
+	}
+	if rawExif {
+		c := m.chunks[m.rawExif]
+		e.add(splice{at: c.at, del: c.end() - c.at})
 	}
 	if err := e.sorted(); err != nil {
 		return nil, err
