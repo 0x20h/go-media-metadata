@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.2 (2026-11-17)
+
+No breaking changes.
+
 ### Added
 
 - A PNG's IPTC (the `Raw profile type iptc` text chunk ImageMagick and
