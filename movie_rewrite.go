@@ -169,6 +169,11 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 			t.mapped = vals
 		}
 		if grew {
+			// The promoted tables' new size goes into the next layout.
+			for _, t := range tables {
+				t.write()
+			}
+			changed = true
 			continue
 		}
 		for _, t := range tables {
