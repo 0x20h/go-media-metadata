@@ -217,6 +217,71 @@ The media data is copied byte for byte. A movie has no Exif or IPTC to
 edit: `PlanMetadata`'s Exif part is refused with `ErrUnsupported`, and the
 date and place are `VideoEdit`'s.
 
+## Rewriting a movie with its index first: RewriteMovie
+
+`RewriteMovie` writes a movie with its index (`moov`) right after `ftyp`,
+before the media data, as streaming and quick opening want it: what
+`ffmpeg -c copy -movflags +faststart` does, without FFmpeg and without
+decoding a sample. `IndexFirst` tells whether a movie already is so;
+`PlanRewriteMovie` is the plan of the rewrite, which `Plan.WriteTo`
+writes.
+
+```go
+err := mediameta.RewriteMovie(src, size, dst, mediameta.RewriteOptions{
+	StripMetadata: true, // leave the metadata out
+	ZeroTimes:     true, // and the creation and modification times
+})
+```
+
+- **Layout:** `ftyp`, `moov`, then the other top-level boxes in their
+  order. Top-level `free`, `skip` and `wide` boxes are left out.
+- **Offsets:** the chunk offsets (`stco`, `co64`) move with the boxes they
+  point into, wherever those go; several `mdat`s are fine. An `stco`
+  whose offsets the move pushes past 32 bits becomes a `co64`, which
+  grows `moov`, so the offsets are laid out again, as FFmpeg does.
+- **StripMetadata** leaves out:
+  - `moov`'s and each track's `udta` and `meta` (Keys, item lists,
+    user data such as `©xyz` and `loci`, `XMP_`)
+  - the XMP `uuid` box
+  - a top-level `meta` or `udta`
+
+  What plays the movie stays: `mvhd`, `tkhd` (with the rotation matrix),
+  `mdhd`, `hdlr`, `stsd` (`colr`, `mdcv`, `clli` in it), `edts`, `tref`,
+  `sgpd` and `sbgp`.
+- **ZeroTimes** sets the creation and modification times of `mvhd`, every
+  `tkhd` and every `mdhd` to 0. They're kept otherwise.
+- **Unchanged:** a movie that is already so, with nothing to strip or
+  zero, gives an in-place plan without patches. A rewrite that moves
+  `moov` isn't in place, even when the size stays.
+- **Refused:**
+  - fragmented movies (`moof`, `mvex`, `sidx`, `mfra`)
+  - sample auxiliary information offsets (`saio`)
+  - media data in other files (a `dref` entry that isn't self-contained)
+  - a `moov` over 64 MB
+  - a top-level `meta` that would move and isn't stripped (its item
+    locations would point where it was)
+  - a chunk offset outside the boxes kept (`ErrMalformed`)
+
+  These give `ErrUnsupported`, unless marked otherwise; a file that isn't
+  a movie gives `ErrUnknownFormat`.
+- **Memory:** bounded by `moov`. The media data is copied in 1 MB reads.
+
+Tested on synthetic layouts:
+- `moov` first and last
+- a 64-bit `mdat` header, `co64`, and the promotion to it (on a sparse
+  4 GB movie)
+- two `mdat`s with `moov` between them
+- `free` and `skip`, `uuid` boxes on either side of `mdat`
+- a size-0 last box
+
+Also tested on H.264 and HEVC with AAC, in MP4 and MOV, tagged by
+ExifTool. The checks:
+- the same frames (`framemd5`) and streams as the source and as ffmpeg's
+  fast start
+- the same media-data hash
+- ExifTool finds none of the tags once stripped, and only the rotation
+  remains
+
 ## AVI and MPEG program streams
 
 Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
