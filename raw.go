@@ -501,7 +501,9 @@ func xmpOrientationDigits(packet []byte) []int {
 // has none, as most scanners' and converters' TIFFs and some DNGs: IFD0
 // can't grow where it is, so a copy of it with the tag in tag order goes
 // to the end of the file (at an even offset) and the header points to
-// it. Every other byte stays where it was, so every offset into the file
+// it. An Orientation entry IFD0 has but that doesn't read (a value past
+// the file's end) is replaced. Every other byte stays where it was, so
+// every offset into the file
 // (strips, tiles, SubIFDs, ExifIFD, GPS, a DNG's raw data, IFD0's own
 // values) stays valid; the old IFD0 is left unreferenced. An XMP packet's
 // tiff:Orientation, if any, is set too. Standard TIFF headers only
@@ -534,10 +536,18 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 	entry = append(entry, 0, 0)
 	ifd := make([]byte, 0, int(end-t.size)+2+12*(n+1)+4)
 	ifd = append(ifd, make([]byte, end-t.size)...)
-	ifd = ord.AppendUint16(ifd, uint16(n+1))
-	placed := false
+	countAt := len(ifd)
+	ifd = ord.AppendUint16(ifd, 0) // the entry count, set below
+	kept, placed := 0, false
 	for i := range n {
 		e := old[12*i : 12*i+12]
+		if t.order.Uint16(e) == tagOrientation {
+			// An Orientation entry IFD0's reading dropped (a value past
+			// the end of the file, say): replaced, or the reader would
+			// still find it first.
+			continue
+		}
+		kept++
 		if !placed && t.order.Uint16(e) > tagOrientation {
 			ifd, placed = append(ifd, entry...), true
 		}
@@ -546,6 +556,7 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 	if !placed {
 		ifd = append(ifd, entry...)
 	}
+	t.order.PutUint16(ifd[countAt:], uint16(kept+1))
 	ifd = append(ifd, old[12*n:]...)
 	e := &spliceEdit{}
 	e.add(splice{at: 4, del: 4, data: ord.AppendUint32(nil, uint32(end))})

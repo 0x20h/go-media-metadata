@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Setting the orientation of a TIFF or DNG whose IFD0 has an
+  Orientation entry that doesn't read (its value past the end of the
+  file) replaces that entry. Before, a second one was added, and the
+  first, unreadable one still read as 1. Found by FuzzOrientationAnyFormat.
+
 ### Added
 
 - `ReadVideo` (and `ReadAll`) read the make, model and date taken of
