@@ -201,15 +201,9 @@ func readHEIFExif(r io.ReaderAt, size int64) (Exif, error) {
 // exif reads the Exif of a parsed HEIF file: its first Exif item that
 // holds TIFF data, the primary image's first.
 func (f *heifFile) exif(r io.ReaderAt, size int64) (Exif, error) {
-	var oldMeta []byte
+	// The meta box as parseHEIF read it: not read again.
 	for _, id := range f.exifItems() {
-		if oldMeta == nil {
-			oldMeta = make([]byte, f.meta.Size)
-			if _, err := r.ReadAt(oldMeta, f.meta.Offset); err != nil {
-				return Exif{}, fmt.Errorf("%w: reading the meta box: %v", ErrMalformed, err)
-			}
-		}
-		it, ok, err := f.readExifItem(r, size, id, oldMeta)
+		it, ok, err := f.readExifItem(r, size, id, f.raw)
 		if err != nil {
 			return Exif{}, err
 		}
