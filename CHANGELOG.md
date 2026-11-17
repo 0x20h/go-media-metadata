@@ -27,6 +27,12 @@
 
 ### Fixed
 
+- An XMP title or description edit of a PNG also sets the PNG's own
+  `Title` and `Description` text chunks (`tEXt`, `zTXt`, `iTXt`) where it
+  has them, or removes them. ExifTool's `-Title` writes these, and viewers
+  read them; before, they kept the old text. See
+  [docs/png-webp.md](docs/png-webp.md).
+
 - `VideoEdit` writes the title and description everywhere ExifTool and
   `ReadVideo` read them. Before, an item list's `©des` and the user data's
   3GPP `titl` and `dscp` kept their old values, and a removal left them.
