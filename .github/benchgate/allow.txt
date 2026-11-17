@@ -2,6 +2,3 @@
 #   <benchmark name prefix> <unit> <most rise> <reason...>
 # unit: allocs/op, read-B/op or readcalls/op. A PR that adds a line says
 # why in its description; the line goes again once the change is on main.
-BenchmarkReadVideo read-B/op 1048576 the movie box in one read (up to 1 MB) instead of a read per box (#fix-1b); goes once on main
-BenchmarkReadAllVideo read-B/op 1048576 the movie box in one read (up to 1 MB) instead of a read per box (#fix-1b); goes once on main
-BenchmarkPlanVideoRotation read-B/op 1048576 ReadVideo reads the movie box in one read (up to 1 MB): 65 to 27 read calls (#fix-1b); goes once on main
