@@ -117,13 +117,22 @@ const unixEpochQT = (66*365 + 17) * 86400
 // bytes). It reads box headers and the few small boxes the fields come
 // from: not the media data, and not the sample tables.
 func ReadVideo(r io.ReaderAt, size int64) (Video, error) {
+	return readVideoTop(r, size, nil)
+}
+
+// readVideoTop is ReadVideo of a movie whose top-level boxes a caller has
+// read already (strictly, as bmff.ReadBoxes reads them); nil reads them.
+func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	var v Video
 	if size < 8 {
 		return v, errNotQuickTime
 	}
 	// A transport stream is tried once the file isn't a movie, so a
 	// movie's read costs no more than it did.
-	top, err := movieBoxes(r, size)
+	var err error
+	if top == nil {
+		top, err = movieBoxes(r, size)
+	}
 	if err != nil {
 		if isTS(r, size) && !looksLikeMovie(r, size) {
 			return readTSVideo(r, size)
