@@ -4,6 +4,10 @@
 
 ### Added
 
+- A PNG's IPTC (the `Raw profile type iptc` text chunk ImageMagick and
+  ExifTool write) is read by `ReadIPTC` and `ReadAll`, and written by
+  `MetadataEdit.IPTC`, as ExifTool writes it. An edited PNG no longer
+  keeps old IPTC next to new XMP. See [docs/png-webp.md](docs/png-webp.md).
 - `ReadPNGText` and `Metadata.PNG`: a PNG's Title and Description text
   chunks (`tEXt`, `zTXt`, `iTXt`) and its `tIME` (the last modification),
   as ExifTool reads them. `ReadAll`'s title and description fall back to

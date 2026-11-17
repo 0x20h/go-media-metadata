@@ -142,8 +142,9 @@ type pngMetadata struct {
 	xmp    []int
 	// rawExif is a text chunk holding Exif as ImageMagick writes it
 	// ("Raw profile type exif" or "... APP1", hex), -1 without one; read
-	// where there's no eXIf.
-	rawExif int
+	// where there's no eXIf. rawIPTC is the one holding IPTC ("Raw
+	// profile type iptc"), -1 without one.
+	rawExif, rawIPTC int
 }
 
 func readPNGMetadata(r io.ReaderAt, size int64) (*pngMetadata, error) {
@@ -151,18 +152,24 @@ func readPNGMetadata(r io.ReaderAt, size int64) (*pngMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &pngMetadata{chunks: chunks, rawExif: -1}
+	m := &pngMetadata{chunks: chunks, rawExif: -1, rawIPTC: -1}
 	for i, c := range chunks {
 		switch string(c.typ[:]) {
 		case "eXIf":
 			m.exif = append(m.exif, i)
 		case "tEXt", "zTXt":
-			if m.rawExif >= 0 || c.n < int64(len(rawProfileExif)) {
+			if c.n < int64(len(rawProfileIPTC)) || m.rawExif >= 0 && m.rawIPTC >= 0 {
 				continue
 			}
-			kw := make([]byte, len(rawProfileExif)+1)
-			if _, err := r.ReadAt(kw, c.data()); err == nil && (string(kw) == rawProfileExif+"\x00" || string(kw) == rawProfileAPP1+"\x00") {
+			kw := make([]byte, min(c.n, int64(len(rawProfileExif)+1)))
+			if _, err := r.ReadAt(kw, c.data()); err != nil {
+				continue
+			}
+			switch {
+			case m.rawExif < 0 && (string(kw) == rawProfileExif+"\x00" || string(kw) == rawProfileAPP1+"\x00"):
 				m.rawExif = i
+			case m.rawIPTC < 0 && bytes.HasPrefix(kw, []byte(rawProfileIPTC+"\x00")):
+				m.rawIPTC = i
 			}
 		case "iTXt":
 			kw := make([]byte, min(c.n, int64(len(xmpKeyword)+1)))
@@ -213,6 +220,7 @@ func (m *pngMetadata) readExif(r io.ReaderAt) (Exif, error) {
 const (
 	rawProfileExif = "Raw profile type exif"
 	rawProfileAPP1 = "Raw profile type APP1"
+	rawProfileIPTC = "Raw profile type iptc"
 )
 
 // rawProfile is the TIFF data in the PNG's raw profile Exif text chunk
@@ -224,7 +232,19 @@ func (m *pngMetadata) rawProfile(r io.ReaderAt) ([]byte, bool) {
 	if m.rawExif < 0 {
 		return nil, false
 	}
-	c := m.chunks[m.rawExif]
+	out, ok := decodeRawProfile(r, m.chunks[m.rawExif])
+	if !ok {
+		return nil, false
+	}
+	_, tiff := tiffPayload(out)
+	return tiff, true
+}
+
+// decodeRawProfile decodes a raw profile text chunk (tEXt or zTXt): a
+// newline, the profile type, a newline, the length in decimal, a newline,
+// then the data in hex with white space between, as ImageMagick and
+// ExifTool write it.
+func decodeRawProfile(r io.ReaderAt, c pngChunk) ([]byte, bool) {
 	b, err := readChunk(r, c.data(), c.n)
 	if err != nil {
 		return nil, false
@@ -276,8 +296,7 @@ func (m *pngMetadata) rawProfile(r io.ReaderAt) ([]byte, bool) {
 	if half || len(out) != n {
 		return nil, false
 	}
-	_, tiff := tiffPayload(out)
-	return tiff, true
+	return out, true
 }
 
 func readPNGXMP(r io.ReaderAt, size int64) ([]byte, error) {

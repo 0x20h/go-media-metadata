@@ -201,9 +201,14 @@ func TestReadIPTCWithoutIPTC(t *testing.T) {
 	if b := readIPTC(t, plainJPEG(t)); b != nil {
 		t.Errorf("got %q", b)
 	}
+	// A PNG's IPTC is in a raw profile chunk: none in a plain PNG, and a
+	// PNG that's only its signature is malformed.
+	if b, err := ReadIPTC(bytes.NewReader(testPNG(t)), int64(len(testPNG(t)))); b != nil || err != nil {
+		t.Errorf("a plain PNG: %q, %v", b, err)
+	}
 	png := []byte("\x89PNG\r\n\x1a\n")
-	if _, err := ReadIPTC(bytes.NewReader(png), int64(len(png))); !errors.Is(err, errNotJPEG) {
-		t.Errorf("a PNG: %v", err)
+	if _, err := ReadIPTC(bytes.NewReader(png), int64(len(png))); !errors.Is(err, ErrMalformed) {
+		t.Errorf("a PNG signature: %v", err)
 	}
 }
 
