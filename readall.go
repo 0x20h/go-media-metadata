@@ -2,6 +2,7 @@ package mediameta
 
 import (
 	"errors"
+	"github.com/0x20h/go-media-metadata/internal/bmff"
 	"io"
 	"strings"
 )
@@ -100,14 +101,14 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 	var m Metadata
 	var exifErr, xmpErr, iptcErr error
 	var packet, iim []byte
-	if f, herr := parseHEIF(r, size); herr == nil {
+	if f, top, herr := parseHEIFBoxes(r, size); herr == nil {
 		m.Format = "HEIF"
 		m.Exif, exifErr = f.exif(r, size)
 		packet, xmpErr = f.xmp(r, size)
 		m.Size, m.Errors.Size = f.imageSize()
 		m.Orientation, m.Errors.Orientation = f.orientation()
 	} else {
-		switch detectFormat(r, size) {
+		switch kind := detectFormatTop(r, size, top); kind {
 		case formatJPEG:
 			m.Format = "JPEG"
 			f, err := parseJPEG(r, size)
@@ -147,13 +148,16 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			m.Size, m.Errors.Size = bmpImageSize(r, size)
 			m.Orientation = 1
 		case formatWebP, formatJXL, formatRAW:
-			m.Format = map[format]string{formatWebP: "WebP", formatJXL: "JPEG XL", formatRAW: "RAW"}[detectFormat(r, size)]
+			m.Format = map[format]string{formatWebP: "WebP", formatJXL: "JPEG XL", formatRAW: "RAW"}[kind]
 			m.Exif, exifErr = ReadExif(r, size)
 			packet, xmpErr = ReadXMP(r, size)
 			m.Size, m.Errors.Size = ReadImageSize(r, size)
 			m.Orientation, m.Errors.Orientation = ReadOrientation(r, size)
 		case formatMovie, formatTS, formatMatroska, formatAVI, formatMPEGPS:
-			return readAllVideo(r, size)
+			if kind != formatMovie {
+				top = nil // boxes that read as boxes, but not a movie's
+			}
+			return readAllVideo(r, size, kind, top)
 		default:
 			if startsWithFtyp(r, size) && errors.Is(herr, ErrMalformed) {
 				return m, herr
@@ -222,9 +226,9 @@ func (m *Metadata) summarize() {
 }
 
 // readAllVideo is ReadAll of a movie or a transport stream: ReadVideo's.
-func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
+func readAllVideo(r io.ReaderAt, size int64, kind format, top []bmff.Box) (Metadata, error) {
 	m := Metadata{Format: "QuickTime"}
-	switch detectFormat(r, size) {
+	switch kind {
 	case formatTS:
 		m.Format = "MPEG-TS"
 	case formatMatroska:
@@ -234,7 +238,7 @@ func readAllVideo(r io.ReaderAt, size int64) (Metadata, error) {
 	case formatMPEGPS:
 		m.Format = "MPEG-PS"
 	}
-	v, err := ReadVideo(r, size)
+	v, err := readVideoTop(r, size, top)
 	if err != nil {
 		m.Errors.Video = err
 		return m, nil
