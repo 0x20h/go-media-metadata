@@ -36,7 +36,9 @@ type Video struct {
 	// in UTC, as ExifTool's QuickTime:CreateDate gives it: zero when the
 	// header has none (0). It's Created's last resort; a caller that dates
 	// videos by the movie header reads it here even when Keys or ©day give
-	// another date.
+	// another date. As ExifTool does, a value that would fall before 1970
+	// counted from 1904 is counted from 1970 (Unix time) instead, as some
+	// writers (WhatsApp, some Samsung phones) store it.
 	MovieCreated time.Time
 
 	// Duration is the movie header's duration.
@@ -105,6 +107,11 @@ var qtEpoch = time.Date(1904, 1, 1, 0, 0, 0, 0, time.UTC)
 // maxQTSeconds is 496 years of seconds: a movie time after 2400 is a
 // broken field, not a date.
 const maxQTSeconds = 496 * 366 * 86400
+
+// qtUnixOffset is 1970-01-01 in seconds since 1904. ExifTool reads a
+// QuickTime time below it as seconds since 1970 instead: some writers
+// (WhatsApp, some Samsung phones) store Unix time there.
+const qtUnixOffset = (66*365 + 17) * 86400
 
 // ReadVideo reads the metadata of the QuickTime or MP4 movie in r (size
 // bytes). It reads box headers and the few small boxes the fields come
@@ -349,7 +356,8 @@ func readBox(r io.ReaderAt, b bmff.Box, max int64) ([]byte, error) {
 }
 
 // parseMvhd reads a movie header's creation time (zero for 0) and
-// duration.
+// duration. A creation time below qtUnixOffset (before 1970 when read
+// from 1904) is read as seconds since 1970, as ExifTool does.
 func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 	if len(b) < 4 {
 		return
@@ -380,8 +388,14 @@ func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 		return
 	}
 	// Up to the year 2400: anything later is a broken field, not a date.
+	// A value before 1970 read from 1904 was written from 1970 (Unix
+	// time), as ExifTool reads it.
 	if secs != 0 && secs < maxQTSeconds {
-		created = qtEpoch.Add(time.Duration(secs) * time.Second)
+		if secs < qtUnixOffset {
+			created = time.Unix(int64(secs), 0).UTC()
+		} else {
+			created = qtEpoch.Add(time.Duration(secs) * time.Second)
+		}
 	}
 	if scale != 0 && dur/scale < uint64(math.MaxInt64/int64(time.Second)) {
 		d = time.Duration(dur/scale)*time.Second + time.Duration(dur%scale)*time.Second/time.Duration(scale)

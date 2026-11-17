@@ -399,3 +399,28 @@ func mustAtoi(t *testing.T, s string) int {
 	}
 	return n
 }
+
+// A movie header time written from 1970 (below 1970 read from 1904) is
+// read from 1970, as ExifTool's QuickTime:CreateDate gives it; a genuine
+// 1904-based one, early or not, stays as it is.
+func TestReadVideoUnixMvhdTime(t *testing.T) {
+	for _, c := range []struct {
+		secs uint64
+		want time.Time
+	}{
+		{1500000000, time.Date(2017, 7, 14, 2, 40, 0, 0, time.UTC)},       // from 1970
+		{3845750400, time.Date(2025, 11, 12, 0, 0, 0, 0, time.UTC)},       // from 1904
+		{2082844800 + 86400, time.Date(1970, 1, 2, 0, 0, 0, 0, time.UTC)}, // early, from 1904
+	} {
+		for _, version := range []uint8{0, 1} {
+			o := qtbuild.Default()
+			o.Keys, o.Created, o.MvhdVersion = nil, c.secs, version
+			file, _, _ := qtbuild.Build(o)
+			v := readVideo(t, file)
+			if !v.MovieCreated.Equal(c.want) || !v.Created.Equal(c.want) || !v.OffsetKnown {
+				t.Errorf("%d (version %d): MovieCreated %v, Created %v (offset known %v), want %v",
+					c.secs, version, v.MovieCreated, v.Created, v.OffsetKnown, c.want)
+			}
+		}
+	}
+}
