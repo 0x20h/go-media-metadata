@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func editXMP(t *testing.T, packet []byte, e XMPEdit) []byte {
 	return out
 }
 
-func parseXMLDoc(b []byte) ([]*xmlNode, error) { return parseXML(b) }
+func parseXMLDoc(b []byte) ([]*xmlNode, error) { return parseXML(b, true) }
 
 func TestParseXMP(t *testing.T) {
 	x := parseXMP(t, []byte(lightroomXMP))
@@ -338,4 +339,82 @@ func FuzzEditXMP(f *testing.F) {
 			}
 		})
 	})
+}
+
+// ParseXMP's read mode (white-space-only text left out, descriptions
+// kept for one read) gives what the full tree gives.
+func FuzzParseXMPReadMode(f *testing.F) {
+	for _, p := range []string{"testdata/exiftool/xmp.jpg", "testdata/exiftool/regions-full.jpg", "testdata/exiftool/all.jpg", "testdata/exiftool/xmp-where-when.jpg"} {
+		file := readFile(f, p)
+		if packet, err := ReadXMP(bytes.NewReader(file), int64(len(file))); err == nil && packet != nil {
+			f.Add(packet)
+		}
+	}
+	f.Fuzz(func(t *testing.T, packet []byte) {
+		withinDeadline(t, func() {
+			full, ferr := parseXMPDocMode(packet, true)
+			read, rerr := parseXMPDocMode(packet, false)
+			if (ferr == nil) != (rerr == nil) {
+				t.Fatalf("full %v, read mode %v", ferr, rerr)
+			}
+			if ferr != nil {
+				return
+			}
+			a, b := full.fields(), read.fields()
+			// Regions keep the XML they don't model as nodes: compared by
+			// what they hold, not by pointer.
+			ra, rb := a.Regions, b.Regions
+			a.Regions, b.Regions = nil, nil
+			if !reflect.DeepEqual(a, b) {
+				t.Fatalf("full %+v\nread mode %+v", a, b)
+			}
+			if (ra == nil) != (rb == nil) || ra != nil && (!sameRegions(ra, rb) || regionsKept(ra) != regionsKept(rb)) {
+				t.Fatalf("regions: full %+v\nread mode %+v", ra, rb)
+			}
+		})
+	})
+}
+
+// regionsKept is what the regions keep that Region doesn't model, as
+// text: element names and the text in them, white space between elements
+// left out (a leaf's kept as it is).
+func regionsKept(r *Regions) string {
+	var b strings.Builder
+	var walk func(n *xmlNode)
+	walk = func(n *xmlNode) {
+		if n == nil {
+			return
+		}
+		switch n.kind {
+		case elemNode:
+			b.WriteString("<" + qname(n.name) + ">")
+			for _, a := range n.attrs {
+				b.WriteString(qname(a.Name) + "=" + a.Value + ";")
+			}
+			for _, k := range n.kids {
+				if k.kind == textNode && len(bytes.TrimSpace(k.text)) == 0 && hasElement(n) {
+					continue
+				}
+				walk(k)
+			}
+			b.WriteString("</>")
+		default:
+			b.Write(n.text)
+		}
+	}
+	fields := func(k *keptFields) {
+		if k == nil {
+			return
+		}
+		for _, x := range k.nodes {
+			walk(x)
+		}
+	}
+	fields(r.kept)
+	fields(r.keptDims)
+	for _, reg := range r.List {
+		fields(reg.kept)
+		fields(reg.keptArea)
+	}
+	return b.String()
 }
