@@ -135,7 +135,8 @@ can set:
 - the date taken and the date digitized (ExifTool's CreateDate), each with
   fraction and offset;
 - the GPS position and altitude, or remove the position;
-- `ImageDescription` and `XPTitle`, or remove them (`""`).
+- `ImageDescription` and `XPTitle`, or remove them (`""`);
+- `XPKeywords`, Windows' keywords, or remove them (an empty list).
 
 The text tags are written as ExifTool writes them:
 
@@ -145,6 +146,11 @@ The text tags are written as ExifTool writes them:
   ExifTool reads and writes XP tags as UCS-2, so it keeps only such a
   character's low 16 bits; the library's tests compare text within the
   BMP with it.
+- **`XPKeywords`:** the keywords joined by `;`, written as `XPTitle` is.
+  A keyword that is empty or holds a `;` is refused: it wouldn't read
+  back as one keyword. `ReadAll` takes these keywords only when XMP and
+  IPTC have none, so a keyword edit through `MetadataEdit` (XMP and
+  IPTC) isn't kept in step with them.
 
 Text with a NUL in it, or that isn't UTF-8, is refused.
 
