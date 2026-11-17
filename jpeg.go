@@ -72,7 +72,9 @@ func parseJPEG(r io.ReaderAt, size int64) (*jpegFile, error) {
 		if at+2 > size {
 			return nil, fmt.Errorf("%w: the JPEG ends before its image data", ErrMalformed)
 		}
-		if _, err := r.ReadAt(hdr[:2], at); err != nil {
+		// The marker and, for a segment with one, its length: one read.
+		hn := min(int64(len(hdr)), size-at)
+		if _, err := r.ReadAt(hdr[:hn], at); err != nil {
 			return nil, fmt.Errorf("%w: reading a marker: %v", ErrMalformed, err)
 		}
 		if hdr[0] != 0xFF {
@@ -94,11 +96,8 @@ func parseJPEG(r io.ReaderAt, size int64) (*jpegFile, error) {
 			at += 2
 			continue
 		}
-		if at+4 > size {
+		if hn < 4 {
 			return nil, fmt.Errorf("%w: the JPEG ends in a marker segment", ErrMalformed)
-		}
-		if _, err := r.ReadAt(hdr[2:4], at+2); err != nil {
-			return nil, fmt.Errorf("%w: reading a segment length: %v", ErrMalformed, err)
 		}
 		n := int64(hdr[2])<<8 | int64(hdr[3])
 		if n < 2 || at+2+n > size {

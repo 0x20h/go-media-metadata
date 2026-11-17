@@ -122,16 +122,27 @@ type xmpDoc struct {
 	nodes []*xmlNode
 	rdf   *xmlNode // the rdf:RDF element
 	rdfIn scope    // the scope inside rdf:RDF
+	// descs and descScopes are descriptions(), kept while fields reads a
+	// doc that nothing changes; nil otherwise.
+	descs      []*xmlNode
+	descScopes []scope
 }
 
 func parseXMPDoc(packet []byte) (*xmpDoc, error) {
+	return parseXMPDocMode(packet, true)
+}
+
+// parseXMPDocMode is parseXMPDoc; without keepSpace, text that is only
+// white space is left out of the tree: what ParseXMP reads doesn't
+// change (values are trimmed), what an edit writes back would.
+func parseXMPDocMode(packet []byte, keepSpace bool) (*xmpDoc, error) {
 	if len(packet) > maxXMP {
 		return nil, fmt.Errorf("%w: XMP of %d bytes", ErrUnsupported, len(packet))
 	}
 	if !utf8.Valid(packet) {
 		return nil, fmt.Errorf("%w: XMP that isn't UTF-8", ErrMalformed)
 	}
-	nodes, err := parseXML(packet)
+	nodes, err := parseXML(packet, keepSpace)
 	if err != nil {
 		return nil, err
 	}
@@ -175,9 +186,15 @@ type prop struct {
 // descriptions are the rdf:Description elements with the scope inside
 // each.
 func (d *xmpDoc) descriptions() ([]*xmlNode, []scope) {
+	if d.descs != nil {
+		return d.descs, d.descScopes
+	}
 	var ds []*xmlNode
 	var ss []scope
-	for _, n := range elements(d.rdf) {
+	for _, n := range d.rdf.kids {
+		if n.kind != elemNode {
+			continue
+		}
 		in := d.rdfIn.enter(n)
 		if uri, _ := in.ns(n.name, false); uri == nsRDF && n.name.Local == "Description" {
 			ds = append(ds, n)
@@ -200,8 +217,8 @@ func (d *xmpDoc) props(ns, local string) []prop {
 				out = append(out, prop{desc: desc, in: ss[i], attr: j})
 			}
 		}
-		for _, k := range elements(desc) {
-			if k.name.Local != local {
+		for _, k := range desc.kids {
+			if k.kind != elemNode || k.name.Local != local {
 				continue
 			}
 			if uri, _ := ss[i].enter(k).ns(k.name, false); uri == ns {
@@ -290,10 +307,10 @@ func (d *xmpDoc) langAlt(ns, local string) string {
 // A packet that is malformed only by characters XML doesn't allow reads
 // leniently: ParseXMP returns its fields with ErrXMPRepaired.
 func ParseXMP(packet []byte) (XMP, error) {
-	d, err := parseXMPDoc(packet)
+	d, err := parseXMPDocMode(packet, false)
 	if errors.Is(err, ErrMalformed) && len(packet) <= maxXMP {
 		if fixed, changed := repairXML(packet); changed {
-			if d, err2 := parseXMPDoc(fixed); err2 == nil {
+			if d, err2 := parseXMPDocMode(fixed, false); err2 == nil {
 				return d.fields(), ErrXMPRepaired
 			}
 		}
@@ -305,6 +322,10 @@ func ParseXMP(packet []byte) (XMP, error) {
 }
 
 func (d *xmpDoc) fields() XMP {
+	// The descriptions once for every property read here; the doc isn't
+	// changed while they're kept.
+	d.descs, d.descScopes = d.descriptions()
+	defer func() { d.descs, d.descScopes = nil, nil }()
 	var x XMP
 	x.Title = d.langAlt(nsDC, "title")
 	x.Description = d.langAlt(nsDC, "description")

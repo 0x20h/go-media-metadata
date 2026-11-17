@@ -49,7 +49,7 @@ type xmlNode struct {
 
 // parseXML reads an XML document into a list of top-level nodes,
 // checking that elements nest and that no prefix is used undeclared.
-func parseXML(b []byte) ([]*xmlNode, error) {
+func parseXML(b []byte, keepSpace bool) ([]*xmlNode, error) {
 	d := xml.NewDecoder(bytes.NewReader(b))
 	d.Strict = true
 	var top []*xmlNode
@@ -91,8 +91,18 @@ func parseXML(b []byte) ([]*xmlNode, error) {
 			if len(stack) == 0 || stack[len(stack)-1].name != t.Name {
 				return nil, fmt.Errorf("%w: XML: unexpected </%s>", ErrMalformed, qname(t.Name))
 			}
+			if n := stack[len(stack)-1]; !keepSpace && hasElement(n) {
+				n.kids = dropSpace(n.kids)
+			}
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
+			// Without keepSpace, white space between elements is left out:
+			// at the top, and once the parent has an element child (white
+			// space before its first one goes at its end tag). A leaf's
+			// text stays, white space or not.
+			if !keepSpace && len(bytes.TrimSpace(t)) == 0 && (len(stack) == 0 || hasElement(stack[len(stack)-1])) {
+				continue
+			}
 			add(&xmlNode{kind: textNode, text: bytes.Clone(t)})
 		case xml.Comment:
 			add(&xmlNode{kind: commentNode, text: bytes.Clone(t)})
@@ -322,6 +332,28 @@ func elements(n *xmlNode) []*xmlNode {
 		if k.kind == elemNode {
 			out = append(out, k)
 		}
+	}
+	return out
+}
+
+// hasElement reports whether n has an element child.
+func hasElement(n *xmlNode) bool {
+	for _, k := range n.kids {
+		if k.kind == elemNode {
+			return true
+		}
+	}
+	return false
+}
+
+// dropSpace removes the text kids that are only white space, in place.
+func dropSpace(kids []*xmlNode) []*xmlNode {
+	out := kids[:0]
+	for _, k := range kids {
+		if k.kind == textNode && len(bytes.TrimSpace(k.text)) == 0 {
+			continue
+		}
+		out = append(out, k)
 	}
 	return out
 }
