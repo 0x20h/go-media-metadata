@@ -9,6 +9,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -169,6 +170,13 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	moov, ok := bmff.Find(top, bmff.T("moov"))
 	if !ok {
 		return v, fmt.Errorf("%w: no movie box", ErrMalformed)
+	}
+	// The movie box in one read, when it's at most maxMoovRead: the many
+	// small reads of the boxes in it are served from that; reads outside
+	// it (an MP4's XMP uuid box) go to the file.
+	if s := readSpan(r, moov.Offset, moov.Size); s != nil {
+		defer s.release()
+		r = s
 	}
 	kids, err := bmff.ReadBoxes(r, moov.Body(), moov.End())
 	if err != nil {
@@ -1300,4 +1308,51 @@ func parseNCTG(b []byte) (make_, model, dto string) {
 		pos += size
 	}
 	return
+}
+
+// maxMoovRead is the largest movie box ReadVideo reads in one call; a
+// larger one (long movies' sample tables) is read box by box.
+const maxMoovRead = 1 << 20
+
+// spanReader serves reads within [base, base+len(b)) from b, read in one
+// call, and the others from r. Its buffer is pooled: nothing read through
+// it keeps a slice of it.
+type spanReader struct {
+	r    io.ReaderAt
+	base int64
+	b    []byte
+}
+
+var spanReaders = sync.Pool{New: func() any { return new(spanReader) }}
+
+// readSpan reads [at, at+n) of r into a pooled spanReader; nil when n is
+// past maxMoovRead or the read fails (r is then read as before).
+func readSpan(r io.ReaderAt, at, n int64) *spanReader {
+	if n <= 0 || n > maxMoovRead {
+		return nil
+	}
+	s := spanReaders.Get().(*spanReader)
+	if int64(cap(s.b)) < n {
+		s.b = make([]byte, n)
+	}
+	s.b = s.b[:n]
+	if _, err := r.ReadAt(s.b, at); err != nil {
+		s.b = s.b[:0]
+		spanReaders.Put(s)
+		return nil
+	}
+	s.r, s.base = r, at
+	return s
+}
+
+func (s *spanReader) ReadAt(p []byte, off int64) (int, error) {
+	if off >= s.base && off+int64(len(p)) <= s.base+int64(len(s.b)) {
+		return copy(p, s.b[off-s.base:]), nil
+	}
+	return s.r.ReadAt(p, off)
+}
+
+func (s *spanReader) release() {
+	s.r, s.b = nil, s.b[:0]
+	spanReaders.Put(s)
 }
