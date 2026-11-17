@@ -375,7 +375,7 @@ func checkDref(minf *qtNode) error {
 		return nil
 	}
 	b := dinf.payload()
-	boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+	boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
 	if err != nil {
 		return fmt.Errorf("%w: a data information box that doesn't parse", ErrMalformed)
 	}
@@ -383,7 +383,7 @@ func checkDref(minf *qtNode) error {
 	if !ok || dref.BodyLen() < 8 {
 		return nil
 	}
-	entries, err := bmff.ReadBoxes(bytes.NewReader(b), dref.Body()+8, dref.End())
+	entries, err := bmff.ParseBoxes(b, dref.Body()+8, dref.End())
 	if err != nil {
 		return fmt.Errorf("%w: a data reference box that doesn't parse", ErrMalformed)
 	}
