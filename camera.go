@@ -55,15 +55,12 @@ func (t tiffReader) camera(ifd0, exif map[uint16]field) Camera {
 		return ""
 	}
 	c.Make, c.Model = text(ifd0, tagMake), text(ifd0, tagModel)
-	if exif == nil {
-		return c
-	}
 	c.LensMake, c.LensModel = text(exif, tagLensMake), text(exif, tagLensModel)
 	if c.LensModel == "" && strings.HasPrefix(c.Make, "Canon") {
 		c.LensModel = t.canonLensModel(exif[tagMakerNote])
 	}
 	positive := func(tag uint16) float64 {
-		v, ok := t.rationals(exif[tag], 1)
+		v, ok := t.rationals(exposureTag(exif, ifd0, tag), 1)
 		if !ok || len(v) == 0 || !(v[0] > 0) || math.IsInf(v[0], 0) {
 			return 0
 		}
@@ -71,8 +68,8 @@ func (t tiffReader) camera(ifd0, exif map[uint16]field) Camera {
 	}
 	c.FNumber, c.ExposureTime, c.FocalLength = positive(tagFNumber), positive(tagExposureTime), positive(tagFocalLength)
 	whole := func(tag uint16) int {
-		f, ok := exif[tag]
-		if !ok || f.typ != typeShort && f.typ != typeLong {
+		f := exposureTag(exif, ifd0, tag)
+		if f.typ != typeShort && f.typ != typeLong {
 			return 0
 		}
 		v, _ := t.uint(f)
@@ -131,6 +128,16 @@ func (c *Camera) fill(from Camera) {
 	if c.FocalLengthIn35mm == 0 {
 		c.FocalLengthIn35mm = from.FocalLengthIn35mm
 	}
+}
+
+// exposureTag is an exposure tag of the Exif IFD, else of IFD0: some
+// cameras (Samsung's among them) put them there, where ExifTool reads
+// them too.
+func exposureTag(exif, ifd0 map[uint16]field, tag uint16) field {
+	if f, ok := exif[tag]; ok {
+		return f
+	}
+	return ifd0[tag]
 }
 
 // canonLensModel reads a Canon maker note's LensModel (tag 0x0095, ASCII),

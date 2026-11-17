@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- `Camera`'s exposure fields (ExposureTime, FNumber, ISO, focal lengths)
+  are read from IFD0 when the Exif IFD hasn't got them, as some Samsung
+  cameras write them and ExifTool reads them.
+
 - `ReadVideo` reads the position in an MP4 item list's `©xyz`, where
   Android cameras and some iPhone MP4s keep it (ExifTool's ItemList
   GPSCoordinates). Such videos had no place. See
