@@ -38,7 +38,7 @@ func BenchmarkRewriteMovieFile(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	st, _ := src.Stat()
 	b.SetBytes(st.Size())
 	for range b.N {
