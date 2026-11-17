@@ -106,6 +106,67 @@ func ReadBoxes(r io.ReaderAt, start, end int64) ([]Box, error) {
 	return out, nil
 }
 
+// ParseBoxes is ReadBoxes of boxes held in memory: the same boxes and
+// the same errors, from b's [start, end), in one allocation (it counts
+// the boxes, then fills a slice of that length) and without a reader.
+func ParseBoxes(b []byte, start, end int64) ([]Box, error) {
+	if start < 0 || end > int64(len(b)) || start > end {
+		return nil, fmt.Errorf("%w: boxes at %d..%d of %d bytes", ErrMalformed, start, end, len(b))
+	}
+	n, err := walkBoxes(b, start, end, nil)
+	if err != nil || n == 0 {
+		return nil, err
+	}
+	out := make([]Box, 0, n)
+	_, err = walkBoxes(b, start, end, &out)
+	return out, err
+}
+
+// walkBoxes walks the boxes in b's [start, end) as ReadBoxes reads them,
+// appending each to out when out isn't nil; it returns how many there
+// are.
+func walkBoxes(b []byte, start, end int64, out *[]Box) (int, error) {
+	n := 0
+	for off := start; off < end; {
+		if n >= MaxBoxes {
+			return 0, fmt.Errorf("%w: more than %d boxes", ErrMalformed, MaxBoxes)
+		}
+		if end-off < 8 {
+			return 0, fmt.Errorf("%w: %d stray bytes at %d", ErrMalformed, end-off, off)
+		}
+		bx := Box{Offset: off, HeaderLen: 8}
+		copy(bx.Type[:], b[off+4:off+8])
+		size := int64(binary.BigEndian.Uint32(b[off:]))
+		switch size {
+		case 0:
+			size = end - off
+		case 1:
+			if end-off < 16 {
+				return 0, fmt.Errorf("%w: truncated large header at %d", ErrMalformed, off)
+			}
+			large := binary.BigEndian.Uint64(b[off+8:])
+			if large > uint64(end-off) {
+				return 0, fmt.Errorf("%w: box %v at %d runs past its container", ErrMalformed, bx.Type, off)
+			}
+			size = int64(large)
+			bx.HeaderLen = 16
+		}
+		if bx.Type == T("uuid") {
+			bx.HeaderLen += 16
+		}
+		if size < bx.HeaderLen || size > end-off {
+			return 0, fmt.Errorf("%w: box %v at %d has size %d", ErrMalformed, bx.Type, off, size)
+		}
+		bx.Size = size
+		if out != nil {
+			*out = append(*out, bx)
+		}
+		n++
+		off += size
+	}
+	return n, nil
+}
+
 // ReadBoxesLenient reads the sibling boxes in [start, end) as ReadBoxes
 // does, but stops at the first box it can't read instead of failing, as
 // ExifTool reads a file cut short or with junk after its last box: the

@@ -22,7 +22,7 @@ func (m *Meta) AddItem(id uint32, typ Type, contentType string) error {
 		return fmt.Errorf("%w: item %d is there", ErrMalformed, id)
 	}
 	raw := m.children[ci].raw
-	boxes, err := ReadBoxes(bytes.NewReader(raw), 0, int64(len(raw)))
+	boxes, err := ParseBoxes(raw, 0, int64(len(raw)))
 	if err != nil || len(boxes) != 1 || boxes[0].BodyLen() < 6 {
 		return fmt.Errorf("%w: iinf", ErrMalformed)
 	}
@@ -68,7 +68,7 @@ func (m *Meta) ContentType(id uint32) string {
 		return ""
 	}
 	raw := m.children[ci].raw
-	boxes, err := ReadBoxes(bytes.NewReader(raw), 0, int64(len(raw)))
+	boxes, err := ParseBoxes(raw, 0, int64(len(raw)))
 	if err != nil || len(boxes) != 1 || boxes[0].BodyLen() < 4 {
 		return ""
 	}
@@ -80,7 +80,7 @@ func (m *Meta) ContentType(id uint32) string {
 	if int64(len(b)) < start {
 		return ""
 	}
-	entries, err := ReadBoxes(bytes.NewReader(b), start, int64(len(b)))
+	entries, err := ParseBoxes(b, start, int64(len(b)))
 	if err != nil {
 		return ""
 	}
@@ -133,7 +133,7 @@ func (m *Meta) AddRef(typ Type, from uint32, to []uint32) error {
 		body = []byte{0, 0, 0, 0}
 	} else {
 		raw := m.children[ci].raw
-		boxes, err := ReadBoxes(bytes.NewReader(raw), 0, int64(len(raw)))
+		boxes, err := ParseBoxes(raw, 0, int64(len(raw)))
 		if err != nil || len(boxes) != 1 || boxes[0].BodyLen() < 4 {
 			return fmt.Errorf("%w: iref", ErrMalformed)
 		}

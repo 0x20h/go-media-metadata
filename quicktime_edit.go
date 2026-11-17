@@ -380,7 +380,7 @@ var qtContainers = map[bmff.Type]bool{
 // with an explicit size where theirs is 0 ("to the end"), so a box
 // added after one doesn't end up inside it.
 func parseQTNode(b []byte, depth int) (*qtNode, error) {
-	boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+	boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
 	if err != nil || len(boxes) != 1 {
 		return nil, fmt.Errorf("%w: a box that doesn't parse", ErrMalformed)
 	}
@@ -398,7 +398,7 @@ func parseQTNode(b []byte, depth int) (*qtNode, error) {
 			start += 4
 		}
 	}
-	kids, err := bmff.ReadBoxes(bytes.NewReader(b), start, int64(len(b)))
+	kids, err := bmff.ParseBoxes(b, start, int64(len(b)))
 	if err != nil {
 		// A container this package can't walk (udta with a trailing
 		// zero, say) is kept as it was, and not edited.
@@ -483,7 +483,7 @@ func (n *qtNode) payload() []byte {
 	if n.raw == nil {
 		return n.body
 	}
-	boxes, err := bmff.ReadBoxes(bytes.NewReader(n.raw), 0, int64(len(n.raw)))
+	boxes, err := bmff.ParseBoxes(n.raw, 0, int64(len(n.raw)))
 	if err != nil || len(boxes) != 1 {
 		return nil
 	}
@@ -865,11 +865,11 @@ func (k *keysNode) set(name, s string) error {
 	// Keep the item's other boxes; replace its first data box.
 	if it.raw != nil {
 		b := it.raw
-		boxes, err := bmff.ReadBoxes(bytes.NewReader(b), 0, int64(len(b)))
+		boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
 		if err != nil || len(boxes) != 1 {
 			return fmt.Errorf("%w: an ilst item that doesn't parse", ErrMalformed)
 		}
-		kids, err := bmff.ReadBoxes(bytes.NewReader(b), boxes[0].Body(), boxes[0].End())
+		kids, err := bmff.ParseBoxes(b, boxes[0].Body(), boxes[0].End())
 		if err != nil {
 			return fmt.Errorf("%w: an ilst item that doesn't parse", ErrMalformed)
 		}

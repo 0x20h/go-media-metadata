@@ -193,7 +193,9 @@ func FuzzReadAll(f *testing.F) {
 	seeds(f)
 	jpegSeeds(f)
 	sentinel := func(err error) bool {
-		return err == nil || errors.Is(err, ErrUnknownFormat) || errors.Is(err, ErrMalformed) || errors.Is(err, ErrUnsupported)
+		// ErrXMPRepaired comes with the fields read: a note, not a failure.
+		return err == nil || errors.Is(err, ErrUnknownFormat) || errors.Is(err, ErrMalformed) || errors.Is(err, ErrUnsupported) ||
+			errors.Is(err, ErrXMPRepaired)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
