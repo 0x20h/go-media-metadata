@@ -2,62 +2,74 @@
 
 ## Unreleased
 
-### Fixed
+## v0.2.4 (2026-11-19)
 
-- PNG text keywords match as ExifTool matches them: a word may start in
-  lower case (`title` is Title). Before, only the exact case was read,
-  and an XMP title edit left a lower-case `title` chunk as it was (#185).
-- Setting the orientation of a TIFF or DNG whose IFD0 has an
-  Orientation entry that doesn't read (its value past the end of the
-  file) replaces that entry. Before, a second one was added, and the
-  first, unreadable one still read as 1. Found by FuzzOrientationAnyFormat.
-- Setting the orientation of a TIFF or camera RAW file is refused
-  (`ErrUnsupported`) where the write would touch the image data: a
-  strip or tile that overlaps the Orientation entry or the XMP packet,
-  or that runs past the end of the file, over where a new IFD0 would go.
-  Before, such a write changed the image data. Found by
-  FuzzOrientationAnyFormat.
-- The same write is also refused where the TIFF's IFD chain would read
-  the new or the old IFD0 as other strips, which is checked by walking
-  the edited file's image data again, as the TIFF metadata editor does.
-  Found by FuzzOrientationAnyFormat.
-- And, generally, where the edited file would read otherwise than the
-  original in anything but its orientation, as `ReadAll` reads it: an
-  IFD whose entries run into IFD0's bytes, say, reads otherwise once
-  IFD0 is elsewhere (found by FuzzOrientationAnyFormat as a lost image
-  size). Every TIFF and RAW orientation write is checked so, over the
-  source with the edit laid on top.
-- `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
-  (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
-  write it). Before, only the make and model were copied (#182).
-- Every write to a format whose image data is found by offsets now
-  refuses (`ErrUnsupported`) an edit that would change that data in a
-  malformed file. This covers QuickTime/MP4 metadata edits and
-  rotations, HEIF Exif, XMP and orientation writes, and TIFF/RAW edits.
-  Examples are a movie chunk declared inside its own `moov` box, or past
-  the end of the file when the edit grows it, and a HEIF image extent of
-  length 0 (to the end) when an item is appended. Before, such a write
-  could change the image data. Well-formed files are unaffected. The
-  write fuzz targets now check `HashImageData` before and after.
-
-### Added
-
-- PNG: the `Creation Time` text chunk reads as `PNGText.Created`
-  (ExifTool's PNG CreationTime), in RFC 1123, ISO 8601 or the Exif
-  layout. `ReadAll` takes it as the date taken
-  (`SourcePNGCreationTime`) where no Exif, XMP or IPTC capture or
-  creation date is found (#185).
-- `ExifEdit.XPKeywords` writes IFD0's XPKeywords, Windows' keywords
-  (joined by `;`, UTF-16 as `XPTitle`), or removes them. Reading them
-  into `ReadAll`'s keywords was already in place. See
-  [docs/exif.md](docs/exif.md).
+No breaking changes.
 
 ### Added
 
 - `ReadVideo` (and `ReadAll`) read the make, model and date taken of
   Canon MP4 files, from the Exif of the thumbnail in their `uuid` box,
   and of Nikon AVI files, from the `nctg` chunk of their `ncdt` list, as
-  ExifTool reads them. See [docs/quicktime.md](docs/quicktime.md).
+  ExifTool reads them. A Canon MP4's date taken is that Exif date, the
+  camera's local time, ahead of the movie header's UTC time. See
+  [docs/quicktime.md](docs/quicktime.md).
+- `ExifEdit.XPKeywords` writes IFD0's XPKeywords, Windows' keywords
+  (joined by `;`, UTF-16 as `XPTitle`), or removes them. Reading them
+  into `ReadAll`'s keywords was already in place. See
+  [docs/exif.md](docs/exif.md).
+- PNG: the `Creation Time` text chunk reads as `PNGText.Created`
+  (ExifTool's PNG CreationTime), in RFC 1123, ISO 8601 or the Exif
+  layout. `ReadAll` takes it as the date taken
+  (`SourcePNGCreationTime`) where no Exif, XMP or IPTC capture or
+  creation date is found (#185).
+
+### Fixed
+
+- `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
+  (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
+  write it). Before, only the make and model were copied (#182).
+- PNG text keywords match as ExifTool matches them: a word may start in
+  lower case (`title` is Title). Before, only the exact case was read,
+  and an XMP title edit left a lower-case `title` chunk as it was (#185).
+- Setting the orientation of a TIFF or DNG whose IFD0 has an
+  Orientation entry that doesn't read (its value past the end of the
+  file) replaces that entry. Before, a second one was added, and the
+  first, unreadable one still read as 1.
+
+### Safer writes
+
+A metadata write never changes the image data. In a malformed file
+that could happen, and these writes now refuse it with
+`ErrUnsupported`. Well-formed files are unaffected.
+
+- **Image data guard:** every write to a format whose image data is
+  found by offsets refuses an edit that would change that data. This
+  covers QuickTime/MP4 metadata edits and rotations, HEIF Exif, XMP and
+  orientation writes (`SetRotation` and `SetOrientation` too), and
+  TIFF/RAW edits. Examples are a movie chunk declared inside its own
+  `moov` box, or past the end of the file when the edit grows it, and a
+  HEIF image extent of length 0 (to the end) when an item is appended.
+  See [docs/api.md](docs/api.md).
+- **TIFF and RAW orientation:** the edited file is read again, over the
+  source with the edit laid on top (no copy of the file). The write is
+  refused where its image data, or anything `ReadAll` reads other than
+  the orientation, would differ from the original's. That catches IFD
+  chains and IFDs that overlap IFD0, which read otherwise once IFD0 is
+  copied to the end to take a new Orientation tag.
+- The write fuzz targets now check `HashImageData` before and after, and
+  CI fuzzes `ReadAll`, the XMP read modes and the orientation writes of
+  every format. These fixes come from what that fuzzing found.
+
+### Behaviour worth knowing
+
+- A write that used to go through on a malformed file may now return
+  `ErrUnsupported` instead.
+- `ReadAll` of a PNG may now give a date taken where it gave none
+  (`SourcePNGCreationTime`), and a title or description where the
+  keyword's words start in lower case.
+- Video rotation reads the movie box whole, once (up to 64 MB; a larger
+  one is walked from the file as before).
 
 ## v0.2.3 (2026-11-17)
 
