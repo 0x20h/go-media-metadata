@@ -18,6 +18,9 @@
   the new or the old IFD0 as other strips, which is checked by walking
   the edited file's image data again, as the TIFF metadata editor does.
   Found by FuzzOrientationAnyFormat.
+- `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
+  (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
+  write it). Before, only the make and model were copied (#182).
 - Every write to a format whose image data is found by offsets now
   refuses (`ErrUnsupported`) an edit that would change that data in a
   malformed file. This covers QuickTime/MP4 metadata edits and

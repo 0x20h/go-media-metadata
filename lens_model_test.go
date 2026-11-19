@@ -102,6 +102,10 @@ func TestKeysLensModel(t *testing.T) {
 	if err != nil || v.LensModel != lens || v.Make != "Apple" {
 		t.Fatalf("%+v, %v", v, err)
 	}
+	m, err := ReadAll(bytes.NewReader(file), int64(len(file)))
+	if err != nil || m.Camera.LensModel != lens || m.Camera.Make != "Apple" {
+		t.Fatalf("ReadAll %+v, %v", m.Camera, err)
+	}
 	tool, err := exec.LookPath("exiftool")
 	if err != nil {
 		t.Skip("exiftool not installed")
