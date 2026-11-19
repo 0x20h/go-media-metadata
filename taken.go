@@ -38,6 +38,8 @@ func (s DateSource) String() string {
 		return "Exif DateTime"
 	case SourceMovie:
 		return "the movie's recording date"
+	case SourcePNGCreationTime:
+		return "PNG Creation Time"
 	}
 	return "none"
 }

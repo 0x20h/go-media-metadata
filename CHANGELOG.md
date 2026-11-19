@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- PNG text keywords match as ExifTool matches them: a word may start in
+  lower case (`title` is Title). Before, only the exact case was read,
+  and an XMP title edit left a lower-case `title` chunk as it was (#185).
 - Setting the orientation of a TIFF or DNG whose IFD0 has an
   Orientation entry that doesn't read (its value past the end of the
   file) replaces that entry. Before, a second one was added, and the
@@ -33,6 +36,11 @@
 
 ### Added
 
+- PNG: the `Creation Time` text chunk reads as `PNGText.Created`
+  (ExifTool's PNG CreationTime), in RFC 1123, ISO 8601 or the Exif
+  layout. `ReadAll` takes it as the date taken
+  (`SourcePNGCreationTime`) where no Exif, XMP or IPTC capture or
+  creation date is found (#185).
 - `ExifEdit.XPKeywords` writes IFD0's XPKeywords, Windows' keywords
   (joined by `;`, UTF-16 as `XPTitle`), or removes them. Reading them
   into `ReadAll`'s keywords was already in place. See
