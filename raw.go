@@ -3,11 +3,9 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math"
-	"reflect"
 	"slices"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
@@ -612,47 +610,16 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 
 // readsAsBefore refuses (ErrUnsupported) an orientation edit whose result
 // (edited, the source with the edit laid on top) reads otherwise than
-// the source, as ReadAll reads it, in anything but the orientation: a
-// malformed file whose structures overlap can read another way once a
-// value changes or IFD0 moves. The orientation must read as o where the
-// source's read. Which parts fail to read must match; their messages,
-// which may name offsets, needn't.
+// the source in anything but the orientation (readsAsBeforeExcept); the
+// orientation must read as o where the source's read.
 func readsAsBefore(src io.ReaderAt, size int64, edited io.ReaderAt, editedSize int64, o Orientation) error {
-	before, err := ReadAll(src, size)
-	if err != nil {
-		return nil // nothing read to compare; the edit's own checks hold
-	}
-	after, err := ReadAll(edited, editedSize)
-	if err != nil {
-		return fmt.Errorf("%w: a file the edit would leave unreadable", ErrUnsupported)
-	}
-	if before.Errors.Orientation == nil && (after.Errors.Orientation != nil || after.Orientation != o) {
-		return fmt.Errorf("%w: a file whose orientation wouldn't read as set", ErrUnsupported)
-	}
-	if !sameExceptOrientation(before, after) {
-		return fmt.Errorf("%w: a file the edit would change beyond its orientation", ErrUnsupported)
-	}
-	return nil
-}
-
-// sameExceptOrientation compares two reads but for the orientation, in
-// each place it's read, and the error messages.
-func sameExceptOrientation(a, b Metadata) bool {
-	for _, m := range []*Metadata{&a, &b} {
-		m.Orientation, m.Size.Orientation, m.Exif.Orientation, m.XMP.Orientation = 0, 0, 0, 0
-		e := &m.Errors
-		for _, err := range []*error{&e.Exif, &e.XMP, &e.IPTC, &e.Size, &e.Orientation, &e.Video} {
-			if *err != nil {
-				*err = errReadFailed
-			}
+	return readsAsBeforeExcept(src, size, edited, editedSize, orientationChanges, func(before, after Metadata) error {
+		if before.Errors.Orientation == nil && (after.Errors.Orientation != nil || after.Orientation != o) {
+			return fmt.Errorf("%w: a file whose orientation wouldn't read as set", ErrUnsupported)
 		}
-	}
-	return reflect.DeepEqual(a, b)
+		return nil
+	})
 }
-
-// errReadFailed stands for any read error where only whether a part read
-// is compared.
-var errReadFailed = errors.New("read failed")
 
 // sameSizeSplices are e's splices that replace bytes one for one, as
 // patches.

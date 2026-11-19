@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Safer writes
+
+- TIFF and DNG Exif and XMP edits are read back as `ReadAll` reads them
+  and refused (`ErrUnsupported`) where anything but what the edit sets
+  would read otherwise, as orientation writes already were. The fields
+  each edit may change come from the edit: an Exif date, the GPS
+  position, a title, and the summary fields that follow from them.
+
 ## v0.2.4 (2026-11-19)
 
 No breaking changes.

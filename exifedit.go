@@ -35,7 +35,7 @@ func planExifEdit(src io.ReaderAt, size int64, edit ExifEdit) (*Plan, error) {
 		if err != nil {
 			return nil, err
 		}
-		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return EditExif(file, edit) })
+		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return EditExif(file, edit) }, exifEditChanges(edit))
 	}
 	// A PNG or WebP keeps any "Exif\0\0" before its TIFF data; its Exif
 	// Orientation is how it's shown, so it's set here too.

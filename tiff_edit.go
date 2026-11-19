@@ -58,8 +58,9 @@ func tiffFileEditable(src io.ReaderAt, size int64) (ok bool, err error) {
 
 // planTIFFFileEdit plans edit applied to the whole file in src: the bytes
 // it changes as patches, and what it appends at the end. In place when it
-// appends nothing.
-func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byte, error)) (*Plan, error) {
+// appends nothing. The edited file must read as the source does but for
+// what mayChange clears (readsAsBeforeExcept).
+func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byte, error), mayChange func(*Metadata)) (*Plan, error) {
 	file := make([]byte, size)
 	if _, err := src.ReadAt(file, 0); err != nil && err != io.EOF {
 		return nil, fmt.Errorf("%w: reading the file: %v", ErrMalformed, err)
@@ -97,6 +98,9 @@ func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byt
 		if err := guardPlan(p, ranges); err != nil {
 			return nil, err
 		}
+	}
+	if err := readsAsBeforeExcept(bytes.NewReader(file), size, bytes.NewReader(out), int64(len(out)), mayChange, nil); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
