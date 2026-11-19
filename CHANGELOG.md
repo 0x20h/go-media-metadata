@@ -9,6 +9,11 @@
   would read otherwise, as orientation writes already were. The fields
   each edit may change come from the edit: an Exif date, the GPS
   position, a title, and the summary fields that follow from them.
+- HEIF Exif and XMP item writes are read back the same way: everything
+  but the part written (and the summary fields that come from the
+  parts) must read as before, the image size and orientation included.
+  The planned file is read from the source and the plan's parts, never
+  written out for the check.
 
 ## v0.2.4 (2026-11-19)
 

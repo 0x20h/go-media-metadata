@@ -127,3 +127,93 @@ func xmpEditChanges(edit XMPEdit) func(*Metadata) {
 		}
 	}
 }
+
+// partChanges clears what replacing one metadata part (kind's: the Exif
+// or the XMP) may change in a read: that part, whether it read, and the
+// summary fields that follow from the parts. The image size, the
+// orientation the format keeps, and the other parts must read as before.
+func partChanges(kind metadataKind) func(*Metadata) {
+	return func(m *Metadata) {
+		switch kind {
+		case kindExif:
+			m.Exif, m.Errors.Exif = Exif{}, nil
+		case kindXMP:
+			m.XMP, m.Errors.XMP = XMP{}, nil
+		}
+		m.Taken, m.GPS, m.Camera = Taken{}, nil, Camera{}
+		m.Title, m.Description, m.Keywords = "", "", nil
+		m.Rating, m.HasRating = 0, false
+		m.Regions, m.PersonInImage, m.ContentIdentifier = nil, nil, ""
+	}
+}
+
+// heifPlanReader reads what a HEIF plan writes, without writing it: the
+// source before the meta box, the new meta box, the source after it, the
+// data appended, with the patches (at the new file's offsets) over them.
+func heifPlanReader(p *Plan) (io.ReaderAt, int64) {
+	f := p.f
+	metaAt, metaEnd := f.meta.Offset, f.meta.End()
+	parts := []planPart{
+		{n: metaAt, src: 0},
+		{n: int64(len(p.meta)), data: p.meta},
+		{n: p.Size - metaEnd, src: metaEnd},
+		{n: int64(len(p.tail)), data: p.tail},
+	}
+	r := &partsReader{src: p.src, parts: parts}
+	for _, pt := range parts {
+		r.size += pt.n
+	}
+	patches := make([]Patch, len(p.patches))
+	for i, pt := range p.patches {
+		patches[i] = Patch{Offset: pt.at, Data: pt.data}
+	}
+	return &patchedReader{r: r, size: r.size, patches: patches}, r.size
+}
+
+// planPart is a run of an edited file: n bytes, from the source at src or
+// from data.
+type planPart struct {
+	n    int64
+	src  int64
+	data []byte
+}
+
+// partsReader reads parts one after another as one file.
+type partsReader struct {
+	src   io.ReaderAt
+	parts []planPart
+	size  int64
+}
+
+func (r *partsReader) ReadAt(b []byte, off int64) (int, error) {
+	if off < 0 {
+		return 0, fmt.Errorf("mediameta: read at %d", off)
+	}
+	n := 0
+	at := int64(0)
+	for _, pt := range r.parts {
+		if n == len(b) {
+			break
+		}
+		if off+int64(n) >= at+pt.n {
+			at += pt.n
+			continue
+		}
+		in := off + int64(n) - at // where in this part
+		k := min(int64(len(b)-n), pt.n-in)
+		if pt.data != nil {
+			copy(b[n:n+int(k)], pt.data[in:in+k])
+		} else if m, err := r.src.ReadAt(b[n:n+int(k)], pt.src+in); int64(m) < k {
+			if err == nil {
+				err = io.ErrUnexpectedEOF
+			}
+			return n + m, err
+		}
+		n += int(k)
+		at += pt.n
+	}
+	if n < len(b) {
+		return n, io.EOF
+	}
+	return n, nil
+}
