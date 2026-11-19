@@ -25,6 +25,12 @@ func readsAsBeforeExcept(src io.ReaderAt, size int64, edited io.ReaderAt, edited
 	if err != nil {
 		return nil
 	}
+	return readsAsRead(before, edited, editedSize, mayChange, check)
+}
+
+// readsAsRead is readsAsBeforeExcept with the source's read taken
+// already (before).
+func readsAsRead(before Metadata, edited io.ReaderAt, editedSize int64, mayChange func(*Metadata), check func(before, after Metadata) error) error {
 	after, err := ReadAll(edited, editedSize)
 	if err != nil {
 		return fmt.Errorf("%w: a file the edit would leave unreadable", ErrUnsupported)
@@ -216,4 +222,56 @@ func (r *partsReader) ReadAt(b []byte, off int64) (int, error) {
 		return n, io.EOF
 	}
 	return n, nil
+}
+
+// videoEditChanges is what edit may change in a movie's read, cleared:
+// the values it sets, in Video and in the summary fields that come from
+// them. An XMP edit may change any of them, as a movie's values can come
+// from its XMP.
+func videoEditChanges(edit VideoEdit) func(*Metadata) {
+	return func(m *Metadata) {
+		v := m.Video
+		if v == nil {
+			return
+		}
+		x := edit.XMP != nil
+		if edit.Created != nil || x {
+			v.Created, v.OffsetKnown, v.MovieCreated, m.Taken = time.Time{}, false, time.Time{}, Taken{}
+		}
+		if edit.GPS != nil || edit.RemoveGPS || x {
+			v.GPS, m.GPS = nil, nil
+		}
+		if edit.Title != nil || x {
+			v.Title, m.Title = "", ""
+		}
+		if edit.Description != nil || x {
+			v.Description, m.Description = "", ""
+		}
+		if edit.Keywords != nil || x {
+			v.Keywords, m.Keywords = nil, nil
+		}
+		if edit.Rating != nil || edit.RemoveRating || x {
+			v.Rating, v.HasRating, m.Rating, m.HasRating = 0, false, 0, false
+		}
+		if x {
+			xmpEditChanges(*edit.XMP)(m)
+		}
+	}
+}
+
+// splicePlanReader reads what a splice plan writes, without writing it:
+// the source between the splices, each splice's data in its place.
+func splicePlanReader(p *Plan) (io.ReaderAt, int64) {
+	var parts []planPart
+	pos := int64(0)
+	for _, s := range p.splice.splices {
+		parts = append(parts, planPart{n: s.at - pos, src: pos}, planPart{n: int64(len(s.data)), data: s.data})
+		pos = s.at + s.del
+	}
+	parts = append(parts, planPart{n: p.Size - pos, src: pos})
+	r := &partsReader{src: p.src, parts: parts}
+	for _, pt := range parts {
+		r.size += pt.n
+	}
+	return r, r.size
 }

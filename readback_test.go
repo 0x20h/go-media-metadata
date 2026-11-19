@@ -52,3 +52,26 @@ func TestHEIFPlanReader(t *testing.T) {
 		}
 	}
 }
+
+// splicePlanReader serves what WriteTo writes, for movie edits that keep
+// the movie box's size and ones that grow it, in both layouts.
+func TestSplicePlanReader(t *testing.T) {
+	paths, _ := filepath.Glob("testdata/video/*.mov")
+	more, _ := filepath.Glob("testdata/video/*.mp4")
+	long := string(bytes.Repeat([]byte("t"), 3000))
+	for _, path := range append(paths, more...) {
+		file := readFile(t, path)
+		for _, edit := range []VideoEdit{{Created: &editDate}, {Title: &long}} {
+			p, err := PlanVideoMetadata(bytes.NewReader(file), int64(len(file)), edit)
+			if err != nil {
+				continue
+			}
+			want := written(t, p)
+			r, n := splicePlanReader(p)
+			got := make([]byte, n)
+			if _, err := r.ReadAt(got, 0); (err != nil && err != io.EOF) || !bytes.Equal(got, want) {
+				t.Fatalf("%s: the reader differs from WriteTo (%v)", path, err)
+			}
+		}
+	}
+}
