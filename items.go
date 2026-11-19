@@ -248,6 +248,11 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if err := guardHEIFPlan(p); err != nil {
 		return nil, err
 	}
+	// The new file reads as the source but for this part.
+	out, n := heifPlanReader(p)
+	if err := readsAsBeforeExcept(src, size, out, n, partChanges(kind), nil); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
