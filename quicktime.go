@@ -1053,7 +1053,8 @@ func parseISO8601(s string) (time.Time, bool) {
 }
 
 // parseISO6709 reads a point in ISO 6709 string form: latitude and
-// longitude, each as degrees (±DD.DD, ±DDD.DD), degrees and minutes
+// longitude, each as degrees (±DD.DD, ±DDD.DD, or with fewer integer
+// digits, as some writers have it: ±D.DD), degrees and minutes
 // (±DDMM.MM, ±DDDMM.MM) or degrees, minutes and seconds (±DDMMSS.SS,
 // ±DDDMMSS.SS), an optional altitude in metres, an optional CRS, and "/".
 func parseISO6709(s string) (*GPS, bool) {
@@ -1131,16 +1132,18 @@ func iso6709Angle(s string, degDigits int) (float64, bool) {
 		return f
 	}
 	var deg float64
-	switch len(intPart) {
-	case degDigits:
+	switch n := len(intPart); {
+	case n >= 1 && n <= degDigits:
+		// Degrees. Some writers leave out ISO 6709's leading zeros
+		// (Android's "+8.0630" for "+008.0630"); ExifTool reads them too.
 		deg = num(intPart + frac)
-	case degDigits + 2:
+	case n == degDigits+2:
 		min := num(intPart[degDigits:] + frac)
 		if min >= 60 {
 			return 0, false
 		}
 		deg = num(intPart[:degDigits]) + min/60
-	case degDigits + 4:
+	case n == degDigits+4:
 		min := num(intPart[degDigits : degDigits+2])
 		sec := num(intPart[degDigits+2:] + frac)
 		if min >= 60 || sec >= 60 {
