@@ -13,9 +13,12 @@
 //
 // allow.txt, next to this file, lists rises a change may make on purpose,
 // one per line: a benchmark name (a prefix of it, as the report prints
-// it), a unit, the most it may rise by in that unit, and the reason.
-// Lines starting with # are comments. A PR that adds one says why; the
-// file is emptied again once the change is on main and is the new base.
+// it), a unit, the most it may rise by, and the reason. For allocs/op,
+// read-B/op and readcalls/op the most is in that unit; for B/op and ns/op
+// it's a percentage ("160%") that takes the place of the 10% or 25% where
+// it's higher. Lines starting with # are comments. A PR that adds one
+// says why; the file is emptied again once the change is on main and is
+// the new base.
 package main
 
 import (
@@ -128,9 +131,12 @@ func main() {
 			case "allocs/op", "read-B/op", "readcalls/op":
 				bad = hm > bm+allowed(allow, n, unit)
 			case "B/op":
-				bad = hm > bm*1.10
+				bad = hm > bm*(1+max(10, allowed(allow, n, unit))/100)
 			case "ns/op":
-				bad = hm > bm*1.25 && minOf(hv) > bm
+				// The limit, and head's fastest run beyond what the noise
+				// margin of 25% leaves: base's median, at the default.
+				limit := bm * (1 + max(25, allowed(allow, n, unit))/100)
+				bad = hm > limit && minOf(hv) > limit/1.25
 			}
 			mark := ""
 			if bad {
@@ -183,12 +189,20 @@ func readAllowances(path string) ([]allowance, error) {
 		if len(f) < 4 {
 			return nil, fmt.Errorf("%s:%d: want a benchmark, a unit, a most and a reason", path, i+1)
 		}
-		max, err := strconv.ParseFloat(f[2], 64)
+		num, pct := strings.CutSuffix(f[2], "%")
+		max, err := strconv.ParseFloat(num, 64)
 		if err != nil || max < 0 {
 			return nil, fmt.Errorf("%s:%d: %q isn't a rise", path, i+1, f[2])
 		}
 		switch f[1] {
 		case "allocs/op", "read-B/op", "readcalls/op":
+			if pct {
+				return nil, fmt.Errorf("%s:%d: %s rises by a count, not a percentage", path, i+1, f[1])
+			}
+		case "B/op", "ns/op":
+			if !pct {
+				return nil, fmt.Errorf("%s:%d: %s rises by a percentage (\"160%%\")", path, i+1, f[1])
+			}
 		default:
 			return nil, fmt.Errorf("%s:%d: unit %q can't be allowed a rise", path, i+1, f[1])
 		}
