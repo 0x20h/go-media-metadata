@@ -21,6 +21,15 @@
 - `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
   (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
   write it). Before, only the make and model were copied (#182).
+- Every write to a format whose image data is found by offsets now
+  refuses (`ErrUnsupported`) an edit that would change that data in a
+  malformed file. This covers QuickTime/MP4 metadata edits and
+  rotations, HEIF Exif, XMP and orientation writes, and TIFF/RAW edits.
+  Examples are a movie chunk declared inside its own `moov` box, or past
+  the end of the file when the edit grows it, and a HEIF image extent of
+  length 0 (to the end) when an item is appended. Before, such a write
+  could change the image data. Well-formed files are unaffected. The
+  write fuzz targets now check `HashImageData` before and after.
 
 ### Added
 

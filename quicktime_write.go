@@ -18,7 +18,7 @@ func planVideoOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, er
 	if !o.Valid() {
 		return nil, fmt.Errorf("mediameta: orientation %d: not 1 to 8", uint8(o))
 	}
-	tracks, err := videoTracks(src, size)
+	tracks, ranges, err := videoTracksAndChunks(src, size)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,11 @@ func planVideoOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, er
 	for i, p := range patches {
 		internal[i] = patch{at: p.Offset, data: p.Data}
 	}
-	return &Plan{InPlace: true, Patches: patches, Size: size, NewSize: size, src: src, patches: internal}, nil
+	p := &Plan{InPlace: true, Patches: patches, Size: size, NewSize: size, src: src, patches: internal}
+	if err := guardPlan(p, ranges); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // planVideoRotation is setVideoRotation's edit, computed but not written.
@@ -71,26 +75,49 @@ type videoTrack struct {
 // matrix other than the identity is refused: it turns every track, and
 // the orientation is then theirs and its together.
 func videoTracks(src io.ReaderAt, size int64) ([]videoTrack, error) {
+	tracks, _, err := videoTracksAndChunks(src, size)
+	return tracks, err
+}
+
+// videoTracksAndChunks is videoTracks, and the movie's image data ranges
+// for the guard (movieImageRanges), from the movie box read once.
+func videoTracksAndChunks(src io.ReaderAt, size int64) ([]videoTrack, [][2]int64, error) {
 	if size < 8 {
-		return nil, errNotQuickTime
+		return nil, nil, errNotQuickTime
 	}
 	top, err := bmff.ReadBoxes(src, 0, size)
 	if err != nil {
 		if !looksLikeMovie(src, size) {
-			return nil, errNotQuickTime
+			return nil, nil, errNotQuickTime
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if err := checkMovie(src, top); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	moov, ok := bmff.Find(top, bmff.T("moov"))
 	if !ok {
-		return nil, fmt.Errorf("%w: no movie box", ErrMalformed)
+		return nil, nil, fmt.Errorf("%w: no movie box", ErrMalformed)
+	}
+	var ranges [][2]int64
+	if moov.Size <= maxMoov {
+		buf := make([]byte, moov.Size)
+		if _, err := src.ReadAt(buf, moov.Offset); err != nil {
+			return nil, nil, fmt.Errorf("%w: reading the movie box: %v", ErrMalformed, err)
+		}
+		ranges = movieImageRangesIn(top, buf)
+		// The movie box's reads from memory.
+		src = &memSpan{r: src, base: moov.Offset, b: buf}
+	} else {
+		// Too large to hold: the hash's own walk, read from the file.
+		h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
+		if h.movieBoxes(top) != nil {
+			ranges = nil
+		}
 	}
 	kids, err := bmff.ReadBoxes(src, moov.Body(), moov.End())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []videoTrack
 	for _, k := range kids {
@@ -98,26 +125,26 @@ func videoTracks(src io.ReaderAt, size int64) ([]videoTrack, error) {
 		case bmff.T("mvhd"):
 			b, err := readBox(src, k, maxLeafBox)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !mvhdIdentity(b) {
-				return nil, fmt.Errorf("%w: the movie header has a matrix of its own", ErrUnsupported)
+				return nil, nil, fmt.Errorf("%w: the movie header has a matrix of its own", ErrUnsupported)
 			}
 		case bmff.T("trak"):
 			tkhd, ok, err := videoTkhd(src, k)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !ok {
 				continue
 			}
 			b, err := readBox(src, tkhd, maxLeafBox)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			_, w, h, ok := tkhdMatrix(b)
 			if !ok {
-				return nil, fmt.Errorf("%w: a track header this package can't read", ErrUnsupported)
+				return nil, nil, fmt.Errorf("%w: a track header this package can't read", ErrUnsupported)
 			}
 			at, _ := tkhdMatrixAt(b[0]) // tkhdMatrix checked the version and length
 			out = append(out, videoTrack{
@@ -128,9 +155,9 @@ func videoTracks(src io.ReaderAt, size int64) ([]videoTrack, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("%w: no video track", ErrUnsupported)
+		return nil, nil, fmt.Errorf("%w: no video track", ErrUnsupported)
 	}
-	return out, nil
+	return out, ranges, nil
 }
 
 // mvhdMatrixAt is where a movie header's matrix starts in its payload:
@@ -194,4 +221,19 @@ func orientationMatrix(o Orientation, w, h int) ([]byte, bool) {
 		return nil, false
 	}
 	return matrixBytes([9]int32{abcd[0], abcd[1], 0, abcd[2], abcd[3], 0, int32(tx) * fix16One, int32(ty) * fix16One, fix30One}), true
+}
+
+// memSpan reads b, a span of r's bytes at base, from memory, and the rest
+// from r.
+type memSpan struct {
+	r    io.ReaderAt
+	base int64
+	b    []byte
+}
+
+func (s *memSpan) ReadAt(p []byte, off int64) (int, error) {
+	if off >= s.base && off+int64(len(p)) <= s.base+int64(len(s.b)) {
+		return copy(p, s.b[off-s.base:]), nil
+	}
+	return s.r.ReadAt(p, off)
 }

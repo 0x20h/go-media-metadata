@@ -333,6 +333,7 @@ func FuzzPlanItems(f *testing.F) {
 				return // the JPEG, PNG and WebP writes have fuzz targets of their own
 			}
 			before := imageItems(data)
+			ih := fuzzImageHashOf(t, data)
 			o, oerr := ReadOrientation(bytes.NewReader(data), int64(len(data)))
 			for _, c := range []struct {
 				name string
@@ -364,6 +365,7 @@ func FuzzPlanItems(f *testing.F) {
 					t.Fatalf("%s: %v", c.name, err)
 				}
 				out := buf.Bytes()
+				ih.check(t, c.name, out)
 				c.back(t, out)
 				after := imageItems(out)
 				for id, b := range before {

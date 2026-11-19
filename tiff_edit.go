@@ -82,16 +82,6 @@ func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byt
 	var ranges, after [][2]int64
 	h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
 	errBefore := h.raw()
-	if errBefore == nil {
-		for _, s := range e.splices {
-			end := s.at + max(s.del, 1) // an insert at the end touches the byte after
-			for _, rg := range ranges {
-				if s.at < rg[1] && rg[0] < end {
-					return nil, fmt.Errorf("%w: a TIFF whose image data overlaps its metadata (at %d)", ErrUnsupported, s.at)
-				}
-			}
-		}
-	}
 	// And the edited file's image data is where it was: a malformed IFD
 	// the hash walks one way and the TIFF writer reads another (entries
 	// past the end of the file, say) could lose or gain image data.
@@ -102,7 +92,13 @@ func planTIFFFileEdit(src io.ReaderAt, size int64, edit func(file []byte) ([]byt
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
-	return e.plan(src, size), nil
+	p := e.plan(src, size)
+	if errBefore == nil {
+		if err := guardPlan(p, ranges); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
 }
 
 // editTIFFXMP applies edit to the XMP packet in a TIFF's IFD0 (tag 700,

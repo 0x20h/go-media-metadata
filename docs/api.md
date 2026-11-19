@@ -114,6 +114,15 @@ layout, and progressive and restart-marker JPEGs, WebP files and movies
 made with jpegtran, cwebp and ffmpeg. The fuzz targets check that every
 metadata, orientation and rotation write leaves it as it was.
 
+In the formats whose image data is found by offsets (TIFF and RAW strips
+and tiles, HEIF item extents, a movie's chunks), a malformed file can
+declare image data over its own metadata, or past the end of the file.
+A write that would change any of it is refused with `ErrUnsupported`.
+That covers an edit of bytes the image data claims, and a write that
+grows or shrinks a file whose image data runs past its end, where
+appended bytes would fall into it. The ranges are checked as declared,
+before they're cut at the end of the file.
+
 ## Writing
 
 One naming scheme covers every write:

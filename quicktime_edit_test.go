@@ -320,12 +320,14 @@ func FuzzVideoEdit(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
+			ih := fuzzImageHashOf(t, data)
 			for _, e := range append(videoEdits[3:5:5], videoEdits[6:8]...) {
 				p, err := PlanVideoMetadata(bytes.NewReader(data), int64(len(data)), e.edit)
 				if err != nil {
 					continue
 				}
 				checkPlan(t, data, p)
+				ih.check(t, e.name, written(t, p))
 				if readErr != nil {
 					continue
 				}
