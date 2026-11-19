@@ -28,7 +28,7 @@ type Metadata struct {
 	// movie, Video.GPS). Nil without one.
 	GPS *GPS
 	// Camera is the camera, lens and exposure (Exif); for a movie, its
-	// make and model.
+	// make, model and lens model (Video's).
 	Camera Camera
 
 	// Size is the image's size as stored, and with Size.Shown as shown;
@@ -265,7 +265,7 @@ func readAllVideo(r io.ReaderAt, size int64, kind format, top []bmff.Box) (Metad
 		m.Taken = Taken{Date{Time: v.Created, OffsetKnown: v.OffsetKnown, Precision: PrecisionSecond}, SourceMovie}
 	}
 	m.GPS = v.GPS
-	m.Camera = Camera{Make: v.Make, Model: v.Model}
+	m.Camera = Camera{Make: v.Make, Model: v.Model, LensModel: v.LensModel}
 	m.Orientation = v.Orientation
 	if v.Width > 0 && v.Height > 0 {
 		m.Size = ImageSize{Width: v.Width, Height: v.Height, Orientation: v.Orientation}

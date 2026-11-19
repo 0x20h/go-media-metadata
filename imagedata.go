@@ -99,9 +99,10 @@ type rangeWriter struct {
 }
 
 // copy writes r's bytes [off, off+n) to w; a range past the end of the
-// file is cut at it.
+// file is cut at it. Recorded, it's kept as declared, even where it
+// starts past the end: bytes appended to the file would fall into it.
 func (h *rangeWriter) copy(off, n int64) error {
-	if off < 0 || n <= 0 || off >= h.size {
+	if off < 0 || n <= 0 {
 		return nil
 	}
 	if h.record != nil {
@@ -110,6 +111,9 @@ func (h *rangeWriter) copy(off, n int64) error {
 			end = math.MaxInt64
 		}
 		*h.record = append(*h.record, [2]int64{off, end})
+		return nil
+	}
+	if off >= h.size {
 		return nil
 	}
 	n = min(n, h.size-off)
@@ -127,6 +131,15 @@ func (h *rangeWriter) copy(off, n int64) error {
 		off, n = off+k, n-k
 	}
 	return nil
+}
+
+// toEnd writes r's bytes from off to the end of the file. Recorded, the
+// range has no end: whatever is appended to the file would be in it.
+func (h *rangeWriter) toEnd(off int64) error {
+	if h.record != nil {
+		return h.copy(off, math.MaxInt64-max(off, 0))
+	}
+	return h.copy(off, h.size-off)
 }
 
 func (h *rangeWriter) write(b []byte) error {
@@ -320,6 +333,19 @@ func (h *rangeWriter) heif(f *heifFile) error {
 	if f.m.Loc == nil {
 		return nil
 	}
+	if h.record != nil {
+		// As declared, in the file, in any order. idat's extents move
+		// with the meta box; the guard compares their bytes instead.
+		for _, it := range f.m.Loc.Items {
+			if it.ConstructionMethod != 0 || it.DataRefIndex != 0 || !slices.Contains(heifImageTypes, f.m.ItemTypes[it.ID]) {
+				continue
+			}
+			for _, e := range it.Extents {
+				recordExtent(h.record, it.BaseOffset, e.Offset, e.Length)
+			}
+		}
+		return nil
+	}
 	items := slices.Clone(f.m.Loc.Items)
 	slices.SortStableFunc(items, func(a, b bmff.LocItem) int { return int(int64(a.ID) - int64(b.ID)) })
 	idat, idatEnd := int64(-1), int64(0)
@@ -362,6 +388,21 @@ func (h *rangeWriter) heif(f *heifFile) error {
 		}
 	}
 	return nil
+}
+
+// recordExtent records a file extent as declared: base plus offset, for
+// length bytes, or to no end for length 0 (to the end of the file, where
+// whatever is appended would fall). Past math.MaxInt64 it's cut there.
+func recordExtent(out *[][2]int64, base, off, length uint64) {
+	start := base + off
+	if start < base || start > math.MaxInt64 {
+		return
+	}
+	end := uint64(math.MaxInt64)
+	if length != 0 && start+length >= start && start+length < end {
+		end = start + length
+	}
+	*out = append(*out, [2]int64{int64(start), int64(end)})
 }
 
 // idatBody is where the meta box's idat payload starts and ends, -1
@@ -509,7 +550,7 @@ func (w *tiffWalk) ifd(off uint32, name string, depth int) (uint32, error) {
 	}
 	if f, ok := m[tagRW2RawDataOffset]; ok && w.rw2 {
 		if v, ok := t.uint(f); ok {
-			if err := w.h.copy(int64(v), w.h.size-int64(v)); err != nil {
+			if err := w.h.toEnd(int64(v)); err != nil {
 				return 0, err
 			}
 		}
@@ -604,6 +645,11 @@ func (h *rangeWriter) movie() error {
 	if err != nil {
 		return err
 	}
+	return h.movieBoxes(top)
+}
+
+// movieBoxes is movie of a file whose top-level boxes are top.
+func (h *rangeWriter) movieBoxes(top []bmff.Box) error {
 	moov, ok := bmff.Find(top, bmff.T("moov"))
 	if !ok {
 		return nil
@@ -704,6 +750,16 @@ func (h *rangeWriter) track(trak bmff.Box, mdats []bmff.Box) error {
 				end = m.End()
 				break
 			}
+		}
+		if h.record != nil && end == h.size {
+			// Outside every mdat: as declared, past the end of the file
+			// too.
+			if off <= math.MaxInt64 {
+				if err := h.copy(int64(off), n); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 		if int64(off) >= end {
 			continue

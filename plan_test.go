@@ -206,12 +206,14 @@ func FuzzPlanRotation(f *testing.F) {
 	f.Add(tinyTIFF(binary.BigEndian, false))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
+			ih := fuzzImageHashOf(t, data)
 			for _, deg := range []int{0, 90, 180} {
 				p, err := PlanRotation(bytes.NewReader(data), int64(len(data)), deg)
 				if err != nil {
 					continue
 				}
 				checkPlan(t, data, p)
+				ih.check(t, "plan", written(t, p))
 			}
 			// Metadata items: replaced or added, fitting or not.
 			for _, e := range [][2][]byte{{photoTIFF(binary.LittleEndian), nil}, {nil, xmpPacket("x", 0)}, {nil, xmpPacket("y", 3000)}} {
@@ -226,11 +228,13 @@ func FuzzPlanRotation(f *testing.F) {
 					continue
 				}
 				checkPlan(t, data, p)
+				ih.check(t, "plan", written(t, p))
 			}
 			// Exif edits through EditExif.
 			for _, e := range []ExifEdit{{RemoveGPS: true}, {GPS: &GPS{Latitude: 1, Longitude: 2}}} {
 				if p, err := planExifEdit(bytes.NewReader(data), int64(len(data)), e); err == nil {
 					checkPlan(t, data, p)
+					ih.check(t, "plan", written(t, p))
 				}
 			}
 			// Orientation edits: adding, keeping and taking away a mirror.
@@ -240,6 +244,7 @@ func FuzzPlanRotation(f *testing.F) {
 					continue
 				}
 				checkPlan(t, data, p)
+				ih.check(t, "plan", written(t, p))
 			}
 		})
 	})

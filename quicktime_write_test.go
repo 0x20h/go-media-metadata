@@ -169,6 +169,7 @@ func FuzzVideoOrientation(f *testing.F) {
 			// The writer reads only the track headers, so it takes
 			// some movies the reader refuses; those needn't read back.
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
+			ih := fuzzImageHashOf(t, data)
 			for _, o := range []Orientation{1, 6, 7} {
 				p, err := planVideoOrientation(bytes.NewReader(data), int64(len(data)), o)
 				if err != nil {
@@ -178,6 +179,7 @@ func FuzzVideoOrientation(f *testing.F) {
 					t.Fatal("a video orientation plan not in place")
 				}
 				checkPlan(t, data, p)
+				ih.check(t, "orientation", written(t, p))
 				var out bytes.Buffer
 				if _, err := p.WriteTo(&out); err != nil {
 					t.Fatal(err)

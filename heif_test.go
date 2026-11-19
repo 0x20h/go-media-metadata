@@ -347,11 +347,13 @@ func FuzzSetRotation(f *testing.F) {
 	jpegSeeds(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
+			ih := fuzzImageHashOf(t, data)
 			for _, deg := range []int{0, 90} {
 				var out bytes.Buffer
 				if err := SetRotation(bytes.NewReader(data), int64(len(data)), &out, deg); err != nil {
 					continue
 				}
+				ih.check(t, "SetRotation", out.Bytes())
 				o, err := ReadOrientation(bytes.NewReader(out.Bytes()), int64(out.Len()))
 				if err != nil {
 					t.Errorf("SetRotation(%d) wrote a file that doesn't read back: %v", deg, err)

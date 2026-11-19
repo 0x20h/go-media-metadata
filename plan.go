@@ -73,7 +73,7 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 	// that fails.
 	r, herr := planRotation(src, size, degrees)
 	if herr == nil {
-		return r.plan(src, size), nil
+		return r.guardedPlan(src, size)
 	}
 	switch detectFormat(src, size) {
 	case formatHEIF:
@@ -115,7 +115,7 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 	}
 	r, herr := planOrientation(src, size, o)
 	if herr == nil {
-		return r.plan(src, size), nil
+		return r.guardedPlan(src, size)
 	}
 	switch detectFormat(src, size) {
 	case formatHEIF:
@@ -147,6 +147,21 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 		return nil, fmt.Errorf("%w: a JPEG XL codestream's orientation isn't written", ErrUnsupported)
 	}
 	return nil, ErrUnknownFormat
+}
+
+// guardedPlan is the Plan of an edit, refused where it would touch the
+// image data.
+func (r rotation) guardedPlan(src io.ReaderAt, size int64) (*Plan, error) {
+	if err := r.guard(size); err != nil {
+		return nil, err
+	}
+	return r.plan(src, size), nil
+}
+
+// guard refuses the edit where it would touch the image data, as
+// guardHEIFPlan does a plan's.
+func (r rotation) guard(size int64) error {
+	return guardHEIFPlan(&Plan{Size: size, NewSize: size + r.delta, f: r.f, meta: r.meta, patches: r.patches})
 }
 
 // plan is the Plan of an edit.
@@ -206,6 +221,7 @@ func planEdit(src io.ReaderAt, size int64, edit func(*heifFile) error) (rotation
 	if err := f.noDataInMeta(); err != nil {
 		return rotation{}, err
 	}
+	f.snapshotImages()
 	if err := edit(f); err != nil {
 		return rotation{}, err
 	}

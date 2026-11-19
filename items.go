@@ -134,6 +134,7 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if err != nil {
 		return nil, err
 	}
+	f.snapshotImages()
 	id, found, err := f.metadataItem(kind)
 	if err != nil {
 		return nil, err
@@ -243,6 +244,9 @@ func planItem(src io.ReaderAt, size int64, kind metadataKind, payload []byte) (*
 	if p.NewSize == size {
 		p.InPlace = true
 		p.Patches = inPlacePatches(f.meta.Offset, f.raw, newMeta, patches)
+	}
+	if err := guardHEIFPlan(p); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
