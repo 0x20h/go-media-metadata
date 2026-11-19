@@ -172,6 +172,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	}
 	// The image data as declared, before the edit changes the movie box.
 	ranges := movieImageRangesIn(top, old)
+	// And the source as read, from the movie box in memory, for the
+	// read-back check.
+	before, beforeErr := ReadAll(&memSpan{r: src, base: moovBox.Offset, b: old}, size)
 	moov, err := parseQTNode(old, 0)
 	if err != nil {
 		return nil, err
@@ -228,6 +231,13 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	p := e.plan(src, size)
 	if err := guardPlan(p, ranges); err != nil {
 		return nil, err
+	}
+	// The new movie reads as the source but for what the edit sets.
+	if beforeErr == nil {
+		out, n := splicePlanReader(p)
+		if err := readsAsRead(before, out, n, videoEditChanges(edit), nil); err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }
