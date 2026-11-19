@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- A QuickTime or MP4 position whose degrees lack ISO 6709's leading
+  zeros (`+51.1234+8.0630+100.000/`, as Android cameras write the item
+  list's `©xyz`) reads, as ExifTool reads it. Before, the longitude had
+  to have three integer digits and the position was dropped (#199).
+
 ### Safer writes
 
 - TIFF and DNG Exif and XMP edits are read back as `ReadAll` reads them
