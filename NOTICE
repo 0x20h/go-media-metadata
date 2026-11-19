@@ -87,6 +87,16 @@ testdata/matroska/streamed.webm
     Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 
+testdata/asf/video.wmv
+testdata/asf/audio.wma
+testdata/asf/encodingtime.wmv
+    A synthetic test pattern and tone (ffmpeg's testsrc and sine, no
+    recording), encoded by ffmpeg's wmv2 and wmav2 and muxed by ffmpeg;
+    encodingtime.wmv has a WM/EncodingTime value spliced in (see
+    testdata/asf/make.sh and encodingtime.go.txt). Made for this project
+    by its authors. Dedicated to the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
 testdata/heif-xmp/primary-and-gainmap.heic
     A synthetic HEIC (random stand-in image data, no picture) made by the
     test builder (internal/bmff/testbuild; TestMakeTwoXMPCorpus): a primary

@@ -24,6 +24,7 @@ const (
 	formatGIF
 	formatMatroska // Matroska or WebM
 	formatAVI      // RIFF AVI
+	formatASF      // ASF: WMV, WMA
 	formatMPEGPS   // an MPEG program stream
 )
 
@@ -72,6 +73,9 @@ func detectFormatTop(r io.ReaderAt, size int64, top []bmff.Box) format {
 	}
 	if isAVI(r, size) {
 		return formatAVI
+	}
+	if isASF(r, size) {
+		return formatASF
 	}
 	if isMPEGPS(r, size) {
 		return formatMPEGPS

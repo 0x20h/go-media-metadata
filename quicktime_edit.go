@@ -127,6 +127,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 		if isAVI(src, size) {
 			return nil, errAVIReadOnly
 		}
+		if isASF(src, size) {
+			return nil, errASFReadOnly
+		}
 		if isMPEGPS(src, size) {
 			return nil, errMPEGPSReadOnly
 		}
@@ -144,6 +147,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 		}
 		if isAVI(src, size) {
 			return nil, errAVIReadOnly
+		}
+		if isASF(src, size) {
+			return nil, errASFReadOnly
 		}
 		if isMPEGPS(src, size) {
 			return nil, errMPEGPSReadOnly
