@@ -66,7 +66,7 @@ Early, and growing format by format.
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 | MPEG-2 TS, MTS, M2TS (AVCHD) | read (always 1) | | |
 | Matroska (MKV), WebM | read (projection roll) | | |
-| AVI, ASF (WMV, WMA), MPEG-PS | read (always 1) | | |
+| AVI, ASF (WMV, WMA), FLV, MPEG-PS | read (always 1) | | |
 | GIF | | | read |
 | BMP | | | |
 
