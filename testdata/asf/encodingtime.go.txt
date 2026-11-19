@@ -1,0 +1,77 @@
+// Turns an ASF file made by ffmpeg into one dated only by WM/EncodingTime,
+// as some encoders write it: the File Properties Object's creation date
+// set to 0, and a WM/EncodingTime value (a FILETIME, QWORD type 4) added
+// to the Extended Content Description Object. The header grows by the
+// value's bytes; the Data Object after it and its packets, numbered
+// rather than placed by offset, read as before.
+//
+// Usage: go run encodingtime.go <in.asf> <out.asf> <RFC 3339 time>
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"os"
+	"time"
+	"unicode/utf16"
+)
+
+var (
+	filePropsID = guid(0x8CABDCA1, 0xA947, 0x11CF, [8]byte{0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65})
+	extDescID   = guid(0xD2D0A440, 0xE307, 0x11D2, [8]byte{0x97, 0xF0, 0x00, 0xA0, 0xC9, 0x5E, 0xA8, 0x50})
+)
+
+func guid(a uint32, b, c uint16, d [8]byte) []byte {
+	g := binary.LittleEndian.AppendUint32(nil, a)
+	g = binary.LittleEndian.AppendUint16(g, b)
+	g = binary.LittleEndian.AppendUint16(g, c)
+	return append(g, d[:]...)
+}
+
+func utf16z(s string) []byte {
+	var b []byte
+	for _, u := range utf16.Encode([]rune(s + "\x00")) {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	return b
+}
+
+func main() {
+	in, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	at, err := time.Parse(time.RFC3339, os.Args[3])
+	if err != nil {
+		panic(err)
+	}
+	filetime := uint64(at.Unix()+11644473600) * 1e7
+	headerSize := binary.LittleEndian.Uint64(in[16:])
+	var objs []byte
+	for p := 30; p < int(headerSize); {
+		n := int(binary.LittleEndian.Uint64(in[p+16:]))
+		obj := bytes.Clone(in[p : p+n])
+		switch {
+		case bytes.Equal(obj[:16], filePropsID):
+			binary.LittleEndian.PutUint64(obj[24+24:], 0) // the creation date
+		case bytes.Equal(obj[:16], extDescID):
+			name := utf16z("WM/EncodingTime")
+			d := binary.LittleEndian.AppendUint16(nil, uint16(len(name)))
+			d = append(d, name...)
+			d = binary.LittleEndian.AppendUint16(d, 4) // QWORD
+			d = binary.LittleEndian.AppendUint16(d, 8)
+			d = binary.LittleEndian.AppendUint64(d, filetime)
+			binary.LittleEndian.PutUint16(obj[24:], binary.LittleEndian.Uint16(obj[24:])+1)
+			obj = append(obj, d...)
+			binary.LittleEndian.PutUint64(obj[16:], uint64(len(obj)))
+		}
+		objs = append(objs, obj...)
+		p += n
+	}
+	head := bytes.Clone(in[:30])
+	binary.LittleEndian.PutUint64(head[16:], uint64(30+len(objs)))
+	out := append(append(head, objs...), in[headerSize:]...)
+	if err := os.WriteFile(os.Args[2], out, 0o644); err != nil {
+		panic(err)
+	}
+}

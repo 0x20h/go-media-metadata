@@ -9,6 +9,14 @@
   list's `©xyz`) reads, as ExifTool reads it. Before, the longitude had
   to have three integer digits and the position was dropped (#199).
 
+### Added
+
+- ASF (WMV, WMA): `ReadVideo` and `ReadAll` read the recording date (the
+  File Properties Object's creation date, UTC, else WM/EncodingTime),
+  the duration less the preroll, the video size, the title and the
+  description. Read only; writes give `ErrUnsupported`. See
+  [docs/quicktime.md](docs/quicktime.md) (part of #204).
+
 ### Safer writes
 
 - TIFF and DNG Exif and XMP edits are read back as `ReadAll` reads them

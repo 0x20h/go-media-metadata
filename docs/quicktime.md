@@ -289,7 +289,7 @@ ExifTool. The checks:
 - ExifTool finds none of the tags once stripped, and only the rotation
   remains
 
-## AVI and MPEG program streams
+## AVI, ASF and MPEG program streams
 
 Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
 `ReadOrientation`, which give orientation 1). Writes give an error that is
@@ -306,6 +306,18 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
     16-bit size, little-endian, then the value. Without an offset.
   - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
     keywords `IKEY`, split at `;` or `,`.
+- **ASF** (WMV, WMA, as Windows Media and many cameras and phones of the
+  2000s wrote them):
+  - The recording date is the File Properties Object's creation date (a
+    FILETIME, UTC, so its offset is known), else the Extended Content
+    Description's `WM/EncodingTime`. A broadcast file's dates aren't set.
+  - The duration is the play duration less the preroll, as players show
+    it and ffprobe gives it. ExifTool's Duration is the play duration
+    with the preroll in it.
+  - The size is the first video stream's encoded size (Stream Properties).
+  - The title and description come from the Content Description Object,
+    else from the Extended Content Description's `Title` and
+    `Description`, where some writers (ffmpeg among them) put them.
 - **MPEG program streams** (`.mpg`, `.vob`):
   - The size comes from the first video sequence header.
   - The duration runs from the first video PES packet's PTS to the last's,
@@ -314,5 +326,6 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
   - ExifTool gives the size, and no duration for a variable bitrate. The
     tests check the duration against ffprobe.
 
-Both are checked against ExifTool on `testdata/avi` and `testdata/mpegps`,
-synthetic clips made by those folders' `make.sh`.
+They're checked against ExifTool (and the durations against ffprobe) on
+`testdata/avi`, `testdata/asf` and `testdata/mpegps`, synthetic clips made
+by those folders' `make.sh`.
