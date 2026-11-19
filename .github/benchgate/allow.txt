@@ -1,4 +1,6 @@
 # Rises a change makes on purpose: one per line, as
 #   <benchmark name prefix> <unit> <most rise> <reason...>
-# unit: allocs/op, read-B/op or readcalls/op. A PR that adds a line says
-# why in its description; the line goes again once the change is on main.
+# unit: allocs/op, read-B/op or readcalls/op, the most as a count; or
+# B/op or ns/op, the most as a percentage ("160%") in place of the gate's
+# 10% or 25%. A PR that adds a line says why in its description; the line
+# goes again once the change is on main.
