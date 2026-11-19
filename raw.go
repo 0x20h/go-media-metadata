@@ -596,6 +596,13 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 	if after := imageDataRanges(out, out.size); !slices.Equal(before, after) {
 		return nil, fmt.Errorf("%w: a TIFF whose image data the edit would change", ErrUnsupported)
 	}
+	// Nor its stored size: an IFD whose entries run into IFD0's bytes
+	// reads otherwise once IFD0 is elsewhere.
+	if was, err := rawImageSize(t.r, t.size); err == nil {
+		if now, err := rawImageSize(out, out.size); err != nil || now.Width != was.Width || now.Height != was.Height {
+			return nil, fmt.Errorf("%w: a TIFF whose image size the edit would change", ErrUnsupported)
+		}
+	}
 	return p, nil
 }
 
