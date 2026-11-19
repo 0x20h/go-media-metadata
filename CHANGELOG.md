@@ -21,9 +21,12 @@
   the new or the old IFD0 as other strips, which is checked by walking
   the edited file's image data again, as the TIFF metadata editor does.
   Found by FuzzOrientationAnyFormat.
-- And where it would change the image size the file reads as: an IFD
-  whose entries run into IFD0's bytes reads otherwise once IFD0 is
-  elsewhere. Found by FuzzOrientationAnyFormat.
+- And, generally, where the edited file would read otherwise than the
+  original in anything but its orientation, as `ReadAll` reads it: an
+  IFD whose entries run into IFD0's bytes, say, reads otherwise once
+  IFD0 is elsewhere (found by FuzzOrientationAnyFormat as a lost image
+  size). Every TIFF and RAW orientation write is checked so, over the
+  source with the edit laid on top.
 - `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
   (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
   write it). Before, only the make and model were copied (#182).
