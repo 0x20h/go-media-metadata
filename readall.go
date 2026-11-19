@@ -19,8 +19,10 @@ type Metadata struct {
 	Format string
 
 	// Taken is when the photo was taken, and where that was read: as
-	// TakenFrom picks it from the Exif, XMP and IPTC. For a movie it is
-	// Video.Created, with Source SourceMovie.
+	// TakenFrom picks it from the Exif, XMP and IPTC; for a PNG with
+	// none of those but Exif DateTime, its Creation Time text chunk
+	// (SourcePNGCreationTime). For a movie it is Video.Created, with
+	// Source SourceMovie.
 	Taken Taken
 	// GPS is where: the Exif GPS IFD's position, else the XMP's (for a
 	// movie, Video.GPS). Nil without one.
@@ -58,8 +60,8 @@ type Metadata struct {
 
 	// Exif, XMP and IPTC are the standards as parsed, empty where the file
 	// has none or one that couldn't be read (see Errors).
-	// PNG is a PNG's own text metadata (its Title and Description text
-	// chunks, its tIME), zero for other formats. Title and Description
+	// PNG is a PNG's own text metadata (its Title, Description and
+	// Creation Time text chunks, its tIME), zero for other formats. Title and Description
 	// fall back to it after XMP, IPTC and Exif.
 	PNG PNGText
 
@@ -86,6 +88,12 @@ func (e ReadErrors) Err() error {
 
 // SourceMovie is a movie's recording date: Video.Created.
 const SourceMovie DateSource = 100
+
+// SourcePNGCreationTime is a PNG's Creation Time text chunk
+// (PNGText.Created): ReadAll's date for a PNG with no Exif, XMP or IPTC
+// capture or creation date. It comes before Exif DateTime, which says
+// when the file was last changed.
+const SourcePNGCreationTime DateSource = 101
 
 // ReadAll reads everything this package reads from the file in r (size
 // bytes) in one call. It tells the format once and, for JPEG, HEIF, PNG
@@ -207,6 +215,9 @@ func orientationOfExif(x Exif, exifErr error, errs *ReadErrors) Orientation {
 func (m *Metadata) summarize() {
 	x, i, e := m.XMP, m.IPTC, m.Exif
 	m.Taken = TakenFrom(e, x, i)
+	if c := m.PNG.Created; c != nil && (m.Taken.Source == SourceNone || m.Taken.Source == SourceExifDateTime) {
+		m.Taken = Taken{*c, SourcePNGCreationTime}
+	}
 	m.GPS = e.GPS
 	if m.GPS == nil {
 		m.GPS = x.GPS

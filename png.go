@@ -449,11 +449,13 @@ func planPNGXMP(r io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 		if k < 0 {
 			continue
 		}
+		// The keyword as ExifTool and ReadPNGText match it (a word may
+		// start in lower case); its case is kept.
 		var v *string
-		switch string(head[:k]) {
-		case "Title":
+		switch kw := string(head[:k]); {
+		case pngKeywordIs(kw, "Title"):
 			v = edit.Title
-		case "Description":
+		case pngKeywordIs(kw, "Description"):
 			v = edit.Description
 		}
 		if v == nil {

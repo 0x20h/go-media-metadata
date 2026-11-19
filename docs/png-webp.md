@@ -29,10 +29,21 @@ most 65536 of them.
   - The title and description come from the text chunks with the
     keywords `Title` and `Description` (`tEXt` and `zTXt` in Latin-1,
     `iTXt` in UTF-8, compressed or not), the first of each.
+  - `Created` is the `Creation Time` text chunk (ExifTool's PNG
+    CreationTime). PNG leaves its form free and recommends RFC 1123
+    (`Mon, 04 Mar 2014 05:06:07 GMT`). That, RFC 822's layout with a
+    numeric zone, ISO 8601 and the Exif layout (`2014:03:04 05:06:07`)
+    are read, with the precision and offset they give. Free text
+    (`March 4, 2014`) isn't a date.
+  - A keyword matches as ExifTool matches it: each word's first letter
+    in either case, the rest as written. `title` and `creation time`
+    are Title and Creation Time; `TITLE` is another keyword.
   - `Modified` is the `tIME` chunk, the last modification in UTC
     (ExifTool's PNG ModifyDate). It isn't a capture date.
   - `ReadAll`'s `Title` and `Description` fall back to these after XMP,
-    IPTC and Exif.
+    IPTC and Exif. Its `Taken` falls back to `Created`
+    (`SourcePNGCreationTime`) where no Exif, XMP or IPTC capture or
+    creation date is found, ahead of Exif's DateTime.
 
 **Writing.** A payload no longer than the old one fills its chunk,
 padded with zeros after TIFF data or spaces after XMP, and the chunk's
