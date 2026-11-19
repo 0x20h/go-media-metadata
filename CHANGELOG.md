@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- A QuickTime or MP4 position whose degrees lack ISO 6709's leading
+  zeros (`+51.1234+8.0630+100.000/`, as Android cameras write the item
+  list's `©xyz`) reads, as ExifTool reads it. Before, the longitude had
+  to have three integer digits and the position was dropped (#199).
+
 ### Added
 
 - ASF (WMV, WMA): `ReadVideo` and `ReadAll` read the recording date (the
@@ -22,6 +29,9 @@
   parts) must read as before, the image size and orientation included.
   The planned file is read from the source and the plan's parts, never
   written out for the check.
+- QuickTime and MP4 metadata edits (`PlanVideoMetadata`) are read back
+  the same way: everything but what the edit sets (and, for an XMP edit,
+  what the movie reads from its XMP) must read as before.
 
 ## v0.2.4 (2026-11-19)
 

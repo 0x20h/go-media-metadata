@@ -165,6 +165,11 @@ func TestParseISO6709(t *testing.T) {
 		{"+4852.50+00217.67/", 48.875, 2.2945, 0, false, true},          // DDMM.MM
 		{"+485230.0+0021704.2/", 48.875, 2.2845, 0, false, true},        // DDMMSS.S
 		{"+52.52+013.405+034CRSWGS_84/", 52.52, 13.405, 34, true, true}, // with a CRS
+		// Degrees without ISO 6709's leading zeros, as Android writes them.
+		{"+51.1234+8.0630+100.000/", 51.1234, 8.063, 100, true, true},
+		{"+5.5-12.25/", 5.5, -12.25, 0, false, true},
+		{"+123.4+008.0/", 0, 0, 0, false, false},  // three latitude digits
+		{"+52.52+1234.5/", 0, 0, 0, false, false}, // four longitude digits
 		{"+91.0+000.0/", 0, 0, 0, false, false},
 		{"+00.0+181.0/", 0, 0, 0, false, false},
 		{"+4860.0+00200.0/", 0, 0, 0, false, false}, // 60 minutes
@@ -399,4 +404,32 @@ func mustAtoi(t *testing.T, s string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// An item list ©xyz whose longitude has fewer integer digits than ISO
+// 6709's three, as Android cameras write it, reads as ExifTool reads it.
+func TestItemListGPSShortDegrees(t *testing.T) {
+	file := readFile(t, "testdata/video/itemlist-gps.mp4")
+	old, short := []byte("-33.8568+151.2153+5.000/"), []byte("-33.8568+8.215300+5.000/")
+	if bytes.Count(file, old) != 1 {
+		t.Fatal("the fixture's ©xyz value isn't there once")
+	}
+	file = bytes.Replace(file, old, short, 1)
+	v, err := ReadVideo(bytes.NewReader(file), int64(len(file)))
+	if err != nil || v.GPS == nil || math.Abs(v.GPS.Latitude+33.8568) > 1e-6 || math.Abs(v.GPS.Longitude-8.2153) > 1e-6 || v.GPS.Altitude != 5 {
+		t.Fatalf("%+v, %v", v.GPS, err)
+	}
+	tool, err := exec.LookPath("exiftool")
+	if err != nil {
+		t.Skip("exiftool not installed")
+	}
+	p := filepath.Join(t.TempDir(), "short.mp4")
+	if err := os.WriteFile(p, file, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(tool, "-j", "-n", "-GPSLatitude", "-GPSLongitude", p).Output()
+	var got []map[string]any
+	if err != nil || json.Unmarshal(out, &got) != nil || len(got) != 1 || got[0]["GPSLatitude"] != -33.8568 || got[0]["GPSLongitude"] != 8.2153 {
+		t.Errorf("ExifTool %s (%v)", out, err)
+	}
 }
