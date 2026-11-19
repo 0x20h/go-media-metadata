@@ -8,6 +8,9 @@
   Orientation entry that doesn't read (its value past the end of the
   file) replaces that entry. Before, a second one was added, and the
   first, unreadable one still read as 1. Found by FuzzOrientationAnyFormat.
+- `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
+  (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
+  write it). Before, only the make and model were copied (#182).
 
 ### Added
 
