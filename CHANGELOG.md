@@ -15,7 +15,8 @@
   File Properties Object's creation date, UTC, else WM/EncodingTime),
   the duration less the preroll, the video size, the title and the
   description. Read only; writes give `ErrUnsupported`. See
-  [docs/quicktime.md](docs/quicktime.md) (part of #204).
+  [docs/quicktime.md](docs/quicktime.md) (part of #204). A play
+  duration too long for a `time.Duration` gives none.
 
 ### Safer writes
 
