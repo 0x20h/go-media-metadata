@@ -167,7 +167,7 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			packet, xmpErr = ReadXMP(r, size)
 			m.Size, m.Errors.Size = ReadImageSize(r, size)
 			m.Orientation, m.Errors.Orientation = ReadOrientation(r, size)
-		case formatMovie, formatTS, formatMatroska, formatAVI, formatASF, formatMPEGPS:
+		case formatMovie, formatTS, formatMatroska, formatAVI, formatFLV, formatASF, formatMPEGPS:
 			if kind != formatMovie {
 				top = nil // boxes that read as boxes, but not a movie's
 			}
@@ -176,7 +176,7 @@ func ReadAll(r io.ReaderAt, size int64) (Metadata, error) {
 			if startsWithFtyp(r, size) && errors.Is(herr, ErrMalformed) {
 				return m, herr
 			}
-			return m, formatError("JPEG, HEIF, PNG, WebP, JPEG XL, camera RAW, GIF, BMP, QuickTime, MP4, MPEG-TS, Matroska, AVI, MPEG-PS or ASF file")
+			return m, formatError("JPEG, HEIF, PNG, WebP, JPEG XL, camera RAW, GIF, BMP, QuickTime, MP4, MPEG-TS, Matroska, AVI, MPEG-PS, ASF or FLV file")
 		}
 	}
 	if m.Size.Width > 0 && m.Errors.Size == nil {
@@ -252,6 +252,8 @@ func readAllVideo(r io.ReaderAt, size int64, kind format, top []bmff.Box) (Metad
 		m.Format = "Matroska"
 	case formatAVI:
 		m.Format = "AVI"
+	case formatFLV:
+		m.Format = "FLV"
 	case formatASF:
 		m.Format = "ASF"
 	case formatMPEGPS:

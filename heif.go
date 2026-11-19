@@ -216,7 +216,7 @@ func ReadOrientation(r io.ReaderAt, size int64) (Orientation, error) {
 			return readJXLOrientation(r, size)
 		case isGIF(r, size), isBMP(r, size):
 			return 1, nil // no orientation: shown as stored
-		case detectFormat(r, size) == formatMovie, detectFormat(r, size) == formatTS, detectFormat(r, size) == formatMatroska, detectFormat(r, size) == formatAVI, detectFormat(r, size) == formatASF, detectFormat(r, size) == formatMPEGPS:
+		case detectFormat(r, size) == formatMovie, detectFormat(r, size) == formatTS, detectFormat(r, size) == formatMatroska, detectFormat(r, size) == formatAVI, detectFormat(r, size) == formatFLV, detectFormat(r, size) == formatASF, detectFormat(r, size) == formatMPEGPS:
 			v, err := ReadVideo(r, size)
 			if err != nil {
 				return 0, err
