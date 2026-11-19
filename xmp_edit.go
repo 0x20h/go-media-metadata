@@ -35,7 +35,7 @@ func planXMPEdit(src io.ReaderAt, size int64, edit XMPEdit) (*Plan, error) {
 		if err != nil {
 			return nil, err
 		}
-		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return editTIFFXMP(file, edit) })
+		return planTIFFFileEdit(src, size, func(file []byte) ([]byte, error) { return editTIFFXMP(file, edit) }, xmpEditChanges(edit))
 	}
 	if detectFormat(src, size) == formatMovie {
 		return PlanVideoMetadata(src, size, VideoEdit{XMP: &edit})
