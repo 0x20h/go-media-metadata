@@ -14,6 +14,9 @@
   parts) must read as before, the image size and orientation included.
   The planned file is read from the source and the plan's parts, never
   written out for the check.
+- QuickTime and MP4 metadata edits (`PlanVideoMetadata`) are read back
+  the same way: everything but what the edit sets (and, for an XMP edit,
+  what the movie reads from its XMP) must read as before.
 
 ## v0.2.4 (2026-11-19)
 
