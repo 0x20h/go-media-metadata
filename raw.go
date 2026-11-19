@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
@@ -589,7 +590,62 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 			return nil, err
 		}
 	}
+	// And the new file's image data is where it was: a malformed IFD
+	// chain can read the new IFD0 (or the old one, no longer the first but
+	// still in another IFD's chain) as other strips.
+	out := &patchedReader{r: &appendedReader{r: t.r, size: t.size, tail: ifd}, size: t.size + int64(len(ifd)), patches: sameSizeSplices(e)}
+	if after := imageDataRanges(out, out.size); !slices.Equal(ranges, after) {
+		return nil, fmt.Errorf("%w: a TIFF whose image data the edit would change", ErrUnsupported)
+	}
 	return e.plan(t.r, t.size), nil
+}
+
+// sameSizeSplices are e's splices that replace bytes one for one, as
+// patches.
+func sameSizeSplices(e *spliceEdit) []Patch {
+	var out []Patch
+	for _, s := range e.splices {
+		if int64(len(s.data)) == s.del && s.del > 0 {
+			out = append(out, Patch{Offset: s.at, Data: s.data})
+		}
+	}
+	return out
+}
+
+// appendedReader reads r (size bytes) with tail after it.
+type appendedReader struct {
+	r    io.ReaderAt
+	size int64
+	tail []byte
+}
+
+func (a *appendedReader) ReadAt(b []byte, off int64) (int, error) {
+	if off < 0 {
+		return 0, fmt.Errorf("mediameta: read at %d", off)
+	}
+	n := 0
+	if off < a.size {
+		k := min(int64(len(b)), a.size-off)
+		m, err := a.r.ReadAt(b[:k], off)
+		n = m
+		if err != nil && err != io.EOF {
+			return n, err
+		}
+		if int64(m) < k {
+			return n, io.EOF
+		}
+	}
+	if n < len(b) {
+		at := off + int64(n) - a.size
+		if at >= int64(len(a.tail)) {
+			return n, io.EOF
+		}
+		n += copy(b[n:], a.tail[at:])
+	}
+	if n < len(b) {
+		return n, io.EOF
+	}
+	return n, nil
 }
 
 // imageDataRanges are a RAW or TIFF file's image data ranges, as

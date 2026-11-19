@@ -14,6 +14,10 @@
   or that runs past the end of the file, over where a new IFD0 would go.
   Before, such a write changed the image data. Found by
   FuzzOrientationAnyFormat.
+- The same write is also refused where the TIFF's IFD chain would read
+  the new or the old IFD0 as other strips, which is checked by walking
+  the edited file's image data again, as the TIFF metadata editor does.
+  Found by FuzzOrientationAnyFormat.
 - `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
   (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
   write it). Before, only the make and model were copied (#182).
