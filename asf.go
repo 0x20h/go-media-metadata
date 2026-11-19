@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -157,8 +158,12 @@ func readASFFileProperties(b []byte, v *Video) {
 	}
 	play := binary.LittleEndian.Uint64(b[40:])    // 100 ns
 	preroll := binary.LittleEndian.Uint64(b[56:]) // ms
-	if play/1e4 > preroll && play < 1<<62 {
-		v.Duration = time.Duration(play-preroll*1e4) * 100
+	// In 100 ns units; a duration past what a time.Duration holds isn't
+	// one.
+	if play/1e4 > preroll {
+		if d := play - preroll*1e4; d <= math.MaxInt64/100 {
+			v.Duration = time.Duration(d) * 100
+		}
 	}
 }
 
