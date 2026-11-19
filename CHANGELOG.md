@@ -8,6 +8,12 @@
   Orientation entry that doesn't read (its value past the end of the
   file) replaces that entry. Before, a second one was added, and the
   first, unreadable one still read as 1. Found by FuzzOrientationAnyFormat.
+- Setting the orientation of a TIFF or camera RAW file is refused
+  (`ErrUnsupported`) where the write would touch the image data: a
+  strip or tile that overlaps the Orientation entry or the XMP packet,
+  or that runs past the end of the file, over where a new IFD0 would go.
+  Before, such a write changed the image data. Found by
+  FuzzOrientationAnyFormat.
 
 ### Added
 
