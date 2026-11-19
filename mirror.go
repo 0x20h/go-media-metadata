@@ -29,6 +29,9 @@ func SetOrientation(src io.ReaderAt, size int64, dst io.Writer, o Orientation) e
 	// HEIF is streamed without building a plan.
 	r, err := planOrientation(src, size, o)
 	if err == nil {
+		if err := r.guard(size); err != nil {
+			return err
+		}
 		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 		return err
 	}

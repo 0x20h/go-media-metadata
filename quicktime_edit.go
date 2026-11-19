@@ -170,6 +170,8 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if _, err := src.ReadAt(old, moovBox.Offset); err != nil {
 		return nil, fmt.Errorf("%w: reading the movie box: %v", ErrMalformed, err)
 	}
+	// The image data as declared, before the edit changes the movie box.
+	ranges := movieImageRangesIn(top, old)
 	moov, err := parseQTNode(old, 0)
 	if err != nil {
 		return nil, err
@@ -223,7 +225,11 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 			return nil, err
 		}
 	}
-	return e.plan(src, size), nil
+	p := e.plan(src, size)
+	if err := guardPlan(p, ranges); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // editMovieXMP applies edit to a movie's XMP packets (see VideoEdit.XMP):

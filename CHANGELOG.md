@@ -18,6 +18,15 @@
   the new or the old IFD0 as other strips, which is checked by walking
   the edited file's image data again, as the TIFF metadata editor does.
   Found by FuzzOrientationAnyFormat.
+- Every write to a format whose image data is found by offsets now
+  refuses (`ErrUnsupported`) an edit that would change that data in a
+  malformed file. This covers QuickTime/MP4 metadata edits and
+  rotations, HEIF Exif, XMP and orientation writes, and TIFF/RAW edits.
+  Examples are a movie chunk declared inside its own `moov` box, or past
+  the end of the file when the edit grows it, and a HEIF image extent of
+  length 0 (to the end) when an item is appended. Before, such a write
+  could change the image data. Well-formed files are unaffected. The
+  write fuzz targets now check `HashImageData` before and after.
 
 ### Added
 

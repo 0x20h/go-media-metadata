@@ -582,22 +582,21 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
-	ranges := imageDataRanges(t.r, t.size)
-	for _, s := range e.splices {
-		// An insert at the end touches the byte after: a strip that runs
-		// past the end of the file would take in the new IFD0.
-		if err := refuseImageDataOverlap(ranges, s.at, s.at+max(s.del, 1)); err != nil {
-			return nil, err
-		}
+	// A strip that runs past the end of the file would take in the new
+	// IFD0.
+	p := e.plan(t.r, t.size)
+	before := imageDataRanges(t.r, t.size)
+	if err := guardPlan(p, before); err != nil {
+		return nil, err
 	}
 	// And the new file's image data is where it was: a malformed IFD
-	// chain can read the new IFD0 (or the old one, no longer the first but
-	// still in another IFD's chain) as other strips.
+	// chain can read the new IFD0 (or the old one, now unreferenced from
+	// the header but still in another IFD's chain) as other strips.
 	out := &patchedReader{r: &appendedReader{r: t.r, size: t.size, tail: ifd}, size: t.size + int64(len(ifd)), patches: sameSizeSplices(e)}
-	if after := imageDataRanges(out, out.size); !slices.Equal(ranges, after) {
+	if after := imageDataRanges(out, out.size); !slices.Equal(before, after) {
 		return nil, fmt.Errorf("%w: a TIFF whose image data the edit would change", ErrUnsupported)
 	}
-	return e.plan(t.r, t.size), nil
+	return p, nil
 }
 
 // sameSizeSplices are e's splices that replace bytes one for one, as
@@ -640,34 +639,11 @@ func (a *appendedReader) ReadAt(b []byte, off int64) (int, error) {
 		if at >= int64(len(a.tail)) {
 			return n, io.EOF
 		}
-		n += copy(b[n:], a.tail[at:])
+		m := copy(b[n:], a.tail[at:])
+		n += m
 	}
 	if n < len(b) {
 		return n, io.EOF
 	}
 	return n, nil
-}
-
-// imageDataRanges are a RAW or TIFF file's image data ranges, as
-// HashImageData takes them: the strips, tiles and data ranges as
-// declared, before they're cut at the end of the file. None for a file
-// whose image data doesn't walk, which is left to the edit's own checks.
-func imageDataRanges(src io.ReaderAt, size int64) [][2]int64 {
-	var ranges [][2]int64
-	h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
-	if h.raw() != nil {
-		return nil
-	}
-	return ranges
-}
-
-// refuseImageDataOverlap refuses (ErrUnsupported) an edit of bytes
-// [at, end) that would touch one of the image data ranges.
-func refuseImageDataOverlap(ranges [][2]int64, at, end int64) error {
-	for _, rg := range ranges {
-		if at < rg[1] && rg[0] < end {
-			return fmt.Errorf("%w: a TIFF whose image data overlaps its metadata (at %d)", ErrUnsupported, at)
-		}
-	}
-	return nil
 }

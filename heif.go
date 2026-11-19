@@ -22,7 +22,10 @@ type heifFile struct {
 	boxes []bmff.Box
 	meta  bmff.Box
 	raw   []byte
-	m     *bmff.Meta
+	// images is the image data as parsed, for the guard of an edit
+	// (snapshotImages); nil until taken.
+	images *heifImages
+	m      *bmff.Meta
 }
 
 func parseHEIF(r io.ReaderAt, size int64) (*heifFile, error) {
@@ -293,6 +296,9 @@ func SetRotation(src io.ReaderAt, size int64, dst io.Writer, degrees int) error 
 	// HEIF is streamed without building a plan.
 	r, err := planRotation(src, size, degrees)
 	if err == nil {
+		if err := r.guard(size); err != nil {
+			return err
+		}
 		_, err = r.f.write(src, size, dst, r.meta, r.delta, r.patches)
 		return err
 	}
