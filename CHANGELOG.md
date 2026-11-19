@@ -8,6 +8,12 @@
   Orientation entry that doesn't read (its value past the end of the
   file) replaces that entry. Before, a second one was added, and the
   first, unreadable one still read as 1. Found by FuzzOrientationAnyFormat.
+- Setting the orientation of a TIFF or camera RAW file is refused
+  (`ErrUnsupported`) where the write would touch the image data: a
+  strip or tile that overlaps the Orientation entry or the XMP packet,
+  or that runs past the end of the file, over where a new IFD0 would go.
+  Before, such a write changed the image data. Found by
+  FuzzOrientationAnyFormat.
 - `ReadAll` of a movie fills `Camera.LensModel` from `Video.LensModel`
   (the Keys entry `com.apple.quicktime.camera.lens_model`, as iPhones
   write it). Before, only the make and model were copied (#182).

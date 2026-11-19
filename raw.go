@@ -439,6 +439,12 @@ func planRAWOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, erro
 			}
 		}
 	}
+	ranges := imageDataRanges(src, size)
+	for _, p := range patches {
+		if err := refuseImageDataOverlap(ranges, p.Offset, p.Offset+int64(len(p.Data))); err != nil {
+			return nil, err
+		}
+	}
 	for i := 1; i < len(patches); i++ {
 		for j := i; j > 0 && patches[j].Offset < patches[j-1].Offset; j-- {
 			patches[j], patches[j-1] = patches[j-1], patches[j]
@@ -575,5 +581,37 @@ func addOrientationIFD0(t *rawTIFF, o Orientation) (*Plan, error) {
 	if err := e.sorted(); err != nil {
 		return nil, err
 	}
+	ranges := imageDataRanges(t.r, t.size)
+	for _, s := range e.splices {
+		// An insert at the end touches the byte after: a strip that runs
+		// past the end of the file would take in the new IFD0.
+		if err := refuseImageDataOverlap(ranges, s.at, s.at+max(s.del, 1)); err != nil {
+			return nil, err
+		}
+	}
 	return e.plan(t.r, t.size), nil
+}
+
+// imageDataRanges are a RAW or TIFF file's image data ranges, as
+// HashImageData takes them: the strips, tiles and data ranges as
+// declared, before they're cut at the end of the file. None for a file
+// whose image data doesn't walk, which is left to the edit's own checks.
+func imageDataRanges(src io.ReaderAt, size int64) [][2]int64 {
+	var ranges [][2]int64
+	h := &rangeWriter{r: src, size: size, w: io.Discard, record: &ranges}
+	if h.raw() != nil {
+		return nil
+	}
+	return ranges
+}
+
+// refuseImageDataOverlap refuses (ErrUnsupported) an edit of bytes
+// [at, end) that would touch one of the image data ranges.
+func refuseImageDataOverlap(ranges [][2]int64, at, end int64) error {
+	for _, rg := range ranges {
+		if at < rg[1] && rg[0] < end {
+			return fmt.Errorf("%w: a TIFF whose image data overlaps its metadata (at %d)", ErrUnsupported, at)
+		}
+	}
+	return nil
 }
