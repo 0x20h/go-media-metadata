@@ -472,7 +472,10 @@ func zeroMovieTimes(moov *qtNode) bool {
 			continue
 		}
 		zero(k.child(bmff.T("tkhd")))
-		zero(path(k, "mdia", "mdhd"))
+		// path finds containers only: mdhd is a leaf of mdia.
+		if mdia := path(k, "mdia"); mdia != nil {
+			zero(mdia.child(bmff.T("mdhd")))
+		}
 	}
 	return changed
 }
