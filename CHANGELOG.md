@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `RewriteMovie` and `PlanRewriteMovie` take fragmented MP4 and MOV
+  files (moof and mdat pairs, mvex, sidx, mfra), which they refused
+  before, so their metadata can be stripped and times zeroed. The
+  fragments' absolute offsets (tfhd base-data-offset, tfra moof
+  offsets) and a sidx's first offset follow the boxes as they move.
+  Fragments or a sidx before moov are still refused (#178).
+
 ### Fixed
 
 - `VideoEdit.Created` also sets the date in a Canon MP4's thumbnail Exif

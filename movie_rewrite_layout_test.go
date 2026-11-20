@@ -161,6 +161,7 @@ func FuzzRewriteMovie(f *testing.F) {
 		f.Add(assembleMovie(&testing.T{}, false, strings.Fields(l)...))
 	}
 	f.Add(readFile(f, "testdata/video/bframes-noedts.mp4"))
+	f.Add(readFile(f, "testdata/video/frag.mp4")) // fragmented
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			r := bytes.NewReader(data)

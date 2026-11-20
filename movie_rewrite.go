@@ -72,9 +72,15 @@ func RewriteMovie(src io.ReaderAt, size int64, dst io.Writer, opts RewriteOption
 // as FFmpeg's faststart does. With opts, the metadata is left out and
 // the times zeroed (see RewriteOptions).
 //
+// A fragmented movie (moov with mvex, then moof and mdat pairs, sidx,
+// mfra) is rewritten too: the absolute offsets its fragments hold (tfhd
+// base-data-offset, tfra moof offsets) move with their boxes, and a sidx's
+// first offset follows what it indexes.
+//
 // A movie that is already so (and opts change nothing) gives an in-place
-// plan without patches. Refused, with ErrUnsupported: fragmented movies
-// (moof, mvex, sidx, mfra), sample auxiliary offsets (saio), media in
+// plan without patches. Refused, with ErrUnsupported: fragments or a
+// segment index before moov, a segment index over boxes that would move
+// apart, sample auxiliary offsets in moov (saio), media in
 // other files (dref), a movie box over 64 MB, a top-level meta box (with
 // item locations) that would move and isn't stripped; with ErrMalformed: a chunk
 // offset outside the boxes kept. A file that isn't a movie gives
@@ -92,12 +98,19 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 				return nil, fmt.Errorf("%w: two movie boxes", ErrMalformed)
 			}
 			mi = i
-		case bmff.T("moof"), bmff.T("mfra"), bmff.T("sidx"), bmff.T("ssix"), bmff.T("emsg"):
-			return nil, fmt.Errorf("%w: a fragmented movie (%v)", ErrUnsupported, b.Type)
 		}
 	}
 	if mi < 0 {
 		return nil, fmt.Errorf("%w: no movie box", ErrMalformed)
+	}
+	fragmented := false
+	for _, b := range top {
+		fragmented = fragmented || isFragmentBox(b.Type)
+	}
+	if fragmented {
+		if err := checkFragmentLayout(top, mi); err != nil {
+			return nil, err
+		}
 	}
 	moovBox := top[mi]
 	if moovBox.Size > maxMoov {
@@ -207,10 +220,18 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 		if int64(moov.encodedLen()) != moovLen {
 			return nil, fmt.Errorf("%w: the movie box changed size twice", ErrUnsupported)
 		}
+		var frag []splice
+		if fragmented {
+			var err error
+			if frag, err = fragmentSplices(src, top, newAt); err != nil {
+				return nil, err
+			}
+			changed = changed || len(frag) > 0
+		}
 		if !changed && bytes.Equal(moov.encode(), old) {
 			return (&spliceEdit{}).plan(src, size), nil
 		}
-		return rewritePlan(src, size, top, mi, ftyp, keep, moov.encode())
+		return rewritePlan(src, size, top, mi, ftyp, keep, moov.encode(), frag...)
 	}
 	return nil, fmt.Errorf("%w: chunk offsets that don't settle", ErrUnsupported)
 }
@@ -237,7 +258,9 @@ const rewriteCopyBuf = 1 << 20
 // rewritePlan is the rewrite as splices of the source: moov's new bytes
 // after ftyp (or first), the old moov and the boxes left out removed; the
 // boxes kept stay in their order, so their bytes are copied as they are.
-func rewritePlan(src io.ReaderAt, size int64, top []bmff.Box, mi, ftyp int, keep []int, moov []byte) (*Plan, error) {
+//
+// extra are splices within the boxes kept (a fragmented movie's offsets).
+func rewritePlan(src io.ReaderAt, size int64, top []bmff.Box, mi, ftyp int, keep []int, moov []byte, extra ...splice) (*Plan, error) {
 	kept := make(map[int]bool, len(keep))
 	for _, i := range keep {
 		kept[i] = true
@@ -257,6 +280,9 @@ func rewritePlan(src io.ReaderAt, size int64, top []bmff.Box, mi, ftyp int, keep
 		if i != mi && i != ftyp && !kept[i] {
 			e.add(splice{at: b.Offset, del: b.Size})
 		}
+	}
+	for _, s := range extra {
+		e.add(s)
 	}
 	if err := e.sorted(); err != nil {
 		return nil, err
@@ -318,14 +344,12 @@ func (t *chunkTable) write() bool {
 }
 
 // chunkTables reads every track's chunk offsets, and refuses what this
-// rewrite can't move: sample auxiliary offsets, fragments (mvex), media in
-// other files.
+// rewrite can't move: sample auxiliary offsets, media in other files. A
+// fragmented movie's mvex (its fragments' defaults) has no offsets.
 func chunkTables(moov *qtNode) ([]*chunkTable, error) {
 	var out []*chunkTable
 	for _, k := range moov.kids {
 		switch k.typ {
-		case bmff.T("mvex"):
-			return nil, fmt.Errorf("%w: a fragmented movie (mvex)", ErrUnsupported)
 		case bmff.T("trak"):
 		default:
 			continue
