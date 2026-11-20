@@ -34,14 +34,18 @@ func TestAVIAgreesWithExifTool(t *testing.T) {
 	}
 	out, err := exec.Command(tool, append([]string{"-j", "-n", "-q", "-RIFF:DateTimeOriginal", "-RIFF:DateCreated",
 		"-Composite:Duration", "-RIFF:ImageWidth", "-RIFF:ImageHeight", "-RIFF:Title", "-RIFF:Comment",
-		"-Nikon:Make", "-Nikon:Model", "-Nikon:DateTimeOriginal"}, paths...)...).Output()
+		"-Nikon:Make", "-Nikon:Model", "-Nikon:DateTimeOriginal",
+		// A camera's Exif block (camera_video_exif.go).
+		"-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal", "-ExifIFD:LensModel",
+		"-Composite:GPSLatitude", "-Composite:GPSLongitude"}, paths...)...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []struct {
 		SourceFile, DateTimeOriginal, DateCreated, Title, Comment string
-		Make, Model                                               string
+		Make, Model, LensModel                                    string
 		Duration                                                  float64
+		GPSLatitude, GPSLongitude                                 *float64
 		ImageWidth, ImageHeight                                   int
 	}
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -74,8 +78,13 @@ func TestAVIAgreesWithExifTool(t *testing.T) {
 			dated++
 		}
 		if math.Abs(v.Duration.Seconds()-e.Duration) > 1e-3 || v.Width != e.ImageWidth || v.Height != e.ImageHeight ||
-			v.Title != e.Title || v.Description != e.Comment || v.Make != e.Make || v.Model != e.Model {
+			v.Title != e.Title || v.Description != e.Comment || v.Make != e.Make || v.Model != e.Model || v.LensModel != e.LensModel {
 			t.Errorf("%s: %+v, ExifTool %+v", e.SourceFile, v, e)
+		}
+		if (v.GPS != nil) != (e.GPSLatitude != nil) {
+			t.Errorf("%s: GPS %+v, ExifTool %v", e.SourceFile, v.GPS, e.GPSLatitude)
+		} else if g := v.GPS; g != nil && (math.Abs(g.Latitude-*e.GPSLatitude) > 1e-4 || math.Abs(g.Longitude-*e.GPSLongitude) > 1e-4) {
+			t.Errorf("%s: GPS %+v, ExifTool %v %v", e.SourceFile, *g, *e.GPSLatitude, *e.GPSLongitude)
 		}
 	}
 	if dated < 3 {

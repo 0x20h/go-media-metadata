@@ -1,0 +1,249 @@
+// Adds a camera's Exif block, in one of the layouts ExifTool documents for
+// camera videos, to a movie or an AVI made by ffmpeg. The Exif values are
+// made up: Make, Model, a lens, the date taken and a GPS position.
+//
+// Usage: go run camexif.go <layout> <in> <out> <make> <model> <lens> <date> <lat> <lon>
+//
+// Layouts: QVMI, MVTG, RMKN, SIGM (a box in moov's udta; moov must be the
+// last top-level box, so no chunk offset moves); strd (an AVI strd chunk
+// starting "AVIF", taking the start of the first stream's JUNK chunk);
+// junk (an AVI top-level JUNK chunk starting "QVMI", written over the
+// start of ffmpeg's).
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math"
+	"os"
+	"strconv"
+)
+
+// byteOrder writes values in a byte order.
+type byteOrder interface {
+	binary.ByteOrder
+	binary.AppendByteOrder
+}
+
+type entry struct {
+	tag, typ uint16
+	count    uint32
+	value    []byte // the value's bytes; a pointer for an IFD
+	ifd      *ifd
+}
+
+type ifd struct{ entries []entry }
+
+func ascii(tag uint16, s string) entry {
+	return entry{tag: tag, typ: 2, count: uint32(len(s) + 1), value: append([]byte(s), 0)}
+}
+
+// block writes IFD0 at ifdAt in a buffer starting with prefix (ifdAt
+// bytes), offsets counting from base.
+func block(o byteOrder, prefix []byte, base int, root *ifd) []byte {
+	buf := append([]byte(nil), prefix...)
+	// Lay out the IFDs one after another, then their values.
+	var order []*ifd
+	var walk func(d *ifd)
+	walk = func(d *ifd) {
+		order = append(order, d)
+		for _, e := range d.entries {
+			if e.ifd != nil {
+				walk(e.ifd)
+			}
+		}
+	}
+	walk(root)
+	at := map[*ifd]int{}
+	pos := len(buf)
+	for _, d := range order {
+		at[d] = pos
+		pos += 2 + 12*len(d.entries) + 4
+	}
+	data := pos
+	var values []byte
+	for _, d := range order {
+		b := o.AppendUint16(nil, uint16(len(d.entries)))
+		for _, e := range d.entries {
+			b = o.AppendUint16(b, e.tag)
+			b = o.AppendUint16(b, e.typ)
+			if e.ifd != nil {
+				b = o.AppendUint32(b, 1)
+				b = o.AppendUint32(b, uint32(at[e.ifd]-base))
+				continue
+			}
+			b = o.AppendUint32(b, e.count)
+			if len(e.value) <= 4 {
+				v := make([]byte, 4)
+				copy(v, e.value)
+				b = append(b, v...)
+				continue
+			}
+			b = o.AppendUint32(b, uint32(data+len(values)-base))
+			values = append(values, e.value...)
+			if len(values)%2 == 1 {
+				values = append(values, 0)
+			}
+		}
+		buf = append(buf, o.AppendUint32(b, 0)...)
+	}
+	return append(buf, values...)
+}
+
+func rational3(o byteOrder, v float64) []byte {
+	v = math.Abs(v)
+	d := math.Floor(v)
+	m := math.Floor((v - d) * 60)
+	s := ((v-d)*60 - m) * 60
+	var b []byte
+	for _, p := range [][2]uint32{{uint32(d), 1}, {uint32(m), 1}, {uint32(math.Round(s * 100)), 100}} {
+		b = o.AppendUint32(o.AppendUint32(b, p[0]), p[1])
+	}
+	return b
+}
+
+func exif(o byteOrder, make_, model, lens, date string, lat, lon float64) *ifd {
+	latRef, lonRef := "N", "E"
+	if lat < 0 {
+		latRef = "S"
+	}
+	if lon < 0 {
+		lonRef = "W"
+	}
+	gps := &ifd{entries: []entry{
+		{tag: 0, typ: 1, count: 4, value: []byte{2, 3, 0, 0}},
+		ascii(1, latRef),
+		{tag: 2, typ: 5, count: 3, value: rational3(o, lat)},
+		ascii(3, lonRef),
+		{tag: 4, typ: 5, count: 3, value: rational3(o, lon)},
+	}}
+	exifIFD := &ifd{entries: []entry{ascii(0x9003, date), ascii(0x9004, date)}}
+	if lens != "" {
+		exifIFD.entries = append(exifIFD.entries, ascii(0xA434, lens))
+	}
+	return &ifd{entries: []entry{
+		ascii(0x010F, make_),
+		ascii(0x0110, model),
+		{tag: 0x8769, typ: 4, ifd: exifIFD},
+		{tag: 0x8825, typ: 4, ifd: gps},
+	}}
+}
+
+func box(typ string, body []byte) []byte {
+	return append(binary.BigEndian.AppendUint32(nil, uint32(8+len(body))), append([]byte(typ), body...)...)
+}
+
+func chunk(id string, data []byte) []byte {
+	if len(data)%2 == 1 {
+		data = append(data, 0)
+	}
+	return append(binary.LittleEndian.AppendUint32([]byte(id), uint32(len(data))), data...)
+}
+
+// addToUdta puts b at the end of moov's udta (a new udta at moov's end
+// where it has none); moov must be the file's last box.
+func addToUdta(in, b []byte) []byte {
+	at := 0
+	for at+8 <= len(in) && string(in[at+4:at+8]) != "moov" {
+		at += int(binary.BigEndian.Uint32(in[at:]))
+	}
+	moovEnd := at + int(binary.BigEndian.Uint32(in[at:]))
+	if moovEnd != len(in) {
+		panic("moov isn't last")
+	}
+	out := append([]byte(nil), in...)
+	for k := at + 8; k+8 <= moovEnd; k += int(binary.BigEndian.Uint32(out[k:])) {
+		if string(out[k+4:k+8]) == "udta" {
+			end := k + int(binary.BigEndian.Uint32(out[k:]))
+			out = append(append(append([]byte(nil), out[:end]...), b...), out[end:]...)
+			binary.BigEndian.PutUint32(out[k:], binary.BigEndian.Uint32(out[k:])+uint32(len(b)))
+			binary.BigEndian.PutUint32(out[at:], binary.BigEndian.Uint32(out[at:])+uint32(len(b)))
+			return out
+		}
+	}
+	u := box("udta", b)
+	out = append(out, u...)
+	binary.BigEndian.PutUint32(out[at:], binary.BigEndian.Uint32(out[at:])+uint32(len(u)))
+	return out
+}
+
+// riff finds the first chunk id (a list's own type for a LIST) in
+// [start, end): where its header starts and its data's length.
+func riff(b []byte, start, end int, id string) (int, int) {
+	for at := start; at+8 <= end; {
+		n := int(binary.LittleEndian.Uint32(b[at+4:]))
+		got := string(b[at : at+4])
+		if got == "LIST" {
+			got = string(b[at+8 : at+12])
+		}
+		if got == id {
+			return at, n
+		}
+		at += 8 + n + n&1
+	}
+	panic("no " + id)
+}
+
+func main() {
+	a := os.Args[1:]
+	layout, in, out := a[0], a[1], a[2]
+	lat, _ := strconv.ParseFloat(a[7], 64)
+	lon, _ := strconv.ParseFloat(a[8], 64)
+	src, err := os.ReadFile(in)
+	if err != nil {
+		panic(err)
+	}
+	le, be := binary.LittleEndian, binary.BigEndian
+	x := func(o byteOrder) *ifd { return exif(o, a[3], a[4], a[5], a[6], lat, lon) }
+	tiff := func(o byteOrder) []byte {
+		h := []byte("II*\x00\x08\x00\x00\x00")
+		if o == be {
+			h = []byte("MM\x00*\x00\x00\x00\x08")
+		}
+		return block(o, h, 0, x(o))
+	}
+	qvmi := []byte("QVMI\x00\x00\x00\x00\x00\x00")
+	var res []byte
+	switch layout {
+	case "QVMI":
+		res = addToUdta(src, box("QVMI", block(be, qvmi, 0, x(be))))
+	case "MVTG":
+		res = addToUdta(src, box("MVTG", block(le, make([]byte, 16), 16, x(le))))
+	case "RMKN":
+		res = addToUdta(src, box("RMKN", tiff(le)))
+	case "SIGM":
+		res = addToUdta(src, box("SIGM", tiff(be)))
+	case "strd":
+		// The first stream's JUNK: a strd chunk, then the JUNK left.
+		hdrl, hn := riff(src, 12, len(src), "hdrl")
+		strl, sn := riff(src, hdrl+12, hdrl+8+hn, "strl")
+		junk, jn := riff(src, strl+12, strl+8+sn, "JUNK")
+		strd := chunk("strd", block(le, []byte("AVIF\x00\x00\x00\x00"), 8, x(le)))
+		rest := jn - len(strd)
+		if rest < 0 || rest%2 == 1 {
+			panic("the strd chunk doesn't fit the JUNK chunk")
+		}
+		res = append(append(append(append([]byte(nil), src[:junk]...), strd...), chunk("JUNK", make([]byte, rest))...), src[junk+8+jn:]...)
+	case "junk":
+		// ffmpeg's top-level JUNK, its data now Casio's block.
+		junk, jn := riff(src, 12, len(src), "JUNK")
+		b := block(be, qvmi, 0, x(be))
+		if len(b) > jn {
+			panic("the block doesn't fit the JUNK chunk")
+		}
+		res = append([]byte(nil), src...)
+		copy(res[junk+8:], b)
+	default:
+		panic("layout " + layout)
+	}
+	if layout == "strd" || layout == "junk" {
+		if !bytes.Equal(res[:4], []byte("RIFF")) || len(res) != len(src) {
+			panic("the AVI changed size")
+		}
+	}
+	if err := os.WriteFile(out, res, 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Fprintln(os.Stderr, layout, len(src), "->", len(res))
+}

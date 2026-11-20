@@ -41,14 +41,18 @@ type aviChunk struct {
 	id    string
 	list  bool
 	at, n int64
+	head  [4]byte // a chunk's first data bytes (as many as it has, up to 4)
 }
 
 // aviChunks reads the chunks in [start, end).
 func aviChunks(r io.ReaderAt, start, end int64) ([]aviChunk, error) {
 	var out []aviChunk
 	for at := start; at+8 <= end; {
+		// The header and the data's first 4 bytes, in one read: a list's
+		// type, or what a JUNK chunk holds.
 		var h [12]byte
-		if _, err := r.ReadAt(h[:8], at); err != nil {
+		hn := min(12, end-at)
+		if _, err := r.ReadAt(h[:hn], at); err != nil {
 			return out, fmt.Errorf("%w: reading a chunk header: %v", ErrMalformed, err)
 		}
 		n := int64(binary.LittleEndian.Uint32(h[4:]))
@@ -57,11 +61,10 @@ func aviChunks(r io.ReaderAt, start, end int64) ([]aviChunk, error) {
 			n = end - c.at // a file cut short: what's there
 			c.n = n
 		}
+		copy(c.head[:], h[8:8+min(4, max(n, 0), hn-8)])
 		if c.id == "LIST" && n >= 4 {
-			if _, err := r.ReadAt(h[8:12], c.at); err != nil {
-				return out, fmt.Errorf("%w: reading a list: %v", ErrMalformed, err)
-			}
 			c.id, c.list, c.at, c.n = string(h[8:12]), true, c.at+4, n-4
+			c.head = [4]byte{}
 		}
 		out = append(out, c)
 		at += 8 + n + n&1
@@ -105,6 +108,7 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 		return v, err
 	}
 	var icrd, nikonDate string
+	var camera *Exif // a camera's Exif block (camera_video_exif.go)
 	for _, c := range top {
 		switch {
 		case c.list && c.id == "hdrl":
@@ -133,12 +137,27 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 							v.Created = at
 						}
 					}
+				case "strl":
+					if k.list && camera == nil {
+						if x, ok := aviStrdExif(r, k); ok {
+							camera = &x
+						}
+					}
 				}
 			}
 		case c.id == "IDIT":
 			if b, err := readAVIChunk(r, c); err == nil {
 				if at, ok := parseAVIDate(aviText(b)); ok && v.Created.IsZero() {
 					v.Created = at
+				}
+			}
+		case c.id == "JUNK" && !c.list && c.n >= 10:
+			// Casio's Exif block; other JUNK is padding, not read whole.
+			if string(c.head[:]) == "QVMI" {
+				if b, err := readAVIChunk(r, c); err == nil && camera == nil {
+					if x, ok := aviJunkExif(b); ok {
+						camera = &x
+					}
 				}
 			}
 		case c.list && c.id == "ncdt":
@@ -180,6 +199,20 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 	if v.Created.IsZero() {
 		if at, _, ok := parseExifDate(nikonDate); ok {
 			v.Created = at
+		}
+	}
+	// A camera's Exif block: its date taken, the camera and lens, the
+	// place.
+	if camera != nil {
+		if v.Created.IsZero() {
+			if at, known := exifTaken(*camera); !at.IsZero() {
+				v.Created, v.OffsetKnown = at, known
+			}
+		}
+		v.Make, v.Model = first(v.Make, camera.Camera.Make), first(v.Model, camera.Camera.Model)
+		v.LensModel = first(v.LensModel, camera.Camera.LensModel)
+		if v.GPS == nil {
+			v.GPS = camera.GPS
 		}
 	}
 	// ICRD, when it holds a whole date: a year alone would read as 1
@@ -254,4 +287,27 @@ func parseAVIDate(s string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// aviStrdExif reads the Exif block of a stream list's strd chunk, if it
+// has one (camera_video_exif.go): its chunk headers are read one by one
+// into one buffer, the strd chunk's data only when it starts "AVIF".
+func aviStrdExif(r io.ReaderAt, strl aviChunk) (Exif, bool) {
+	var h [12]byte
+	end := strl.at + strl.n
+	for at := strl.at; at+12 <= end; {
+		if _, err := r.ReadAt(h[:], at); err != nil {
+			return Exif{}, false
+		}
+		n := int64(binary.LittleEndian.Uint32(h[4:]))
+		if string(h[:4]) == "strd" && string(h[8:12]) == "AVIF" {
+			b, err := readAVIChunk(r, aviChunk{id: "strd", at: at + 8, n: min(n, end-at-8)})
+			if err != nil {
+				return Exif{}, false
+			}
+			return aviStreamExif(b)
+		}
+		at += 8 + n + n&1
+	}
+	return Exif{}, false
 }

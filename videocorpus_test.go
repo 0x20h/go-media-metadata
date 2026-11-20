@@ -31,7 +31,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 	out, err := exec.Command(tool, append([]string{"-j", "-n", "-G1", "-api", "QuickTimeUTC", "-Keys:all", "-UserData:all", "-ItemList:all",
 		"-XMP-exif:all", "-XMP-photoshop:DateCreated", "-XMP-xmp:CreateDate", "-QuickTime:CreateDate", "-QuickTime:Duration",
 		"-Track1:ImageWidth", "-Track1:ImageHeight", "-Composite:Rotation", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-		"-Composite:GPSAltitude", "-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal"}, paths...)...).Output()
+		"-Composite:GPSAltitude", "-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal", "-ExifIFD:LensModel", "-GPS:GPSLatitude"}, paths...)...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +115,12 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 			alt, hasAlt = num("Composite:GPSAltitude")
 			hasGPS, tol = true, 1e-4 // 16.16 fixed point, which ExifTool prints to 5 decimals
 		}
+		if _, ok := num("GPS:GPSLatitude"); !hasGPS && ok {
+			// A camera's Exif block (camera_video_exif.go).
+			lat, _ = num("Composite:GPSLatitude")
+			lon, _ = num("Composite:GPSLongitude")
+			hasGPS, tol = true, 1e-4 // degrees, minutes and seconds to 1/100
+		}
 		if !hasGPS {
 			if la, ok := num("XMP-exif:GPSLatitude"); ok {
 				lat, hasGPS = la, true
@@ -162,6 +168,9 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		}
 		if md := first(first(str("Keys:Model"), str("UserData:Model")), str("IFD0:Model")); v.Model != md {
 			t.Errorf("%s: model %q, ExifTool %q", path, v.Model, md)
+		}
+		if lens := str("ExifIFD:LensModel"); lens != "" && v.LensModel != lens {
+			t.Errorf("%s: lens %q, ExifTool %q", path, v.LensModel, lens)
 		}
 		if v.ContentIdentifier != str("Keys:ContentIdentifier") {
 			t.Errorf("%s: content identifier %q, ExifTool %q", path, v.ContentIdentifier, str("Keys:ContentIdentifier"))

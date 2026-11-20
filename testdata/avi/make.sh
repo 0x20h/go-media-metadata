@@ -18,4 +18,10 @@ cp "$DIR/ncdt.go.txt" "$TMP/ncdt.go"
 (cd "$TMP" && go run ncdt.go base.avi thumb.jpg nikon.avi)
 cp "$TMP/nikon.avi" "$OUT/nikon.avi"
 ff "$OUT/plain.avi"
+# Cameras' Exif blocks (see ../video/camexif.go.txt; made-up values): a
+# strd chunk starting "AVIF" in the stream's list, and Casio's QVMI in the
+# top-level JUNK chunk.
+cp "$DIR/../video/camexif.go.txt" "$TMP/camexif.go"
+(cd "$TMP" && go run camexif.go strd base.avi "$OUT/avif.avi" "KONICA MINOLTA" "DiMAGE Z5" "" "2005:07:08 09:10:11" 51.5007 -0.1246)
+(cd "$TMP" && go run camexif.go junk base.avi "$OUT/casio-junk.avi" CASIO EX-S600 "" "2006:09:10 11:12:13" 40.6892 -74.0445)
 rm -rf "$TMP"
