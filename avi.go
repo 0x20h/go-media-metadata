@@ -109,11 +109,6 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 	}
 	var icrd, nikonDate string
 	var camera *Exif // a camera's Exif block (camera_video_exif.go)
-	takeExif := func(x Exif, ok bool) {
-		if ok && camera == nil {
-			camera = &x
-		}
-	}
 	for _, c := range top {
 		switch {
 		case c.list && c.id == "hdrl":
@@ -143,15 +138,9 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 						}
 					}
 				case "strl":
-					if !k.list {
-						continue
-					}
-					sk, _ := aviChunks(r, k.at, k.at+k.n)
-					for _, d := range sk {
-						if d.id == "strd" && !d.list {
-							if b, err := readAVIChunk(r, d); err == nil {
-								takeExif(aviStreamExif(b))
-							}
+					if k.list && camera == nil {
+						if x, ok := aviStrdExif(r, k); ok {
+							camera = &x
 						}
 					}
 				}
@@ -165,8 +154,10 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 		case c.id == "JUNK" && !c.list && c.n >= 10:
 			// Casio's Exif block; other JUNK is padding, not read whole.
 			if string(c.head[:]) == "QVMI" {
-				if b, err := readAVIChunk(r, c); err == nil {
-					takeExif(aviJunkExif(b))
+				if b, err := readAVIChunk(r, c); err == nil && camera == nil {
+					if x, ok := aviJunkExif(b); ok {
+						camera = &x
+					}
 				}
 			}
 		case c.list && c.id == "ncdt":
@@ -296,4 +287,27 @@ func parseAVIDate(s string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// aviStrdExif reads the Exif block of a stream list's strd chunk, if it
+// has one (camera_video_exif.go): its chunk headers are read one by one
+// into one buffer, the strd chunk's data only when it starts "AVIF".
+func aviStrdExif(r io.ReaderAt, strl aviChunk) (Exif, bool) {
+	var h [12]byte
+	end := strl.at + strl.n
+	for at := strl.at; at+12 <= end; {
+		if _, err := r.ReadAt(h[:], at); err != nil {
+			return Exif{}, false
+		}
+		n := int64(binary.LittleEndian.Uint32(h[4:]))
+		if string(h[:4]) == "strd" && string(h[8:12]) == "AVIF" {
+			b, err := readAVIChunk(r, aviChunk{id: "strd", at: at + 8, n: min(n, end-at-8)})
+			if err != nil {
+				return Exif{}, false
+			}
+			return aviStreamExif(b)
+		}
+		at += 8 + n + n&1
+	}
+	return Exif{}, false
 }
