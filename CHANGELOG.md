@@ -16,6 +16,9 @@
 
 ### Fixed
 
+- `RewriteOptions.ZeroTimes` zeroes the media headers' (`mdhd`)
+  creation and modification times too, as documented; they were kept
+  (#216).
 - `EditXMP` no longer writes a property with the prefix `xml` or
   `xmlns` when a packet binds one of them to the property's namespace:
   parsers read those as XML's own, so the property was lost. It
