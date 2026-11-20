@@ -4,6 +4,10 @@
 
 ### Added
 
+- `RewriteOptions.StartAtFirstFrame`: a video track with composition
+  offsets (B-frames) and no edit list gets the edit list FFmpeg's MP4
+  muxer writes, so players start it at its first frame instead of about
+  two frames late. Other tracks stay as they are (#214).
 - `SetVideoMetadata` and `PlanVideoMetadata` write an AVI file's
   recording date (`VideoEdit.Created`, the only field written there):
   IDIT, INFO's ICRD and Nikon's DateTimeOriginal and CreateDate, where

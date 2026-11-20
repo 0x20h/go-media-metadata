@@ -160,6 +160,7 @@ func FuzzRewriteMovie(f *testing.F) {
 	for _, l := range []string{"ftyp mdat moov", "ftyp mdatA moov mdatB", "ftyp xmp mdat uuid moov free", "ftyp free moov mdat0"} {
 		f.Add(assembleMovie(&testing.T{}, false, strings.Fields(l)...))
 	}
+	f.Add(readFile(f, "testdata/video/bframes-noedts.mp4"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			r := bytes.NewReader(data)
@@ -167,7 +168,7 @@ func FuzzRewriteMovie(f *testing.F) {
 			_, hashErr := HashImageData(r, int64(len(data)), h)
 			want := h.Sum(nil)
 			_, readErr := ReadVideo(r, int64(len(data)))
-			for _, opts := range []RewriteOptions{{}, {StripMetadata: true, ZeroTimes: true}} {
+			for _, opts := range []RewriteOptions{{}, {StripMetadata: true, ZeroTimes: true}, {StartAtFirstFrame: true}} {
 				p, err := PlanRewriteMovie(r, int64(len(data)), opts)
 				if err != nil {
 					continue

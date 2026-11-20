@@ -257,6 +257,16 @@ err := mediameta.RewriteMovie(src, size, dst, mediameta.RewriteOptions{
   `sgpd` and `sbgp`.
 - **ZeroTimes** sets the creation and modification times of `mvhd`, every
   `tkhd` and every `mdhd` to 0. They're kept otherwise.
+- **StartAtFirstFrame** starts each video track at its first frame. A
+  track with composition offsets (`ctts`, as B-frames make) and no edit
+  list presents its first frame after time 0, typically two frames in,
+  and players start it late. Such a track gets the edit list FFmpeg's
+  MP4 muxer writes: one `elst` entry whose media time is the first
+  composition time, lasting the track's presented duration. The track
+  header (`tkhd`) then holds that duration, and the movie header
+  (`mvhd`) the longest track's. Audio and other tracks, a track that
+  already has an edit list, and one whose first frame is at 0 stay as
+  they are, as with FFmpeg.
 - **Unchanged:** a movie that is already so, with nothing to strip or
   zero, gives an in-place plan without patches. A rewrite that moves
   `moov` isn't in place, even when the size stays.

@@ -23,6 +23,15 @@ type RewriteOptions struct {
 	// tkhd and every mdhd to 0 (QuickTime's "unknown"). They're kept
 	// otherwise.
 	ZeroTimes bool
+	// StartAtFirstFrame starts each video track at its first frame: a
+	// track with composition offsets (ctts, as B-frames make) and no edit
+	// list presents its first frame after time 0, so players start it
+	// late. It gets the edit list FFmpeg's MP4 muxer writes: one entry,
+	// from its first composition time, lasting its presented duration,
+	// which its track header (and the movie header, for the longest
+	// track) then hold. Other tracks, and a track with an edit list, stay
+	// as they are.
+	StartAtFirstFrame bool
 }
 
 // IndexFirst reports whether the QuickTime or MP4 movie in src (size bytes)
@@ -115,6 +124,13 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 	}
 	if opts.ZeroTimes {
 		changed = zeroMovieTimes(moov) || changed
+	}
+	if opts.StartAtFirstFrame {
+		c, err := startAtFirstFrame(moov)
+		if err != nil {
+			return nil, err
+		}
+		changed = c || changed
 	}
 
 	// The boxes kept after moov, in their order; ftyp first.

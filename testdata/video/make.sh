@@ -67,4 +67,12 @@ cp "$DIR/canon.go.txt" "$TMP/canon.go"
 (cd "$TMP" && go run canon.go base.mp4 thumb.jpg canon.mp4)
 cp "$TMP/canon.mp4" "$OUT/canon.mp4"
 
+# B-frames (H.264, two between references): the first frame is presented
+# two frames in. bframes.mp4 has the edit list ffmpeg's muxer writes for
+# that; bframes-noedts.mp4 is the same streams without any edit list, as
+# other muxers leave them.
+ff -f lavfi -i testsrc=duration=1:size=64x48:rate=10 -f lavfi -i sine=duration=1:frequency=440 \
+  -c:v libx264 -preset veryfast -bf 2 -g 10 -c:a aac -b:a 16k -shortest "$OUT/bframes.mp4"
+ff -i "$OUT/bframes.mp4" -c copy -use_editlist 0 "$OUT/bframes-noedts.mp4"
+
 rm -rf "$TMP"
