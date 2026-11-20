@@ -105,6 +105,12 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 		return v, err
 	}
 	var icrd, nikonDate string
+	var camera *Exif // a camera's Exif block (camera_video_exif.go)
+	takeExif := func(x Exif, ok bool) {
+		if ok && camera == nil {
+			camera = &x
+		}
+	}
 	for _, c := range top {
 		switch {
 		case c.list && c.id == "hdrl":
@@ -133,12 +139,32 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 							v.Created = at
 						}
 					}
+				case "strl":
+					if !k.list {
+						continue
+					}
+					sk, _ := aviChunks(r, k.at, k.at+k.n)
+					for _, d := range sk {
+						if d.id == "strd" && !d.list {
+							if b, err := readAVIChunk(r, d); err == nil {
+								takeExif(aviStreamExif(b))
+							}
+						}
+					}
 				}
 			}
 		case c.id == "IDIT":
 			if b, err := readAVIChunk(r, c); err == nil {
 				if at, ok := parseAVIDate(aviText(b)); ok && v.Created.IsZero() {
 					v.Created = at
+				}
+			}
+		case c.id == "JUNK" && !c.list && c.n >= 10:
+			// Casio's Exif block; other JUNK is padding, not read whole.
+			var h [4]byte
+			if _, err := r.ReadAt(h[:], c.at); err == nil && string(h[:]) == "QVMI" {
+				if b, err := readAVIChunk(r, c); err == nil {
+					takeExif(aviJunkExif(b))
 				}
 			}
 		case c.list && c.id == "ncdt":
@@ -180,6 +206,20 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 	if v.Created.IsZero() {
 		if at, _, ok := parseExifDate(nikonDate); ok {
 			v.Created = at
+		}
+	}
+	// A camera's Exif block: its date taken, the camera and lens, the
+	// place.
+	if camera != nil {
+		if v.Created.IsZero() {
+			if at, known := exifTaken(*camera); !at.IsZero() {
+				v.Created, v.OffsetKnown = at, known
+			}
+		}
+		v.Make, v.Model = first(v.Make, camera.Camera.Make), first(v.Model, camera.Camera.Model)
+		v.LensModel = first(v.LensModel, camera.Camera.LensModel)
+		if v.GPS == nil {
+			v.GPS = camera.GPS
 		}
 	}
 	// ICRD, when it holds a whole date: a year alone would read as 1

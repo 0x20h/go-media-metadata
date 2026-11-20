@@ -154,6 +154,9 @@ const maxIFDEntries = 1000
 type tiffReader struct {
 	data  []byte
 	order binary.ByteOrder
+	// headerless: data without a TIFF header, whose IFD may start at 0
+	// (Exif blocks some camera videos carry).
+	headerless bool
 }
 
 // newTIFF reads the TIFF header; ok is false for data that doesn't start
@@ -185,7 +188,7 @@ type field struct {
 // the data. Entries whose value doesn't fit are left out; the first of a
 // repeated tag wins.
 func (t tiffReader) ifd(off uint32) map[uint16]field {
-	if off < 8 || uint64(off)+2 > uint64(len(t.data)) {
+	if off < 8 && !t.headerless || uint64(off)+2 > uint64(len(t.data)) {
 		return nil
 	}
 	n := int(t.order.Uint16(t.data[off:]))

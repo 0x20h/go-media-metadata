@@ -250,6 +250,9 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	} else if !udta.canonTaken.IsZero() {
 		// Canon's: its thumbnail's Exif, a clock time as a rule.
 		v.Created, v.OffsetKnown = udta.canonTaken, udta.canonOffsetKnown
+	} else if at, known := makerTaken(udta.makerExif); !at.IsZero() {
+		// Another camera's Exif block in the user data.
+		v.Created, v.OffsetKnown = at, known
 	} else if t := TakenFrom(Exif{}, *movieXMPOnce(r, size, top, udta, &x, &xRead), IPTC{}); t.Source != SourceNone {
 		v.Created, v.OffsetKnown = t.Time, t.OffsetKnown
 	} else if !mvhdCreated.IsZero() {
@@ -261,12 +264,19 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 		v.GPS = g
 	} else if udta.loci != nil {
 		v.GPS = udta.loci
+	} else if mx := udta.makerExif; mx != nil && mx.GPS != nil {
+		v.GPS = mx.GPS
 	} else if g := movieXMPOnce(r, size, top, udta, &x, &xRead).GPS; g != nil {
 		v.GPS = g
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
 	v.LensModel = keys.lensModel
+	if mx := udta.makerExif; mx != nil {
+		v.Make = first(v.Make, mx.Camera.Make)
+		v.Model = first(v.Model, mx.Camera.Model)
+		v.LensModel = first(v.LensModel, mx.Camera.LensModel)
+	}
 	v.ContentIdentifier = first(keys.contentID, udta.contentID)
 	v.Title = first(keys.title, udta.title)
 	v.Description = first(keys.description, udta.description)
@@ -573,6 +583,7 @@ type qtTags struct {
 	title, description, rating                string
 	keywords                                  []string
 	lensModel                                 string
+	makerExif                                 *Exif // a camera's Exif block in the user data
 }
 
 // merge fills t's empty fields from o.
@@ -597,6 +608,9 @@ func (t *qtTags) merge(o qtTags) {
 	}
 	if t.canonTaken.IsZero() {
 		t.canonTaken, t.canonOffsetKnown = o.canonTaken, o.canonOffsetKnown
+	}
+	if t.makerExif == nil {
+		t.makerExif = o.makerExif
 	}
 	if t.contentID == "" {
 		t.contentID = o.contentID
@@ -972,6 +986,18 @@ func readUdta(r io.ReaderAt, udta bmff.Box) (qtTags, error) {
 			dst = &t.title
 		case "\xa9des":
 			dst = &t.description
+		case "QVMI", "MVTG", "RMKN", "SIGM":
+			// A camera's Exif block (camera_video_exif.go).
+			if t.makerExif == nil {
+				b, err := readBox(r, k, maxLeafBox)
+				if err != nil {
+					return t, err
+				}
+				if x, ok := udtaExif(string(k.Type[:]), b); ok {
+					t.makerExif = &x
+				}
+			}
+			continue
 		case "NCDT":
 			// Nikon's tags: an NCTG box in NCDT (see parseNCTG).
 			if err := readNCDT(r, k, &t); err != nil {
