@@ -275,8 +275,19 @@ err := mediameta.RewriteMovie(src, size, dst, mediameta.RewriteOptions{
 - **Unchanged:** a movie that is already so, with nothing to strip or
   zero, gives an in-place plan without patches. A rewrite that moves
   `moov` isn't in place, even when the size stays.
+- **Fragmented movies** (`moov` with `mvex`, then `moof` and `mdat`
+  pairs, as phones, cameras and streaming tools write them) already
+  start with their index, so the rewrite is about `StripMetadata` and
+  `ZeroTimes`. When `moov` changes size, everything after it moves, and
+  the absolute offsets the fragments hold move with it: each `tfhd`
+  base-data-offset and each `tfra` moof offset in `mfra`. `trun` data
+  offsets are relative to their `moof` (or its base) and stay. A `sidx`
+  after `moov` indexes from its own end; its first offset is patched
+  when it and what it indexes move apart (a `free` box between them
+  left out).
 - **Refused:**
-  - fragmented movies (`moof`, `mvex`, `sidx`, `mfra`)
+  - fragments or a segment index (`moof`, `sidx`, …) before `moov`
+  - a `sidx` over boxes the rewrite would leave out or move apart
   - sample auxiliary information offsets (`saio`)
   - media data in other files (a `dref` entry that isn't self-contained)
   - a `moov` over 64 MB

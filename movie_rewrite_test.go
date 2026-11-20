@@ -101,10 +101,16 @@ func TestRewriteMovieRefusals(t *testing.T) {
 		t.Errorf("a JPEG: %v", err)
 	}
 	src := movieLast(t)
-	// A fragment after the movie.
-	frag := append(append([]byte(nil), src...), bmff.AppendHeader(nil, bmff.T("moof"), 0, false)...)
+	// A fragment before the movie (fragments after it are rewritten:
+	// see movie_fragments_test.go).
+	top, err := bmff.ParseBoxes(src, 0, int64(len(src)))
+	if err != nil || top[0].Type != bmff.T("ftyp") {
+		t.Fatal(err)
+	}
+	at := top[0].End()
+	frag := append(append(append([]byte(nil), src[:at]...), bmff.AppendHeader(nil, bmff.T("moof"), 0, false)...), src[at:]...)
 	if _, err := PlanRewriteMovie(bytes.NewReader(frag), int64(len(frag)), RewriteOptions{}); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("a fragmented movie: %v", err)
+		t.Errorf("a fragment before the movie: %v", err)
 	}
 }
 

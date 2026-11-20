@@ -212,7 +212,10 @@ func TestMovieImageRangesMatchHash(t *testing.T) {
 			t.Fatalf("%s: %v", p, err)
 		}
 		got := mergeRanges(movieImageRanges(bytes.NewReader(file), n))
-		if want := mergeRanges(hashed); !slices.Equal(got, want) || len(want) == 0 {
+		// A fragmented movie's samples are in its fragments, not in moov's
+		// tables: neither finds any.
+		fragmented := strings.HasSuffix(p, "/frag.mp4")
+		if want := mergeRanges(hashed); !slices.Equal(got, want) || len(want) == 0 && !fragmented {
 			t.Errorf("%s: guard %v, hash %v", p, got, want)
 		}
 	}

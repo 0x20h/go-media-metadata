@@ -75,4 +75,10 @@ ff -f lavfi -i testsrc=duration=1:size=64x48:rate=10 -f lavfi -i sine=duration=1
   -c:v libx264 -preset veryfast -bf 2 -g 10 -c:a aac -b:a 16k -shortest "$OUT/bframes.mp4"
 ff -i "$OUT/bframes.mp4" -c copy -use_editlist 0 "$OUT/bframes-noedts.mp4"
 
+# A fragmented MP4 (moov with mvex, moof and mdat pairs, mfra), as
+# ffmpeg writes one with frag_keyframe+empty_moov: base data offsets
+# absolute, a title in moov's user data.
+ff -f lavfi -i testsrc=duration=2:size=64x48:rate=10 -c:v libx264 -preset veryfast -g 5 \
+  -metadata title=Lake -movflags frag_keyframe+empty_moov "$OUT/frag.mp4"
+
 rm -rf "$TMP"
