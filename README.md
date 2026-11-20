@@ -66,7 +66,8 @@ Early, and growing format by format.
 | QuickTime (MOV), MP4 | read, write (track matrix) | | |
 | MPEG-2 TS, MTS, M2TS (AVCHD) | read (always 1) | | |
 | Matroska (MKV), WebM | read (projection roll) | | |
-| AVI, ASF (WMV, WMA), FLV, MPEG-PS | read (always 1) | | |
+| AVI | read (always 1); date written in place | | |
+| ASF (WMV, WMA), FLV, MPEG-PS | read (always 1) | | |
 | GIF | | | read |
 | BMP | | | |
 
@@ -89,6 +90,10 @@ It also reads an AVCHD camcorder's MTS or M2TS: the recording date, GPS
 position, make and model from the video stream's MDPM, and the duration
 and size; and a Matroska or WebM file's duration, recording date, title,
 size and rotation.
+In an AVI file `SetVideoMetadata` sets the recording date alone, in place,
+where the file has one (IDIT, INFO's ICRD, Nikon's DateTimeOriginal and
+CreateDate): it refuses a file without one (`ErrNoDateField`) and a date
+that doesn't fit without moving the media data (`ErrNoRoom`).
 
 `ParseXMP` and `EditXMP` read and change an XMP packet's title,
 description, keywords, rating, face regions (MWG) and the people shown,
