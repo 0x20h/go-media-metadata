@@ -4,8 +4,3 @@
 # B/op or ns/op, the most as a percentage ("160%") in place of the gate's
 # 10% or 25%. A PR that adds a line says why in its description; the line
 # goes again once the change is on main.
-BenchmarkPlanVideoEdit ns/op 170% read-back check: the movie parsed twice (source and edited) to compare every value but those the edit sets
-BenchmarkPlanVideoEdit B/op 140% read-back check: the two reads of the movie
-BenchmarkPlanVideoEdit allocs/op 200 read-back check: the two reads of the movie
-BenchmarkPlanVideoEdit read-B/op 250 read-back check: the edited movie's top-level boxes, read through the plan
-BenchmarkPlanVideoEdit readcalls/op 16 read-back check: the top-level boxes of the source and the edited movie

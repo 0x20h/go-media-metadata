@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.2.5 (2026-11-20)
+
+No breaking changes.
+
+### Added
+
+- **ASF (WMV, WMA):** `ReadVideo` and `ReadAll` read the recording date
+  (the File Properties Object's creation date, UTC, else
+  WM/EncodingTime), the duration less the preroll (as ffprobe gives it;
+  ExifTool's keeps the preroll), the video size, the title and the
+  description. See [docs/quicktime.md](docs/quicktime.md) (#204).
+- **FLV:** `ReadVideo` and `ReadAll` read the `onMetaData` script tag's
+  duration, size and title, and the recording date (creationdate, else
+  ffmpeg's creation_time, else metadatadate) (#205).
+- Both are read only: writes give `ErrUnsupported`, as for AVI and
+  MPEG-PS. `ReadAll` gives `Format` "ASF" or "FLV".
+- `.github/benchgate`: `allow.txt` takes a percentage for B/op and ns/op
+  rises, per benchmark, with a reason.
+
 ### Fixed
 
 - A QuickTime or MP4 position whose degrees lack ISO 6709's leading
@@ -9,34 +28,32 @@
   list's `©xyz`) reads, as ExifTool reads it. Before, the longitude had
   to have three integer digits and the position was dropped (#199).
 
-### Added
-
-- FLV: `ReadVideo` and `ReadAll` read the duration, size, title and
-  recording date (creationdate, else ffmpeg's creation_time, else
-  metadatadate) of the `onMetaData` script tag. Read only; writes give
-  `ErrUnsupported` (#205, #204).
-- ASF (WMV, WMA): `ReadVideo` and `ReadAll` read the recording date (the
-  File Properties Object's creation date, UTC, else WM/EncodingTime),
-  the duration less the preroll, the video size, the title and the
-  description. Read only; writes give `ErrUnsupported`. See
-  [docs/quicktime.md](docs/quicktime.md) (part of #204). A play
-  duration too long for a `time.Duration` gives none.
-
 ### Safer writes
 
-- TIFF and DNG Exif and XMP edits are read back as `ReadAll` reads them
-  and refused (`ErrUnsupported`) where anything but what the edit sets
-  would read otherwise, as orientation writes already were. The fields
-  each edit may change come from the edit: an Exif date, the GPS
-  position, a title, and the summary fields that follow from them.
-- HEIF Exif and XMP item writes are read back the same way: everything
-  but the part written (and the summary fields that come from the
-  parts) must read as before, the image size and orientation included.
-  The planned file is read from the source and the plan's parts, never
-  written out for the check.
-- QuickTime and MP4 metadata edits (`PlanVideoMetadata`) are read back
-  the same way: everything but what the edit sets (and, for an XMP edit,
-  what the movie reads from its XMP) must read as before.
+Every metadata write is now read back before it's planned: the edited
+file, read as `ReadAll` reads it but never written out for the check,
+must equal the original in everything but what the edit sets. Otherwise
+the write is refused (`ErrUnsupported`). v0.2.4 did this for TIFF and
+RAW orientation writes; it now covers:
+
+- TIFF and DNG Exif and XMP edits. The fields each edit may change come
+  from the edit: an Exif date, the GPS position, a title, and the
+  summary fields that follow from them.
+- HEIF Exif and XMP item writes: everything but the part written (and
+  the summary fields that come from the parts) must read as before, the
+  image size and orientation included.
+- QuickTime and MP4 metadata edits (`PlanVideoMetadata`): everything but
+  what the edit sets (and, for an XMP edit, what the movie reads from
+  its XMP).
+
+### Behaviour worth knowing
+
+- A write that used to go through on a malformed file may now return
+  `ErrUnsupported` instead.
+- `PlanVideoMetadata` takes about twice as long as before, as it reads
+  the movie's metadata twice to check the edit.
+- `ReadVideo` and `ReadAll` read WMV, WMA and FLV files that gave
+  `ErrUnknownFormat` before.
 
 ## v0.2.4 (2026-11-19)
 
