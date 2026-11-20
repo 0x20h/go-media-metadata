@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- `VideoEdit.Created` also sets the date in a Canon MP4's thumbnail Exif
+  (DateTimeOriginal and DateTimeDigitized, in the `uuid` box's CNTH), so
+  ExifTool and other tools no longer read the old date there (#180).
+
 ## v0.2.6 (2026-11-20)
 
 No breaking changes.
