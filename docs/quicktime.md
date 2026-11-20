@@ -289,7 +289,7 @@ ExifTool. The checks:
 - ExifTool finds none of the tags once stripped, and only the rotation
   remains
 
-## AVI, ASF and MPEG program streams
+## AVI, ASF, FLV and MPEG program streams
 
 Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
 `ReadOrientation`, which give orientation 1). Writes give an error that is
@@ -318,6 +318,13 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
   - The title and description come from the Content Description Object,
     else from the Extended Content Description's `Title` and
     `Description`, where some writers (ffmpeg among them) put them.
+- **FLV** (Flash Video): the `onMetaData` script tag's AMF0 values.
+  - The duration, size and title are its `duration`, `width`, `height`
+    and `title`.
+  - The recording date is `creationdate` (text, as Flash tools wrote it,
+    asctime's layout or ISO 8601; ExifTool's CreateDate), else ffmpeg's
+    `creation_time`, else `metadatadate` (an AMF date, UTC: when the
+    metadata was written; ExifTool's MetadataDate).
 - **MPEG program streams** (`.mpg`, `.vob`):
   - The size comes from the first video sequence header.
   - The duration runs from the first video PES packet's PTS to the last's,
@@ -327,5 +334,5 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
     tests check the duration against ffprobe.
 
 They're checked against ExifTool (and the durations against ffprobe) on
-`testdata/avi`, `testdata/asf` and `testdata/mpegps`, synthetic clips made
+`testdata/avi`, `testdata/asf`, `testdata/flv` and `testdata/mpegps`, synthetic clips made
 by those folders' `make.sh`.

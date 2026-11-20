@@ -11,6 +11,10 @@
 
 ### Added
 
+- FLV: `ReadVideo` and `ReadAll` read the duration, size, title and
+  recording date (creationdate, else ffmpeg's creation_time, else
+  metadatadate) of the `onMetaData` script tag. Read only; writes give
+  `ErrUnsupported` (#205, #204).
 - ASF (WMV, WMA): `ReadVideo` and `ReadAll` read the recording date (the
   File Properties Object's creation date, UTC, else WM/EncodingTime),
   the duration less the preroll, the video size, the title and the

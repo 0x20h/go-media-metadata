@@ -279,7 +279,7 @@ func FuzzReadVideo(f *testing.F) {
 	for _, b := range broken {
 		f.Add(b)
 	}
-	for _, p := range []string{"testdata/avi/idit.avi", "testdata/avi/nikon.avi", "testdata/mpegps/mpeg2.mpg", "testdata/asf/video.wmv", "testdata/asf/encodingtime.wmv"} {
+	for _, p := range []string{"testdata/avi/idit.avi", "testdata/avi/nikon.avi", "testdata/mpegps/mpeg2.mpg", "testdata/asf/video.wmv", "testdata/asf/encodingtime.wmv", "testdata/flv/ffmpeg.flv", "testdata/flv/dated.flv"} {
 		if b, err := os.ReadFile(p); err == nil {
 			f.Add(b[:min(len(b), 16<<10)])
 		}

@@ -97,6 +97,15 @@ testdata/asf/encodingtime.wmv
     by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 
+testdata/flv/ffmpeg.flv
+testdata/flv/dated.flv
+    A synthetic test pattern (ffmpeg's testsrc, no recording), encoded by
+    ffmpeg's flv1 and muxed by ffmpeg; dated.flv has creationdate and
+    metadatadate added to its onMetaData (see testdata/flv/make.sh and
+    flvdate.go.txt). Made for this project by its authors. Dedicated to
+    the public domain under CC0 1.0:
+    https://creativecommons.org/publicdomain/zero/1.0/
+
 testdata/heif-xmp/primary-and-gainmap.heic
     A synthetic HEIC (random stand-in image data, no picture) made by the
     test builder (internal/bmff/testbuild; TestMakeTwoXMPCorpus): a primary

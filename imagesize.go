@@ -88,7 +88,7 @@ func ReadImageSize(r io.ReaderAt, size int64) (ImageSize, error) {
 			s, err = gifImageSize(r, size)
 		case formatBMP:
 			s, err = bmpImageSize(r, size)
-		case formatMovie, formatTS, formatMatroska, formatAVI, formatASF, formatMPEGPS:
+		case formatMovie, formatTS, formatMatroska, formatAVI, formatFLV, formatASF, formatMPEGPS:
 			v, verr := ReadVideo(r, size)
 			if verr != nil {
 				return ImageSize{}, verr

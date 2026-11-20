@@ -92,6 +92,8 @@ func PlanRotation(src io.ReaderAt, size int64, degrees int) (*Plan, error) {
 		return nil, errMatroskaReadOnly
 	case formatAVI:
 		return nil, errAVIReadOnly
+	case formatFLV:
+		return nil, errFLVReadOnly
 	case formatASF:
 		return nil, errASFReadOnly
 	case formatMPEGPS:
@@ -143,6 +145,8 @@ func PlanOrientation(src io.ReaderAt, size int64, o Orientation) (*Plan, error) 
 		return nil, errMatroskaReadOnly
 	case formatAVI:
 		return nil, errAVIReadOnly
+	case formatFLV:
+		return nil, errFLVReadOnly
 	case formatASF:
 		return nil, errASFReadOnly
 	case formatMPEGPS:

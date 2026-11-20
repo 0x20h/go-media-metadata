@@ -146,6 +146,9 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 		if isAVI(r, size) {
 			return readAVIVideo(r, size)
 		}
+		if isFLV(r, size) {
+			return readFLVVideo(r, size)
+		}
 		if isASF(r, size) {
 			return readASFVideo(r, size)
 		}
@@ -166,6 +169,9 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 		}
 		if isAVI(r, size) {
 			return readAVIVideo(r, size)
+		}
+		if isFLV(r, size) {
+			return readFLVVideo(r, size)
 		}
 		if isASF(r, size) {
 			return readASFVideo(r, size)

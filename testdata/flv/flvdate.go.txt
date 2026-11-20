@@ -1,0 +1,56 @@
+// Adds creationdate (text, as Flash tools wrote it) and metadatadate (an
+// AMF date) to the onMetaData array of an FLV file made by ffmpeg. The
+// script tag grows; the tags after it follow one another by size, so
+// they read as before.
+//
+// Usage: go run flvdate.go <in.flv> <out.flv> <creationdate text> <metadatadate RFC 3339>
+package main
+
+import (
+	"bytes"
+	"encoding/binary"
+	"math"
+	"os"
+	"time"
+)
+
+func main() {
+	in, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	md, err := time.Parse(time.RFC3339, os.Args[4])
+	if err != nil {
+		panic(err)
+	}
+	at := int(binary.BigEndian.Uint32(in[5:])) + 4 // the first tag
+	if in[at] != 18 {
+		panic("the first tag isn't script data")
+	}
+	n := int(in[at+1])<<16 | int(in[at+2])<<8 | int(in[at+3])
+	data := bytes.Clone(in[at+11 : at+11+n])
+	// "onMetaData" (2 + 2 + 10), then the ECMA array: 0x08, a count.
+	arr := 13
+	if data[arr] != 8 {
+		panic("onMetaData isn't an ECMA array")
+	}
+	end := bytes.LastIndex(data, []byte{0, 0, 9})
+	var add []byte
+	key := func(k string) { add = append(binary.BigEndian.AppendUint16(add, uint16(len(k))), k...) }
+	key("creationdate")
+	add = append(add, 2)
+	add = append(binary.BigEndian.AppendUint16(add, uint16(len(os.Args[3]))), os.Args[3]...)
+	key("metadatadate")
+	add = append(add, 11)
+	add = binary.BigEndian.AppendUint64(add, math.Float64bits(float64(md.UnixMilli())))
+	add = append(add, 0, 0) // the time zone, unused
+	data = append(append(data[:end:end], add...), 0, 0, 9)
+	binary.BigEndian.PutUint32(data[arr+1:], binary.BigEndian.Uint32(data[arr+1:])+2)
+	tag := bytes.Clone(in[at : at+11])
+	tag[1], tag[2], tag[3] = byte(len(data)>>16), byte(len(data)>>8), byte(len(data))
+	out := append(append(append(bytes.Clone(in[:at]), tag...), data...), binary.BigEndian.AppendUint32(nil, uint32(11+len(data)))...)
+	out = append(out, in[at+11+n+4:]...)
+	if err := os.WriteFile(os.Args[2], out, 0o644); err != nil {
+		panic(err)
+	}
+}
