@@ -21,8 +21,9 @@ type VideoEdit struct {
 	// Created sets the recording date: the Keys entry
 	// com.apple.quicktime.creationdate, as the time with its zone's
 	// offset; the user data's ©day where the movie has one; and the movie
-	// header's creation time, in UTC, where its field can hold it. nil
-	// leaves the date as it is.
+	// header's creation time, in UTC, where its field can hold it; and a
+	// Canon movie's thumbnail Exif (DateTimeOriginal, DateTimeDigitized),
+	// where it has them. nil leaves the date as it is.
 	Created *time.Time
 
 	// GPS sets the place: the Keys entry
@@ -193,6 +194,12 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	}
 	if err := applyVideoEdit(moov, edit); err != nil {
 		return nil, err
+	}
+	if edit.Created != nil {
+		// A Canon movie's thumbnail Exif holds the date too.
+		if err := syncCanonDate(moov, *edit.Created); err != nil {
+			return nil, err
+		}
 	}
 	var uuidSplice *splice
 	if x := edit.XMP; x != nil && *x != (XMPEdit{}) {

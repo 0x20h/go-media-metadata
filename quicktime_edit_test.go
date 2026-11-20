@@ -317,6 +317,7 @@ func TestShiftOffsets(t *testing.T) {
 
 func FuzzVideoEdit(f *testing.F) {
 	movieSeeds(f)
+	f.Add(readFile(f, "testdata/video/canon.mp4")) // the Canon thumbnail's date
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))

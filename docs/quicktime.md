@@ -36,7 +36,12 @@ Where each field comes from, in order of preference:
   files): Make, Model and DateTimeOriginal from the Exif of the thumbnail
   JPEG in its `CNTH` box (`CNDA`, CNTH's one box; what follows it there is
   padding). The date is the camera's clock time, without an offset unless
-  the Exif has one. They come after Nikon's.
+  the Exif has one. They come after Nikon's. `VideoEdit.Created` sets
+  that Exif's DateTimeOriginal and DateTimeDigitized too, where it has
+  them (with their offset where it has one), so the file doesn't keep an
+  older second date. The JPEG is edited in place where it can be; one
+  that grows takes its room from CNTH's padding, or grows CNTH, the
+  `uuid` box and `moov` when the padding is too short.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
