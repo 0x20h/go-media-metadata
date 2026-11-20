@@ -4,6 +4,12 @@
 
 ### Added
 
+- `ReadVideo` and `ReadAll` read the Exif block some cameras write into a
+  movie or an AVI: QuickTime user data `QVMI` (Casio), `MVTG`
+  (Fujifilm), `RMKN` (Ricoh) and `SIGM` (Sigma); an AVI stream's `strd`
+  chunk starting `AVIF`, and Casio's `JUNK` chunk starting `QVMI`. Its
+  date taken, Make, Model, LensModel and GPS position are taken where
+  the file's own fields have none (#189).
 - `RewriteMovie` and `PlanRewriteMovie` take fragmented MP4 and MOV
   files (moof and mdat pairs, mvex, sidx, mfra), which they refused
   before, so their metadata can be stripped and times zeroed. The

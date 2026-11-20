@@ -53,7 +53,10 @@ testdata/video/*.3gp
     recording), encoded and muxed by ffmpeg, with metadata written by
     ExifTool 13.55 or ffmpeg; canon.mp4 with a Canon-style uuid box (a
     thumbnail of the pattern, made-up Exif values) spliced in by
-    testdata/video/canon.go.txt (see testdata/video/make.sh). Made for this
+    testdata/video/canon.go.txt; casio-qvmi.mov, fuji-mvtg.mov,
+    ricoh-rmkn.mp4 and sigma-sigm.mov with a camera's Exif block in the
+    user data (made-up values) by testdata/video/camexif.go.txt (see
+    testdata/video/make.sh). Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 
@@ -117,8 +120,10 @@ testdata/avi/*.avi
     A synthetic test pattern (ffmpeg's testsrc, no recording), MJPEG,
     encoded and muxed by ffmpeg, idit.avi with an IDIT date spliced in by
     testdata/avi/idit.go.txt, nikon.avi with a Nikon-style ncdt list (made-up
-    values and a thumbnail of the pattern) by testdata/avi/ncdt.go.txt
-    (see testdata/avi/make.sh). Made for this
+    values and a thumbnail of the pattern) by testdata/avi/ncdt.go.txt,
+    avif.avi and casio-junk.avi with a camera's Exif block (made-up
+    values) by testdata/video/camexif.go.txt (see testdata/avi/make.sh).
+    Made for this
     project by its authors. Dedicated to the public domain under CC0 1.0:
     https://creativecommons.org/publicdomain/zero/1.0/
 

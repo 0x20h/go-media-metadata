@@ -42,6 +42,13 @@ Where each field comes from, in order of preference:
   older second date. The JPEG is edited in place where it can be; one
   that grows takes its room from CNTH's padding, or grows CNTH, the
   `uuid` box and `moov` when the padding is too short.
+- **A camera's Exif block** in the user data, as ExifTool documents them:
+  Casio's `QVMI` (IFD0 10 bytes in, big-endian, offsets from the box's
+  data), Fujifilm's `MVTG` (IFD0 16 bytes in, little-endian, offsets from
+  IFD0), Ricoh's `RMKN` and Sigma's `SIGM` (TIFF data, header included).
+  Its DateTimeOriginal (else DateTimeDigitized) comes after Canon's date,
+  before XMP; its GPS position after `loci`, before XMP; its Make, Model
+  and LensModel where the movie has none.
 - **User data** (`©day`, `©xyz`, `©mak`, `©mod`, `©nam`, `©des`), and the
   3GPP strings `titl` and `dscp` (TS 26.244, as ExifTool writes an MP4's
   UserData Title and Description). For the title and description, the
@@ -332,6 +339,12 @@ Read only, through `ReadVideo` (and `ReadAll`, `ReadImageSize`,
     16-bit size, little-endian, then the value. Without an offset.
   - The title is `INAM`, the description `ICMT` (else `ISBJ`), and the
     keywords `IKEY`, split at `;` or `,`.
+  - A camera's Exif block, as ExifTool documents them: a stream's `strd`
+    chunk starting `AVIF` (IFD0 8 bytes in, little-endian, offsets from
+    IFD0), or Casio's top-level `JUNK` chunk starting `QVMI` (IFD0 10
+    bytes in, big-endian, offsets from the chunk's data). Its date taken
+    comes after the AVI's own dates, before `ICRD`; its Make, Model,
+    LensModel and GPS position where the AVI has none.
 - **ASF** (WMV, WMA, as Windows Media and many cameras and phones of the
   2000s wrote them):
   - The recording date is the File Properties Object's creation date (a

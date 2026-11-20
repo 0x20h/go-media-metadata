@@ -81,4 +81,14 @@ ff -i "$OUT/bframes.mp4" -c copy -use_editlist 0 "$OUT/bframes-noedts.mp4"
 ff -f lavfi -i testsrc=duration=2:size=64x48:rate=10 -c:v libx264 -preset veryfast -g 5 \
   -metadata title=Lake -movflags frag_keyframe+empty_moov "$OUT/frag.mp4"
 
+# Cameras' Exif blocks in moov's user data, in the layouts ExifTool
+# documents (see camexif.go.txt; made-up values): Casio's QVMI, Fujifilm's
+# MVTG, Ricoh's RMKN, Sigma's SIGM.
+cp "$DIR/camexif.go.txt" "$TMP/camexif.go"
+cx() { (cd "$TMP" && go run camexif.go "$@"); }
+cx QVMI base.mov "$OUT/casio-qvmi.mov" CASIO EX-S880 "" "2008:05:06 07:08:09" 35.6586 139.7454
+cx MVTG base.mov "$OUT/fuji-mvtg.mov" FUJIFILM "FinePix HS20EXR" "" "2011:03:04 05:06:07" 48.8584 2.2945
+cx RMKN base.mp4 "$OUT/ricoh-rmkn.mp4" RICOH "GR III" "GR LENS 18.3mm F2.8" "2020:01:02 03:04:05" 41.8902 12.4922
+cx SIGM base.mov "$OUT/sigma-sigm.mov" SIGMA fp "45mm F2.8 DG DN | Contemporary 019" "2021:06:07 08:09:10" -33.8568 151.2153
+
 rm -rf "$TMP"

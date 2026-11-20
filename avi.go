@@ -41,14 +41,18 @@ type aviChunk struct {
 	id    string
 	list  bool
 	at, n int64
+	head  [4]byte // a chunk's first data bytes (as many as it has, up to 4)
 }
 
 // aviChunks reads the chunks in [start, end).
 func aviChunks(r io.ReaderAt, start, end int64) ([]aviChunk, error) {
 	var out []aviChunk
 	for at := start; at+8 <= end; {
+		// The header and the data's first 4 bytes, in one read: a list's
+		// type, or what a JUNK chunk holds.
 		var h [12]byte
-		if _, err := r.ReadAt(h[:8], at); err != nil {
+		hn := min(12, end-at)
+		if _, err := r.ReadAt(h[:hn], at); err != nil {
 			return out, fmt.Errorf("%w: reading a chunk header: %v", ErrMalformed, err)
 		}
 		n := int64(binary.LittleEndian.Uint32(h[4:]))
@@ -57,11 +61,10 @@ func aviChunks(r io.ReaderAt, start, end int64) ([]aviChunk, error) {
 			n = end - c.at // a file cut short: what's there
 			c.n = n
 		}
+		copy(c.head[:], h[8:8+min(4, max(n, 0), hn-8)])
 		if c.id == "LIST" && n >= 4 {
-			if _, err := r.ReadAt(h[8:12], c.at); err != nil {
-				return out, fmt.Errorf("%w: reading a list: %v", ErrMalformed, err)
-			}
 			c.id, c.list, c.at, c.n = string(h[8:12]), true, c.at+4, n-4
+			c.head = [4]byte{}
 		}
 		out = append(out, c)
 		at += 8 + n + n&1
@@ -161,8 +164,7 @@ func readAVIVideo(r io.ReaderAt, size int64) (Video, error) {
 			}
 		case c.id == "JUNK" && !c.list && c.n >= 10:
 			// Casio's Exif block; other JUNK is padding, not read whole.
-			var h [4]byte
-			if _, err := r.ReadAt(h[:], c.at); err == nil && string(h[:]) == "QVMI" {
+			if string(c.head[:]) == "QVMI" {
 				if b, err := readAVIChunk(r, c); err == nil {
 					takeExif(aviJunkExif(b))
 				}
