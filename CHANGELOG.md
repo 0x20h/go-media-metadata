@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- `SetVideoMetadata` and `PlanVideoMetadata` write an AVI file's
+  recording date (`VideoEdit.Created`, the only field written there):
+  IDIT, INFO's ICRD and Nikon's DateTimeOriginal and CreateDate, where
+  the file has them, each in the form it already has, in place. A
+  value that grows takes its bytes from a JUNK chunk right after it;
+  the media data never moves, so the indexes stay right.
+- `ErrNoDateField` and `ErrNoRoom` (both `ErrUnsupported`): an AVI
+  file without a date field (none is added), and a date that doesn't
+  fit without moving the media data.
+
 ### Fixed
 
 - `EditXMP` no longer writes a property with the prefix `xml` or

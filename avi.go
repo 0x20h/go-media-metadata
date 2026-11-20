@@ -10,14 +10,16 @@ import (
 	"time"
 )
 
-// AVI (RIFF "AVI "): the Microsoft AVI file format. Read only. The header
+// AVI (RIFF "AVI "): the Microsoft AVI file format. Its date is written
+// (avi_edit.go); the rest is read only. The header
 // list (hdrl) has the main header (avih: the frame rate and count, the
 // size); an IDIT chunk the recording date, as cameras write it; the INFO
 // list the title (INAM), a comment (ICMT), keywords (IKEY) and a creation
 // date (ICRD); Nikon's ncdt list the make, model and date taken (nctg).
 
-// errAVIReadOnly is the error of a write to an AVI file.
-var errAVIReadOnly = fmt.Errorf("%w: an AVI file is read only", ErrUnsupported)
+// errAVIReadOnly is the error of a rotation or orientation write to an AVI
+// file.
+var errAVIReadOnly = fmt.Errorf("%w: an AVI file's rotation is read only", ErrUnsupported)
 
 // maxAVIChunk caps the header chunks read whole.
 const maxAVIChunk = 1 << 20
