@@ -112,6 +112,9 @@ func PlanVideoMetadata(src io.ReaderAt, size int64, edit VideoEdit) (*Plan, erro
 	if err := edit.check(); err != nil {
 		return nil, err
 	}
+	if isAVI(src, size) {
+		return planAVIVideo(src, size, edit)
+	}
 	if size < 8 {
 		return nil, errNotQuickTime
 	}
