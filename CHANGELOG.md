@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- `RewriteOptions.StartAtFirstFrame`: a video track with composition
+  offsets (B-frames) and no edit list gets the edit list FFmpeg's MP4
+  muxer writes, so players start it at its first frame instead of about
+  two frames late. Other tracks stay as they are (#214).
+
 ### Fixed
 
 - `EditXMP` no longer writes a property with the prefix `xml` or
