@@ -222,3 +222,51 @@ func TestRewriteMoviePromotesToCo64(t *testing.T) {
 		t.Errorf("wrote %d bytes, the file has %d (moov %d → %d)", w.n, f.size(), len(f.suffix), len(newMoov.encode()))
 	}
 }
+
+// ZeroTimes zeroes the creation and modification times of the movie
+// header and of every track's and media's header (#216).
+func TestZeroTimesEveryHeader(t *testing.T) {
+	src := readFile(t, "testdata/video/keys-mvhd.mov")
+	headerTimes := func(file []byte) (nonzero []string) {
+		top, err := bmff.ParseBoxes(file, 0, int64(len(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, b := range top {
+			if b.Type != bmff.T("moov") {
+				continue
+			}
+			moov, err := parseQTNode(file[b.Offset:b.End()], 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check := func(name string, n *qtNode) {
+				if n == nil {
+					t.Fatalf("no %s", name)
+				}
+				p := n.payload()
+				end := 12
+				if p[0] == 1 {
+					end = 20
+				}
+				if !bytes.Equal(p[4:end], make([]byte, end-4)) {
+					nonzero = append(nonzero, name)
+				}
+			}
+			check("mvhd", moov.child(bmff.T("mvhd")))
+			for _, k := range moov.kids {
+				if k.typ == bmff.T("trak") {
+					check("tkhd", k.child(bmff.T("tkhd")))
+					check("mdhd", path(k, "mdia").child(bmff.T("mdhd")))
+				}
+			}
+		}
+		return nonzero
+	}
+	if got := headerTimes(src); len(got) == 0 {
+		t.Fatal("the source's times are all 0 already")
+	}
+	if got := headerTimes(rewritten(t, src, RewriteOptions{ZeroTimes: true})); len(got) != 0 {
+		t.Errorf("times left in %v", got)
+	}
+}
