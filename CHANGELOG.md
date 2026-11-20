@@ -14,6 +14,13 @@
   file without a date field (none is added), and a date that doesn't
   fit without moving the media data.
 
+### Fixed
+
+- `EditXMP` no longer writes a property with the prefix `xml` or
+  `xmlns` when a packet binds one of them to the property's namespace:
+  parsers read those as XML's own, so the property was lost. It
+  declares the usual prefix instead.
+
 ## v0.2.5 (2026-11-20)
 
 No breaking changes.

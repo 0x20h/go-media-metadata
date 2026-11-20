@@ -686,7 +686,9 @@ func insertFirst(c, li *xmlNode) {
 }
 
 // prefixIn is a prefix bound to ns in scope ("" for the default
-// namespace), or "" when there is none (the caller declares one).
+// namespace), or "" when there is none (the caller declares one). XML
+// reserves "xml" and "xmlns": a packet that binds one of them to another
+// namespace has it read as XML's own by parsers, so it isn't used.
 func prefixIn(in scope, ns string) string {
 	keys := make([]string, 0, len(in))
 	for k := range in {
@@ -694,7 +696,7 @@ func prefixIn(in scope, ns string) string {
 	}
 	slices.Sort(keys)
 	for _, k := range keys {
-		if in[k] == ns && k != "" {
+		if in[k] == ns && k != "" && k != "xml" && k != "xmlns" {
 			return k
 		}
 	}
