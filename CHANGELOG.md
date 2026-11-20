@@ -2,21 +2,27 @@
 
 ## Unreleased
 
+## v0.2.6 (2026-11-20)
+
+No breaking changes.
+
 ### Added
 
-- `RewriteOptions.StartAtFirstFrame`: a video track with composition
-  offsets (B-frames) and no edit list gets the edit list FFmpeg's MP4
-  muxer writes, so players start it at its first frame instead of about
-  two frames late. Other tracks stay as they are (#214).
-- `SetVideoMetadata` and `PlanVideoMetadata` write an AVI file's
-  recording date (`VideoEdit.Created`, the only field written there):
-  IDIT, INFO's ICRD and Nikon's DateTimeOriginal and CreateDate, where
-  the file has them, each in the form it already has, in place. A
-  value that grows takes its bytes from a JUNK chunk right after it;
-  the media data never moves, so the indexes stay right.
+- **AVI dates:** `SetVideoMetadata` and `PlanVideoMetadata` write an
+  AVI file's recording date (`VideoEdit.Created`, the only field
+  written there): IDIT, INFO's ICRD and Nikon's DateTimeOriginal and
+  CreateDate, where the file has them, each in the form it already
+  has, in place. A value that grows takes its bytes from a JUNK chunk
+  right after it; the media data never moves, so the indexes stay
+  right (#181).
 - `ErrNoDateField` and `ErrNoRoom` (both `ErrUnsupported`): an AVI
   file without a date field (none is added), and a date that doesn't
   fit without moving the media data.
+- **Starting at the first frame:** `RewriteOptions.StartAtFirstFrame`
+  gives a video track with composition offsets (B-frames) and no edit
+  list the edit list FFmpeg's MP4 muxer writes, so players start it at
+  its first frame instead of about two frames late. Other tracks stay
+  as they are (#214).
 
 ### Fixed
 
@@ -26,7 +32,15 @@
 - `EditXMP` no longer writes a property with the prefix `xml` or
   `xmlns` when a packet binds one of them to the property's namespace:
   parsers read those as XML's own, so the property was lost. It
-  declares the usual prefix instead.
+  declares the usual prefix instead (#212).
+
+### Behaviour worth knowing
+
+- `SetVideoMetadata` and `PlanVideoMetadata` take an AVI file that
+  gave `ErrUnsupported` before, when the edit sets only `Created`.
+  Other AVI writes (rotation, orientation, other fields) still give
+  `ErrUnsupported`.
+- `RewriteMovie` with `ZeroTimes` now changes the `mdhd` bytes as well.
 
 ## v0.2.5 (2026-11-20)
 
