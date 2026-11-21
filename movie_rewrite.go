@@ -81,7 +81,7 @@ func RewriteMovie(src io.ReaderAt, size int64, dst io.Writer, opts RewriteOption
 // plan without patches. Refused, with ErrUnsupported: fragments or a
 // segment index before moov, a segment index over boxes that would move
 // apart, sample auxiliary offsets in moov (saio), media in
-// other files (dref), a movie box over 64 MB, a top-level meta box (with
+// other files whose chunks can't be told apart (see chunk_locality.go), a movie box over 64 MB, a top-level meta box (with
 // item locations) that would move and isn't stripped; with ErrMalformed: a chunk
 // offset outside the boxes kept. A file that isn't a movie gives
 // ErrUnknownFormat.

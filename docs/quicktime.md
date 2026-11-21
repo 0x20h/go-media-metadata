@@ -292,11 +292,20 @@ err := mediameta.RewriteMovie(src, size, dst, mediameta.RewriteOptions{
   after `moov` indexes from its own end; its first offset is patched
   when it and what it indexes move apart (a `free` box between them
   left out).
+- **Media in other files** (QuickTime reference movies, as older Final
+  Cut, iMovie and QuickTime Pro exports write them): a chunk's offset
+  points into the file its sample description's data reference names
+  (the `stsc` run, its `stsd` entry's data reference index, that `dref`
+  entry's self-contained flag). Only chunks in this file move; the
+  offsets of the others stay byte for byte, chunk by chunk in a track
+  that mixes both. The other files' paths aren't touched.
 - **Refused:**
   - fragments or a segment index (`moof`, `sidx`, …) before `moov`
+  - a track with media in another file whose chunks can't be told
+    apart for certain (no `stsc` or `stsd`, an index out of range,
+    `stsc` out of order)
   - a `sidx` over boxes the rewrite would leave out or move apart
   - sample auxiliary information offsets (`saio`)
-  - media data in other files (a `dref` entry that isn't self-contained)
   - a `moov` over 64 MB
   - a top-level `meta` that would move and isn't stripped (its item
     locations would point where it was)

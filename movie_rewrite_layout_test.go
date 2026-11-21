@@ -162,6 +162,9 @@ func FuzzRewriteMovie(f *testing.F) {
 	}
 	f.Add(readFile(f, "testdata/video/bframes-noedts.mp4"))
 	f.Add(readFile(f, "testdata/video/frag.mp4")) // fragmented
+	for _, m := range referenceMovieSeeds() {
+		f.Add(m) // media in other files
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			r := bytes.NewReader(data)
