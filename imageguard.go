@@ -343,6 +343,10 @@ func guardPlan(p *Plan, ranges [][2]int64) error {
 type heifImages struct {
 	ranges [][2]int64
 	idat   [][2]int64
+	// idatSpill: an idat item's extent that starts or ends past idat's
+	// payload. HashImageData, as ExifTool, reads it from the file there,
+	// from idat's start on: bytes no edit of meta can keep in place.
+	idatSpill bool
 }
 
 // snapshotImages records f's image data where the source has it.
@@ -357,10 +361,14 @@ func (f *heifFile) snapshotImages() {
 				for _, e := range it.Extents {
 					start := it.BaseOffset + e.Offset
 					if start < it.BaseOffset || start >= uint64(n) {
+						s.idatSpill = true
 						continue
 					}
 					end := uint64(n)
 					if e.Length != 0 && start+e.Length > start {
+						if start+e.Length > uint64(n) {
+							s.idatSpill = true
+						}
 						end = min(end, start+e.Length)
 					}
 					s.idat = append(s.idat, [2]int64{int64(start), int64(end)})
@@ -381,6 +389,9 @@ func guardHEIFPlan(p *Plan) error {
 	}
 	if err := guardPlan(p, f.images.ranges); err != nil {
 		return err
+	}
+	if f.images.idatSpill {
+		return fmt.Errorf("%w: an image item in idat whose extent runs past idat", ErrUnsupported)
 	}
 	if len(f.images.idat) == 0 {
 		return nil
