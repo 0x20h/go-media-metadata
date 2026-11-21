@@ -31,7 +31,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 	out, err := exec.Command(tool, append([]string{"-j", "-n", "-G1", "-api", "QuickTimeUTC", "-Keys:all", "-UserData:all", "-ItemList:all",
 		"-XMP-exif:all", "-XMP-photoshop:DateCreated", "-XMP-xmp:CreateDate", "-QuickTime:CreateDate", "-QuickTime:Duration",
 		"-Track1:ImageWidth", "-Track1:ImageHeight", "-Composite:Rotation", "-Composite:GPSLatitude", "-Composite:GPSLongitude",
-		"-Composite:GPSAltitude", "-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal", "-ExifIFD:LensModel", "-GPS:GPSLatitude"}, paths...)...).Output()
+		"-Composite:GPSAltitude", "-IFD0:Make", "-IFD0:Model", "-ExifIFD:DateTimeOriginal", "-ExifIFD:LensModel", "-VideoKeys:LensModel", "-GPS:GPSLatitude"}, paths...)...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestVideoCorpusAgreesWithExifTool(t *testing.T) {
 		if md := first(first(str("Keys:Model"), str("UserData:Model")), str("IFD0:Model")); v.Model != md {
 			t.Errorf("%s: model %q, ExifTool %q", path, v.Model, md)
 		}
-		if lens := str("ExifIFD:LensModel"); lens != "" && v.LensModel != lens {
+		if lens := first(first(str("Keys:LensModel"), str("VideoKeys:LensModel")), str("ExifIFD:LensModel")); v.LensModel != lens {
 			t.Errorf("%s: lens %q, ExifTool %q", path, v.LensModel, lens)
 		}
 		if v.ContentIdentifier != str("Keys:ContentIdentifier") {
