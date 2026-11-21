@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- HEIF writes (`SetRotation`, `SetOrientation` and their plans) refuse a
+  file with an image item in idat whose extent runs past idat, with
+  `ErrUnsupported`. `HashImageData` reads such an extent as ExifTool
+  does, from idat's start on into the file, and an edit of meta would
+  change those bytes and with them the hash. `HashImageData` itself is
+  unchanged. Found by FuzzSetRotation; real files don't have such
+  extents (none in the corpus).
+
 ### Added
 
 - `ReadVideo` and `ReadAll` read the Exif block some cameras write into a
