@@ -50,6 +50,9 @@ type Metadata struct {
 	// shown.
 	Regions       *Regions
 	PersonInImage []string
+	// MicrosoftRegions are the XMP's Microsoft Photo people regions
+	// (XMP.MicrosoftRegions).
+	MicrosoftRegions []MicrosoftRegion
 
 	// ContentIdentifier pairs a Live Photo's still with its movie: the
 	// Apple maker note's (Exif), or a movie's Keys entry (Video).
@@ -238,7 +241,7 @@ func (m *Metadata) summarize() {
 		}
 	}
 	m.Rating, m.HasRating = x.Rating, x.HasRating
-	m.Regions, m.PersonInImage = x.Regions, x.PersonInImage
+	m.Regions, m.PersonInImage, m.MicrosoftRegions = x.Regions, x.PersonInImage, x.MicrosoftRegions
 	m.ContentIdentifier = e.ContentIdentifier
 }
 

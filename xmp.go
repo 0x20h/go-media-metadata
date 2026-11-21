@@ -34,6 +34,11 @@ type XMP struct {
 	// Regions are the image's face and other regions (mwg-rs:Regions),
 	// nil without any; see Regions.
 	Regions *Regions
+	// MicrosoftRegions are Microsoft Photo's people regions
+	// (MP:RegionInfo, as Windows Photo Gallery writes them): each a name,
+	// and a box where one is given; nil without any. They're read apart
+	// from Regions, which they don't feed.
+	MicrosoftRegions []MicrosoftRegion
 	// GPS is the position in exif:GPSLatitude and exif:GPSLongitude, with
 	// exif:GPSAltitude and exif:GPSAltitudeRef: nil without a valid
 	// latitude and longitude. See parseXMPCoord for the forms read.
@@ -333,6 +338,7 @@ func (d *xmpDoc) fields() XMP {
 	x.HierarchicalKeywords = d.stringBag(nsLR, "hierarchicalSubject")
 	x.PersonInImage = d.stringBag(nsIPTCX, "PersonInImage")
 	x.Regions = d.regions()
+	x.MicrosoftRegions = d.microsoftRegions()
 	x.GPS = d.xmpGPS()
 	x.DateCreated = d.xmpDate(nsPhotoshop, "DateCreated")
 	x.CreateDate = d.xmpDate(nsXMP, "CreateDate")
