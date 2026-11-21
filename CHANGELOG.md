@@ -2,33 +2,27 @@
 
 ## Unreleased
 
-### Fixed
+## v0.2.7 (2026-11-21)
 
-- HEIF writes (`SetRotation`, `SetOrientation` and their plans) refuse a
-  file with an image item in idat whose extent runs past idat, with
-  `ErrUnsupported`. `HashImageData` reads such an extent as ExifTool
-  does, from idat's start on into the file, and an edit of meta would
-  change those bytes and with them the hash. `HashImageData` itself is
-  unchanged. Found by FuzzSetRotation; real files don't have such
-  extents (none in the corpus).
+No breaking changes.
 
 ### Added
 
-- `HashImageData` takes AVI files: the data of each `LIST movi` chunk,
-  as stored, OpenDML's `RIFF AVIX` extensions included, so the sum is
-  ExifTool's ImageDataHash. The AVI date writes never touch `movi`, so
-  the hash stays the same across them (#222).
-- `ReadVideo` and `ReadAll` read the Exif block some cameras write into a
-  movie or an AVI: QuickTime user data `QVMI` (Casio), `MVTG`
-  (Fujifilm), `RMKN` (Ricoh) and `SIGM` (Sigma); an AVI stream's `strd`
-  chunk starting `AVIF`, and Casio's `JUNK` chunk starting `QVMI`. Its
-  date taken, Make, Model, LensModel and GPS position are taken where
-  the file's own fields have none (#189).
-- `RewriteMovie` and `PlanRewriteMovie` take fragmented MP4 and MOV
-  files (moof and mdat pairs, mvex, sidx, mfra), which they refused
-  before, so their metadata can be stripped and times zeroed. The
-  fragments' absolute offsets (tfhd base-data-offset, tfra moof
-  offsets) and a sidx's first offset follow the boxes as they move.
+- **AVI image data hash:** `HashImageData` takes AVI files: the data of
+  each `LIST movi` chunk, as stored, OpenDML's `RIFF AVIX` extensions
+  included, so the sum is ExifTool's ImageDataHash. The AVI date writes
+  never touch `movi`, so the hash stays the same across them (#222).
+- **Camera Exif in videos:** `ReadVideo` and `ReadAll` read the Exif
+  block some cameras write into a movie or an AVI: QuickTime user data
+  `QVMI` (Casio), `MVTG` (Fujifilm), `RMKN` (Ricoh) and `SIGM` (Sigma);
+  an AVI stream's `strd` chunk starting `AVIF`, and Casio's `JUNK` chunk
+  starting `QVMI`. Its date taken, Make, Model, LensModel and GPS
+  position are taken where the file's own fields have none (#189).
+- **Fragmented movies:** `RewriteMovie` and `PlanRewriteMovie` take
+  fragmented MP4 and MOV files (moof and mdat pairs, mvex, sidx, mfra),
+  which they refused before, so their metadata can be stripped and times
+  zeroed. The fragments' absolute offsets (tfhd base-data-offset, tfra
+  moof offsets) and a sidx's first offset follow the boxes as they move.
   Fragments or a sidx before moov are still refused (#178).
 
 ### Fixed
@@ -36,6 +30,23 @@
 - `VideoEdit.Created` also sets the date in a Canon MP4's thumbnail Exif
   (DateTimeOriginal and DateTimeDigitized, in the `uuid` box's CNTH), so
   ExifTool and other tools no longer read the old date there (#180).
+- HEIF writes (`SetRotation`, `SetOrientation` and their plans) refuse a
+  file with an image item in idat whose extent runs past idat, with
+  `ErrUnsupported`. `HashImageData` reads such an extent as ExifTool
+  does, from idat's start on into the file, and an edit of meta would
+  change those bytes and with them the hash. `HashImageData` itself is
+  unchanged. Found by fuzzing; real files don't have such extents (none
+  in the corpus) (#223).
+
+### Behaviour worth knowing
+
+- `HashImageData` gives a hash for AVI files, which gave
+  `ErrUnknownFormat` before.
+- `ReadVideo` and `ReadAll` may now give a date, camera or GPS position
+  for Casio, Fujifilm, Ricoh and Sigma movies and some camera AVIs that
+  gave none before.
+- `RewriteMovie` writes fragmented movies it refused before.
+- A date edit of a Canon MP4 also changes the thumbnail's Exif bytes.
 
 ## v0.2.6 (2026-11-20)
 

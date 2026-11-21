@@ -4,5 +4,3 @@
 # B/op or ns/op, the most as a percentage ("160%") in place of the gate's
 # 10% or 25%. A PR that adds a line says why in its description; the line
 # goes again once the change is on main.
-BenchmarkPlanVideoEditAVI allocs/op 4 an AVI's stream list (strl) is walked for a camera's strd Exif block (#189)
-BenchmarkPlanVideoEditAVI read-B/op 216 the strl walk's headers, and each chunk header read with its first 4 data bytes (#189)
