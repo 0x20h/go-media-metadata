@@ -2,16 +2,20 @@
 
 ## Unreleased
 
+## v0.2.8 (2026-11-21)
+
+No breaking changes.
+
 ### Added
 
-- `ParseXMP` (and `ReadAll`) read Microsoft Photo's people regions,
+- **Microsoft Photo people tags:** `ParseXMP` (and `ReadAll`) read Microsoft Photo's people regions,
   Windows Photo Gallery's people tags: `MP:RegionInfo`'s `MPRI:Regions`,
   each `MPReg:PersonDisplayName` and, where given, `MPReg:Rectangle`
   ("x, y, w, h" as fractions of the image), as `XMP.MicrosoftRegions`
   and `Metadata.MicrosoftRegions`. A name without a box is kept; a box
   that isn't four fractions within the image is ignored. They're read
   apart from the MWG regions. Read only (#226).
-- `RewriteMovie` and `PlanRewriteMovie` take movies with media in other
+- **Reference movies:** `RewriteMovie` and `PlanRewriteMovie` take movies with media in other
   files (QuickTime reference movies), which they refused before: a
   chunk's offset is left as it is where its sample description's data
   reference names another file, and only the chunks in this file move,
@@ -26,6 +30,13 @@
   from the video track's own Keys (`com.apple.quicktime.camera.lens_model`,
   ExifTool's VideoKeys), where iPhones write it, when the movie's Keys
   have none (#228).
+
+### Behaviour worth knowing
+
+- `XMP` and `Metadata` have a new field, `MicrosoftRegions`; code that
+  compares whole structs sees it.
+- `RewriteMovie` writes reference movies it refused before.
+- `ReadVideo` gives a lens model for iPhone clips that gave none.
 
 ## v0.2.7 (2026-11-21)
 
