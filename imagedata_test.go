@@ -32,7 +32,7 @@ func imageDataMD5(t testing.TB, file []byte) (string, error) {
 // WebP files and movies made from a test pattern.
 func hashTestFiles(t *testing.T) []string {
 	t.Helper()
-	pats := []string{"testdata/exiftool/*.jpg", imageIOCorpus + "/*.jpg", imageIOCorpus + "/*.heic", "testdata/iphone/*.heic", "testdata/webp/*.webp"}
+	pats := []string{"testdata/exiftool/*.jpg", imageIOCorpus + "/*.jpg", imageIOCorpus + "/*.heic", "testdata/iphone/*.heic", "testdata/webp/*.webp", "testdata/avi/*.avi"}
 	if dir := os.Getenv("MEDIAMETA_RAW_DIR"); dir != "" {
 		for _, ext := range []string{"dng", "cr2", "cr3", "nef", "arw", "orf", "rw2", "raf"} {
 			pats = append(pats, filepath.Join(dir, "*."+ext))
@@ -57,6 +57,13 @@ func hashTestFiles(t *testing.T) []string {
 		put("layout"+string(rune('a'+i))+".jxl", file)
 	}
 	put("motion.jpg", buildMotionPhoto(t, motionOpts{}).file)
+	// An OpenDML AVI's continuation: a RIFF AVIX chunk after the first
+	// RIFF, its movi list of odd length, with its pad byte.
+	avi := readFile(t, "testdata/avi/plain.avi")
+	movi := append([]byte("movi00dc"), 3, 0, 0, 0, 'a', 'b', 'c')
+	list := append(append([]byte("LIST"), byte(len(movi)), 0, 0, 0), append(movi, 0)...)
+	avix := append(append([]byte("RIFF"), byte(4+len(list)), 0, 0, 0), append([]byte("AVIX"), list...)...)
+	put("avix.avi", append(append([]byte(nil), avi...), avix...))
 	base := readFile(t, "testdata/exiftool/all.jpg")
 	eoi := bytes.LastIndex(base, []byte{0xFF, markerEOI})
 	put("no-eoi.jpg", base[:eoi])
@@ -93,6 +100,7 @@ func hashTestFiles(t *testing.T) []string {
 	for name, args := range map[string][]string{
 		"av.mp4": {"-c:v", "libx264", "-c:a", "aac"},
 		"av.mov": {"-c:v", "mpeg4", "-c:a", "pcm_s16le"},
+		"av.avi": {"-c:v", "mjpeg", "-c:a", "pcm_s16le"},
 	} {
 		in := []string{"-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "1", "-shortest"}
 		if run("ffmpeg", append(append(in, args...), name)...) {
@@ -181,4 +189,21 @@ func TestHashImageDataAcrossWrites(t *testing.T) {
 	if _, err := HashImageData(bytes.NewReader([]byte("plain text, no image")), 20, md5.New()); !errors.Is(err, ErrUnknownFormat) {
 		t.Errorf("text: %v, want ErrUnknownFormat", err)
 	}
+}
+
+// HashImageData on any input: no panic, and an AVI's hash is the same
+// read twice.
+func FuzzHashImageDataAVI(f *testing.F) {
+	paths, _ := filepath.Glob("testdata/avi/*.avi")
+	for _, p := range paths {
+		f.Add(readFile(f, p))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var a, b bytes.Buffer
+		_, errA := HashImageData(bytes.NewReader(data), int64(len(data)), &a)
+		_, errB := HashImageData(bytes.NewReader(data), int64(len(data)), &b)
+		if (errA == nil) != (errB == nil) || !bytes.Equal(a.Bytes(), b.Bytes()) {
+			t.Fatalf("two reads differ: %v, %v", errA, errB)
+		}
+	})
 }

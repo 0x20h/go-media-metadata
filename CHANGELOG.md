@@ -4,6 +4,10 @@
 
 ### Added
 
+- `HashImageData` takes AVI files: the data of each `LIST movi` chunk,
+  as stored, OpenDML's `RIFF AVIX` extensions included, so the sum is
+  ExifTool's ImageDataHash. The AVI date writes never touch `movi`, so
+  the hash stays the same across them (#222).
 - `ReadVideo` and `ReadAll` read the Exif block some cameras write into a
   movie or an AVI: QuickTime user data `QVMI` (Casio), `MVTG`
   (Fujifilm), `RMKN` (Ricoh) and `SIGM` (Sigma); an AVI stream's `strd`

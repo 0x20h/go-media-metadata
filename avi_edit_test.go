@@ -37,6 +37,14 @@ func planAVIDate(t testing.TB, file []byte) (*Plan, []byte, error) {
 	if !bytes.Equal(applied, out.Bytes()) {
 		t.Fatal("the patches and WriteTo differ")
 	}
+	// The movie data, as HashImageData (ExifTool's ImageDataHash) takes
+	// it, stays as it was.
+	var before, after bytes.Buffer
+	if _, err := HashImageData(bytes.NewReader(file), int64(len(file)), &before); err == nil {
+		if _, err := HashImageData(bytes.NewReader(out.Bytes()), int64(out.Len()), &after); err != nil || !bytes.Equal(before.Bytes(), after.Bytes()) {
+			t.Fatalf("the image data changed (%v)", err)
+		}
+	}
 	return p, out.Bytes(), nil
 }
 

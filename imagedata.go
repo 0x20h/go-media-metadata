@@ -40,6 +40,9 @@ import (
 //   - Fujifilm RAF: the raw data blocks the header points to.
 //   - QuickTime, MP4 and Canon CR3: the chunks of each video and sound
 //     track, in track order, then in chunk-offset order.
+//   - AVI: the data of each LIST movi chunk after its type, with its pad
+//     byte, as stored (chunk headers, ix## index chunks and JUNK
+//     included), in file order, OpenDML's RIFF AVIX extensions too.
 //
 // A transport stream (MTS, M2TS) gives an error that is ErrUnsupported:
 // ExifTool gives no ImageDataHash for one either. A file of none of these
@@ -64,6 +67,8 @@ func HashImageData(r io.ReaderAt, size int64, w io.Writer) (int64, error) {
 			err = h.raw()
 		case formatMovie:
 			err = h.movie()
+		case formatAVI:
+			err = h.avi()
 		case formatTS:
 			// ExifTool gives no ImageDataHash for a transport stream either.
 			return 0, fmt.Errorf("%w: no image data hash for a transport stream", ErrUnsupported)
@@ -83,7 +88,7 @@ func HashImageData(r io.ReaderAt, size int64, w io.Writer) (int64, error) {
 }
 
 // imageDataFormats are the formats HashImageData takes.
-const imageDataFormats = "JPEG, PNG, WebP, HEIF, JPEG XL, camera RAW, QuickTime or MP4 file"
+const imageDataFormats = "JPEG, PNG, WebP, HEIF, JPEG XL, camera RAW, QuickTime, MP4 or AVI file"
 
 // rangeWriter copies ranges of r to w, counting the bytes.
 type rangeWriter struct {
@@ -856,6 +861,38 @@ func sampleSizeList(stsz, stz2 []byte) []uint32 {
 			}
 		}
 		return out
+	}
+	return nil
+}
+
+// avi writes an AVI's movie data as ExifTool's ImageDataHash takes it
+// (RIFF.pm: LIST_movi): the data of every LIST movi chunk, after its
+// "movi" type, with its pad byte, as stored (chunk headers, frames, ix##
+// index chunks and JUNK alike), in file order. That is the first RIFF's
+// and those of the RIFF AVIX chunks OpenDML files continue in.
+func (h *rangeWriter) avi() error {
+	var hdr [12]byte
+	for at := int64(0); at+12 <= h.size; {
+		if _, err := h.r.ReadAt(hdr[:], at); err != nil {
+			return fmt.Errorf("%w: reading a RIFF header: %v", ErrMalformed, err)
+		}
+		if string(hdr[:4]) != "RIFF" {
+			break // not a RIFF chunk: no more of the file is the AVI's
+		}
+		n := int64(binary.LittleEndian.Uint32(hdr[4:]))
+		end := min(at+8+n, h.size)
+		kids, err := aviChunks(h.r, at+12, end)
+		if err != nil && len(kids) == 0 {
+			return err
+		}
+		for _, c := range kids {
+			if c.list && c.id == "movi" {
+				if err := h.copy(c.at, c.n+c.n&1); err != nil {
+					return err
+				}
+			}
+		}
+		at += 8 + n + n&1
 	}
 	return nil
 }

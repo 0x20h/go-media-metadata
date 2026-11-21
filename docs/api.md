@@ -106,6 +106,7 @@ hold the same image whatever their metadata.
 | TIFF-based RAW | the strips and tiles of each IFD and SubIFD, a SubIFD's before its parent's. Previews are left out: a CR2's IFD0, a DNG's reduced JPEG, the thumbnail in IFD1, an ARW's preview in IFD0. A Panasonic RW2's raw data, to the end of the file. |
 | RAF | the raw data blocks the header points to |
 | QuickTime, MP4, CR3 | each video and sound track's chunks, in chunk-offset order |
+| AVI | each `LIST movi` chunk's data after its type, with its pad byte, as stored (chunk headers, `ix##` indexes and `JUNK` included), in file order, OpenDML's `RIFF AVIX` extensions too |
 
 ExifTool gives no ImageDataHash for an Olympus ORF, whose header isn't
 TIFF's. This package hashes the ORF's strips. The tests compare the sum
