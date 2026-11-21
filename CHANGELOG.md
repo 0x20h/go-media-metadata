@@ -11,9 +11,6 @@
   and `Metadata.MicrosoftRegions`. A name without a box is kept; a box
   that isn't four fractions within the image is ignored. They're read
   apart from the MWG regions. Read only (#226).
-
-### Added
-
 - `RewriteMovie` and `PlanRewriteMovie` take movies with media in other
   files (QuickTime reference movies), which they refused before: a
   chunk's offset is left as it is where its sample description's data
