@@ -999,7 +999,15 @@ func shiftChunkOffsets(moov *qtNode, top []bmff.Box, moovBox bmff.Box, delta int
 		for _, k := range stbl.kids {
 			switch k.typ {
 			case bmff.T("stco"), bmff.T("co64"):
-				p, err := shiftOffsets(k.payload(), k.typ == bmff.T("co64"), end, delta)
+				var count int
+				if p := leafPayload(k); len(p) >= 8 {
+					count = int(binary.BigEndian.Uint32(p[4:]))
+				}
+				inFile, err := chunkInFile(path(trak, "mdia", "minf"), stbl, count)
+				if err != nil {
+					return err
+				}
+				p, err := shiftOffsets(k.payload(), k.typ == bmff.T("co64"), end, delta, inFile)
 				if err != nil {
 					return err
 				}
@@ -1028,7 +1036,10 @@ func path(n *qtNode, types ...string) *qtNode {
 
 // shiftOffsets adds delta to every offset in an stco or co64 payload
 // that is at or past from.
-func shiftOffsets(p []byte, wide bool, from, delta int64) ([]byte, error) {
+//
+// inFile, where not nil, is which chunks are in this file; the others are
+// in another, and stay.
+func shiftOffsets(p []byte, wide bool, from, delta int64, inFile []bool) ([]byte, error) {
 	if len(p) < 8 {
 		return nil, fmt.Errorf("%w: a chunk offset box of %d bytes", ErrMalformed, len(p))
 	}
@@ -1043,6 +1054,9 @@ func shiftOffsets(p []byte, wide bool, from, delta int64) ([]byte, error) {
 	out := bytes.Clone(p)
 	for i := range n {
 		at := 8 + i*w
+		if inFile != nil && (i >= len(inFile) || !inFile[i]) {
+			continue
+		}
 		if wide {
 			v := int64(binary.BigEndian.Uint64(out[at:]))
 			if v >= from {

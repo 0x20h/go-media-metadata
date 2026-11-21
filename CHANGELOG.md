@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- `RewriteMovie` and `PlanRewriteMovie` take movies with media in other
+  files (QuickTime reference movies), which they refused before: a
+  chunk's offset is left as it is where its sample description's data
+  reference names another file, and only the chunks in this file move,
+  chunk by chunk in a track that mixes both. What can't be told apart
+  for certain is still refused (#179).
+
+### Fixed
+
+- A video edit that grows a movie box before the media data no longer
+  shifts the offsets of chunks in other files (#179).
+
 ## v0.2.7 (2026-11-21)
 
 No breaking changes.
