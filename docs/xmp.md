@@ -16,6 +16,7 @@ type XMP struct {
 	HasRating            bool
 	PersonInImage        []string    // Iptc4xmpExt:PersonInImage
 	Regions              *Regions    // mwg-rs:Regions, nil without any
+	MicrosoftRegions     []MicrosoftRegion // MP:RegionInfo people tags, nil without any
 	GPS                  *GPS        // exif:GPSLatitude, GPSLongitude, GPSAltitude(Ref)
 	DateCreated          *Date       // photoshop:DateCreated
 	CreateDate           *Date       // xmp:CreateDate
@@ -226,6 +227,16 @@ new padding, as Part 1 suggests.
   fractions of the image, and with `pixel` they are pixels.
 - **PersonInImage** is `Iptc4xmpExt:PersonInImage`, the names of the
   people shown (IPTC Photo Metadata, Extension schema).
+- **MicrosoftRegions** are Microsoft Photo's people regions, the people
+  tags Windows Photo Gallery and Windows Live Photo Gallery write:
+  `MP:RegionInfo` (`http://ns.microsoft.com/photo/1.2/`), its
+  `MPRI:Regions` Bag, each region's `MPReg:PersonDisplayName` and
+  `MPReg:Rectangle`, as ExifTool's Microsoft Photo tables define them.
+  The rectangle is "x, y, w, h": the box's top-left corner and size as
+  fractions of the image. It's optional: a name without a box is a person
+  tagged in the image, and is kept. A rectangle that isn't four
+  fractions within the image is ignored and the name kept. They're read
+  apart from `Regions` and don't feed it or `PersonInImage`. Read only.
 
 **Reading.** The struct fields are read wherever RDF allows them: as
 attributes of the property element, as its children with

@@ -64,6 +64,9 @@ func MergeXMP(file, sidecar XMP) XMP {
 	if sidecar.Regions != nil {
 		m.Regions = sidecar.Regions
 	}
+	if len(sidecar.MicrosoftRegions) > 0 {
+		m.MicrosoftRegions = sidecar.MicrosoftRegions
+	}
 	if sidecar.GPS != nil {
 		m.GPS = sidecar.GPS
 	}
@@ -85,6 +88,7 @@ func MergeXMP(file, sidecar XMP) XMP {
 	m.Keywords = slices.Clone(m.Keywords)
 	m.HierarchicalKeywords = slices.Clone(m.HierarchicalKeywords)
 	m.PersonInImage = slices.Clone(m.PersonInImage)
+	m.MicrosoftRegions = slices.Clone(m.MicrosoftRegions)
 	if m.Regions != nil {
 		r := *m.Regions
 		r.List = slices.Clone(r.List)

@@ -281,6 +281,7 @@ func TestEditXMPEscapes(t *testing.T) {
 
 func FuzzEditXMP(f *testing.F) {
 	f.Add([]byte(lightroomXMP))
+	f.Add([]byte(mpPacket(`<rdf:li MPReg:PersonDisplayName="Ann" MPReg:Rectangle="0.1, 0.2, 0.3, 0.4"/><rdf:li MPReg:PersonDisplayName="Bob"/>`, "")))
 	f.Add([]byte(hierarchicalXMP))
 	f.Add([]byte(regionsXMP))
 	f.Add([]byte(fullRegionsXMP))
@@ -344,6 +345,7 @@ func FuzzEditXMP(f *testing.F) {
 // ParseXMP's read mode (white-space-only text left out, descriptions
 // kept for one read) gives what the full tree gives.
 func FuzzParseXMPReadMode(f *testing.F) {
+	f.Add([]byte(mpPacket(`<rdf:li rdf:parseType="Resource"><MPReg:PersonDisplayName>Ann</MPReg:PersonDisplayName><MPReg:Rectangle>0.1, 0.2, 0.3, 0.4</MPReg:Rectangle></rdf:li>`, "")))
 	for _, p := range []string{"testdata/exiftool/xmp.jpg", "testdata/exiftool/regions-full.jpg", "testdata/exiftool/all.jpg", "testdata/exiftool/xmp-where-when.jpg"} {
 		file := readFile(f, p)
 		if packet, err := ReadXMP(bytes.NewReader(file), int64(len(file))); err == nil && packet != nil {
