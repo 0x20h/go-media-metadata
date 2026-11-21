@@ -16,6 +16,11 @@ ff -f lavfi -i testsrc=duration=1:size=64x48:rate=5 -f lavfi -i sine=duration=1:
 cp "$TMP/base.mov" "$OUT/keys.mov"
 et "$OUT/keys.mov" "-Keys:CreationDate=2025:05:04 13:14:15+02:00" "-Keys:GPSCoordinates#=51.5 -0.125 35.5" \
   -Keys:Make=Apple "-Keys:Model=iPhone 12 Pro" -Keys:ContentIdentifier=5A7E21BB-FFC6-4275-957A-A864EDD15D84
+# The lens in the video track's own Keys (ExifTool's VideoKeys), where
+# iPhones put it; make and model in the movie's.
+cp "$TMP/base.mov" "$OUT/keys-track-lens.mov"
+et "$OUT/keys-track-lens.mov" -Keys:Make=Apple "-Keys:Model=iPhone 12 Pro" \
+  "-VideoKeys:LensModel=iPhone 12 Pro back camera 4.2mm f/1.6"
 
 # The movie header's date (2024-06-01 10:00 UTC, set by ffmpeg) and a
 # Keys date that differs from it.

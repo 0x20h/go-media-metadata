@@ -25,6 +25,10 @@
 
 - A video edit that grows a movie box before the media data no longer
   shifts the offsets of chunks in other files (#179).
+- `ReadVideo` (and `ReadAll`'s `Camera.LensModel`) read the lens model
+  from the video track's own Keys (`com.apple.quicktime.camera.lens_model`,
+  ExifTool's VideoKeys), where iPhones write it, when the movie's Keys
+  have none (#228).
 
 ## v0.2.7 (2026-11-21)
 
