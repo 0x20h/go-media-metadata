@@ -68,7 +68,9 @@ type Video struct {
 	// An AVI's come from Nikon's nctg chunk.
 	Make, Model string
 	// LensModel is the Keys entry com.apple.quicktime.camera.lens_model,
-	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6").
+	// as iPhones write it ("iPhone 12 Pro back camera 4.2mm f/1.6"): the
+	// movie's Keys, else the first video track's own (where iPhones put
+	// it), else a camera's Exif block.
 	LensModel string
 
 	// ContentIdentifier is the Keys entry
@@ -271,7 +273,7 @@ func readVideoTop(r io.ReaderAt, size int64, top []bmff.Box) (Video, error) {
 	}
 	v.Make = first(keys.make, udta.make)
 	v.Model = first(keys.model, udta.model)
-	v.LensModel = keys.lensModel
+	v.LensModel = first(keys.lensModel, v.LensModel) // the movie's Keys, else the video track's
 	if mx := udta.makerExif; mx != nil {
 		v.Make = first(v.Make, mx.Camera.Make)
 		v.Model = first(v.Model, mx.Camera.Model)
@@ -457,9 +459,16 @@ func parseMvhd(b []byte) (created time.Time, d time.Duration) {
 // readTrak reads, for a video track, its size and matrix into v; video
 // reports whether it was one.
 func readTrak(r io.ReaderAt, trak bmff.Box, v *Video) (video bool, err error) {
-	tkhd, ok, err := videoTkhd(r, trak)
+	tkhd, meta, ok, err := videoTrackBoxes(r, trak)
 	if err != nil || !ok {
 		return false, err
+	}
+	if meta.Size > 0 {
+		// The track's own Keys (ExifTool's VideoKeys), as iPhones write
+		// the lens there: taken where the movie's Keys have none.
+		if t, err := readMetaKeys(r, meta); err == nil {
+			v.LensModel = t.lensModel
+		}
 	}
 	b, err := readBox(r, tkhd, maxLeafBox)
 	if err != nil {
@@ -477,35 +486,43 @@ func readTrak(r io.ReaderAt, trak bmff.Box, v *Video) (video bool, err error) {
 // videoTkhd is a track's header box, when the track is a video track (its
 // media handler is "vide").
 func videoTkhd(r io.ReaderAt, trak bmff.Box) (bmff.Box, bool, error) {
+	tkhd, _, ok, err := videoTrackBoxes(r, trak)
+	return tkhd, ok, err
+}
+
+// videoTrackBoxes is a video track's header box and its meta box (Size 0
+// without one), when the track is a video track.
+func videoTrackBoxes(r io.ReaderAt, trak bmff.Box) (tkhd, meta bmff.Box, video bool, err error) {
 	kids, err := bmff.ReadBoxes(r, trak.Body(), trak.End())
 	if err != nil {
-		return bmff.Box{}, false, err
+		return bmff.Box{}, bmff.Box{}, false, err
 	}
+	meta, _ = bmff.Find(kids, bmff.T("meta"))
 	tkhd, ok := bmff.Find(kids, bmff.T("tkhd"))
 	if !ok {
-		return bmff.Box{}, false, nil
+		return bmff.Box{}, bmff.Box{}, false, nil
 	}
 	mdia, ok := bmff.Find(kids, bmff.T("mdia"))
 	if !ok {
-		return bmff.Box{}, false, nil
+		return bmff.Box{}, bmff.Box{}, false, nil
 	}
 	mk, err := bmff.ReadBoxes(r, mdia.Body(), mdia.End())
 	if err != nil {
-		return bmff.Box{}, false, err
+		return bmff.Box{}, bmff.Box{}, false, err
 	}
 	hdlr, ok := bmff.Find(mk, bmff.T("hdlr"))
 	if !ok {
-		return bmff.Box{}, false, nil
+		return bmff.Box{}, bmff.Box{}, false, nil
 	}
 	h, err := readBox(r, hdlr, maxLeafBox)
 	if err != nil {
-		return bmff.Box{}, false, err
+		return bmff.Box{}, bmff.Box{}, false, err
 	}
 	// FullBox, pre_defined (QuickTime: component type), handler type.
 	if len(h) < 12 || string(h[8:12]) != "vide" {
-		return bmff.Box{}, false, nil
+		return bmff.Box{}, bmff.Box{}, false, nil
 	}
-	return tkhd, true, nil
+	return tkhd, meta, true, nil
 }
 
 // tkhdMatrixAt is where a track header's matrix starts in its payload,
