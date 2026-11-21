@@ -1000,7 +1000,7 @@ func shiftChunkOffsets(moov *qtNode, top []bmff.Box, moovBox bmff.Box, delta int
 			switch k.typ {
 			case bmff.T("stco"), bmff.T("co64"):
 				var count int
-				if p := k.payload(); len(p) >= 8 {
+				if p := leafPayload(k); len(p) >= 8 {
 					count = int(binary.BigEndian.Uint32(p[4:]))
 				}
 				inFile, err := chunkInFile(path(trak, "mdia", "minf"), stbl, count)

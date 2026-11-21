@@ -18,7 +18,8 @@ import (
 // drefSelfContained reads which of a track's data reference entries are
 // this file (ISO/IEC 14496-12 8.7.2: the self-contained flag, 1): by
 // entry, from index 1 (index 0 unused). nil for a track without a dref,
-// whose media is this file's.
+// or whose every entry is this file: the common case, read without
+// allocating.
 func drefSelfContained(minf *qtNode) ([]bool, error) {
 	if minf == nil {
 		return nil, nil
@@ -27,28 +28,51 @@ func drefSelfContained(minf *qtNode) ([]bool, error) {
 	if dinf == nil {
 		return nil, nil
 	}
-	b := dinf.payload()
-	boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
-	if err != nil {
-		return nil, fmt.Errorf("%w: a data information box that doesn't parse", ErrMalformed)
+	b := leafPayload(dinf)
+	// The dref box in dinf.
+	at, end := -1, 0
+	for k := 0; k+8 <= len(b); {
+		n := int(binary.BigEndian.Uint32(b[k:]))
+		if n < 8 || n > len(b)-k {
+			return nil, fmt.Errorf("%w: a data information box that doesn't parse", ErrMalformed)
+		}
+		if string(b[k+4:k+8]) == "dref" {
+			at, end = k+8, k+n
+			break
+		}
+		k += n
 	}
-	dref, ok := bmff.Find(boxes, bmff.T("dref"))
-	if !ok || dref.BodyLen() < 8 {
+	if at < 0 || end-at < 8 {
 		return nil, nil
 	}
-	entries, err := bmff.ParseBoxes(b, dref.Body()+8, dref.End())
-	if err != nil {
-		return nil, fmt.Errorf("%w: a data reference box that doesn't parse", ErrMalformed)
-	}
-	if n := int(binary.BigEndian.Uint32(b[dref.Body()+4:])); n != len(entries) {
-		return nil, fmt.Errorf("%w: a data reference box of %d entries that says %d", ErrMalformed, len(entries), n)
-	}
-	out := make([]bool, len(entries)+1)
-	for i, e := range entries {
-		if e.BodyLen() < 4 {
-			return nil, fmt.Errorf("%w: a data reference entry of %d bytes", ErrMalformed, e.Size)
+	count := int(binary.BigEndian.Uint32(b[at+4:]))
+	// Its entries: a first pass for whether any is in another file, a
+	// second to list them only then.
+	var out []bool
+	for pass := 0; pass < 2; pass++ {
+		i, external := 0, false
+		for k := at + 8; k < end; i++ {
+			if k+12 > end {
+				return nil, fmt.Errorf("%w: a data reference box that doesn't parse", ErrMalformed)
+			}
+			n := int(binary.BigEndian.Uint32(b[k:]))
+			if n < 12 || n > end-k {
+				return nil, fmt.Errorf("%w: a data reference entry of %d bytes", ErrMalformed, n)
+			}
+			self := binary.BigEndian.Uint32(b[k+8:])&1 != 0
+			external = external || !self
+			if out != nil && i+1 < len(out) {
+				out[i+1] = self
+			}
+			k += n
 		}
-		out[i+1] = binary.BigEndian.Uint32(b[e.Body():])&1 != 0
+		if i != count {
+			return nil, fmt.Errorf("%w: a data reference box of %d entries that says %d", ErrMalformed, i, count)
+		}
+		if !external || out != nil {
+			break
+		}
+		out = make([]bool, count+1)
 	}
 	return out, nil
 }
@@ -130,4 +154,21 @@ func chunkInFile(minf, stbl *qtNode, count int) ([]bool, error) {
 		prev = first
 	}
 	return out, nil
+}
+
+// leafPayload is a box's payload, its header skipped without parsing it
+// (as payload does, allocating): for a box read raw, after its 8- or
+// 16-byte header.
+func leafPayload(n *qtNode) []byte {
+	if n.raw == nil {
+		return n.body
+	}
+	h := 8
+	if len(n.raw) >= 8 && binary.BigEndian.Uint32(n.raw) == 1 {
+		h = 16
+	}
+	if len(n.raw) < h {
+		return nil
+	}
+	return n.raw[h:]
 }
