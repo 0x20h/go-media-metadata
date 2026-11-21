@@ -187,6 +187,10 @@ func PlanRewriteMovie(src io.ReaderAt, size int64, opts RewriteOptions) (*Plan, 
 		for _, t := range tables {
 			vals := make([]int64, len(t.offsets))
 			for j, v := range t.offsets {
+				if t.inFile != nil && !t.inFile[j] {
+					vals[j] = v // in another file
+					continue
+				}
 				nv, ok := mapOffset(top, newAt, v)
 				if !ok {
 					return nil, fmt.Errorf("%w: chunk offset %d outside the media data kept", ErrMalformed, v)
@@ -316,6 +320,9 @@ type chunkTable struct {
 	wide    bool
 	offsets []int64
 	mapped  []int64
+	// inFile, where not nil, is which chunks are in this file: the others
+	// are in another (chunk_locality.go), their offsets left as they are.
+	inFile []bool
 }
 
 // write sets the table's box to its mapped offsets (a co64 where it's
@@ -359,9 +366,6 @@ func chunkTables(moov *qtNode) ([]*chunkTable, error) {
 		if minf == nil || stbl == nil {
 			return nil, fmt.Errorf("%w: a track this package can't walk", ErrUnsupported)
 		}
-		if err := checkDref(minf); err != nil {
-			return nil, err
-		}
 		for _, s := range stbl.kids {
 			switch s.typ {
 			case bmff.T("saio"):
@@ -369,6 +373,9 @@ func chunkTables(moov *qtNode) ([]*chunkTable, error) {
 			case bmff.T("stco"), bmff.T("co64"):
 				t, err := readChunkTable(s)
 				if err != nil {
+					return nil, err
+				}
+				if t.inFile, err = chunkInFile(minf, stbl, len(t.offsets)); err != nil {
 					return nil, err
 				}
 				out = append(out, t)
@@ -405,38 +412,6 @@ func readChunkTable(n *qtNode) (*chunkTable, error) {
 		}
 	}
 	return t, nil
-}
-
-// checkDref refuses a track whose media data is in another file: a data
-// reference entry ('url ' or 'urn ') without the self-contained flag.
-func checkDref(minf *qtNode) error {
-	dinf := minf.child(bmff.T("dinf"))
-	if dinf == nil {
-		return nil
-	}
-	b := dinf.payload()
-	boxes, err := bmff.ParseBoxes(b, 0, int64(len(b)))
-	if err != nil {
-		return fmt.Errorf("%w: a data information box that doesn't parse", ErrMalformed)
-	}
-	dref, ok := bmff.Find(boxes, bmff.T("dref"))
-	if !ok || dref.BodyLen() < 8 {
-		return nil
-	}
-	entries, err := bmff.ParseBoxes(b, dref.Body()+8, dref.End())
-	if err != nil {
-		return fmt.Errorf("%w: a data reference box that doesn't parse", ErrMalformed)
-	}
-	for _, e := range entries {
-		if e.BodyLen() < 4 {
-			return fmt.Errorf("%w: a data reference entry of %d bytes", ErrMalformed, e.Size)
-		}
-		flags := binary.BigEndian.Uint32(b[e.Body():]) & 0xFFFFFF
-		if flags&1 == 0 {
-			return fmt.Errorf("%w: media data in another file (a %v data reference)", ErrUnsupported, e.Type)
-		}
-	}
-	return nil
 }
 
 // stripMovieMetadata removes moov's and each track's udta and meta; it
