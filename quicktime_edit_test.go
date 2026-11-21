@@ -298,18 +298,18 @@ func TestPlanVideoEditRefuses(t *testing.T) {
 
 func TestShiftOffsets(t *testing.T) {
 	p := []byte{0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0xFF, 0xFF, 0xFF, 0xF0}
-	out, err := shiftOffsets(p, false, 0, 8)
+	out, err := shiftOffsets(p, false, 0, 8, nil)
 	if err != nil || binary.BigEndian.Uint32(out[8:]) != 18 || binary.BigEndian.Uint32(out[12:]) != 0xFFFFFFF8 {
 		t.Errorf("%x, %v", out, err)
 	}
-	if _, err := shiftOffsets(p, false, 0, 16); !errors.Is(err, ErrUnsupported) {
+	if _, err := shiftOffsets(p, false, 0, 16, nil); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("an offset past 32 bits: %v", err)
 	}
-	if _, err := shiftOffsets(p[:12], false, 0, 1); !errors.Is(err, ErrMalformed) {
+	if _, err := shiftOffsets(p[:12], false, 0, 1, nil); !errors.Is(err, ErrMalformed) {
 		t.Errorf("a short box: %v", err)
 	}
 	// Offsets before the movie box stay.
-	out, _ = shiftOffsets(p, false, 11, 8)
+	out, _ = shiftOffsets(p, false, 11, 8, nil)
 	if binary.BigEndian.Uint32(out[8:]) != 10 {
 		t.Errorf("an offset before the movie box moved: %x", out)
 	}
@@ -318,6 +318,9 @@ func TestShiftOffsets(t *testing.T) {
 func FuzzVideoEdit(f *testing.F) {
 	movieSeeds(f)
 	f.Add(readFile(f, "testdata/video/canon.mp4")) // the Canon thumbnail's date
+	for _, m := range referenceMovieSeeds() {
+		f.Add(m) // media in other files
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		withinDeadline(t, func() {
 			_, readErr := ReadVideo(bytes.NewReader(data), int64(len(data)))
