@@ -3,6 +3,7 @@ package mediameta
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -157,6 +158,11 @@ type tiffReader struct {
 	// headerless: data without a TIFF header, whose IFD may start at 0
 	// (Exif blocks some camera videos carry).
 	headerless bool
+	// src, when set, is the whole TIFF data, read where data doesn't hold
+	// it (a RAW file, whose IFDs are read from the file as needed): the
+	// values a maker note points to.
+	src     io.ReaderAt
+	srcSize int64
 }
 
 // newTIFF reads the TIFF header; ok is false for data that doesn't start
