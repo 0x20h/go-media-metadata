@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- `Camera.LensID`, `LensFocalMin`, `LensFocalMax` and `LensMaxAperture`:
+  the lens a Canon camera identifies by number (its maker note's
+  CameraSettings LensType, 0 without one or for 65535) with the lens's
+  focal range and widest f-number from the same CameraSettings, in JPEG,
+  CR2 and CR3. The id is exposed as written, with no name: several
+  lenses share an id, and a name table isn't part of this library
+  (#183).
+
+### Fixed
+
+- A Canon maker note's values stored outside their entry (its LensModel,
+  0x0095) are read in CR2 and other TIFF-based RAW files too, and a
+  CR3's maker note (CMT3) is read.
+
 ## v0.2.8 (2026-11-21)
 
 No breaking changes.

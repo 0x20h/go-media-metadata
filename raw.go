@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/0x20h/go-media-metadata/internal/bmff"
 )
@@ -61,7 +62,7 @@ func openRAWTIFF(r io.ReaderAt, size int64) (*rawTIFF, bool) {
 	default:
 		return nil, false
 	}
-	return &rawTIFF{tiffReader: tiffReader{order: order}, r: r, size: size, first: order.Uint32(h[4:]), magic: [4]byte(h[:4])}, true
+	return &rawTIFF{tiffReader: tiffReader{order: order, src: r, srcSize: size}, r: r, size: size, first: order.Uint32(h[4:]), magic: [4]byte(h[:4])}, true
 }
 
 // rw2 tells whether the file is a Panasonic RW2.
@@ -207,7 +208,7 @@ func (t *rawTIFF) xmpAt() (at, n int64, ok bool) {
 	return 0, 0, false
 }
 
-// cr3 is a Canon CR3's metadata boxes: CMT1 (IFD0), CMT2 (the Exif IFD)
+// cr3 is a Canon CR3's metadata boxes: CMT1 (IFD0), CMT2 (the Exif IFD), CMT3 (the maker note)
 // and CMT4 (the GPS IFD), each a TIFF structure of its own, and its XMP.
 type cr3 struct {
 	cmt    map[bmff.Type]bmff.Box
@@ -263,7 +264,7 @@ func openCR3(r io.ReaderAt, size int64) (*cr3, bool, error) {
 			}
 			for _, m := range cmts {
 				switch m.Type {
-				case bmff.T("CMT1"), bmff.T("CMT2"), bmff.T("CMT4"):
+				case bmff.T("CMT1"), bmff.T("CMT2"), bmff.T("CMT3"), bmff.T("CMT4"):
 					c.cmt[m.Type] = m
 				}
 			}
@@ -320,6 +321,19 @@ func (c *cr3) exif() Exif {
 	if data, _, ok := c.tiff("CMT4"); ok {
 		if t, first, ok := newTIFF(data); ok {
 			x.GPS = t.gps(t.ifd(first))
+		}
+	}
+	// CMT3 is Canon's maker note, a TIFF of its own: the lens's
+	// CameraSettings (canonLens), and its LensModel where Exif has none.
+	if data, _, ok := c.tiff("CMT3"); ok && strings.HasPrefix(x.Camera.Make, "Canon") {
+		if t, first, ok := newTIFF(data); ok {
+			mn := t.ifd(first)
+			if f, ok := mn[0x0001]; ok && f.typ == typeShort {
+				t.canonCameraSettings(f.value, f.count, &x.Camera)
+			}
+			if f, ok := mn[0x0095]; ok && f.typ == typeASCII && x.Camera.LensModel == "" {
+				x.Camera.LensModel, _ = ascii(f)
+			}
 		}
 	}
 	return x
