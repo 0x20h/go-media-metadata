@@ -58,6 +58,12 @@ type VideoEdit struct {
 	// size. A movie without a packet gets one in XMP_. nil leaves the XMP
 	// as it is.
 	XMP *XMPEdit
+
+	// capture, when set (SetCaptureDate), changes Created's writing: the
+	// Keys creation date and ©day only where the movie has them (each in
+	// its own offset form), mvhd only where captureMvhd says.
+	capture     *Date
+	captureMvhd bool
 }
 
 // check reports what's wrong with an edit.
@@ -548,7 +554,7 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 	if edit.Created == nil && edit.GPS == nil && !edit.RemoveGPS && !edit.textChange() {
 		return nil
 	}
-	sets := edit.Created != nil || edit.GPS != nil || edit.Rating != nil ||
+	sets := edit.Created != nil && edit.capture == nil || edit.GPS != nil || edit.Rating != nil ||
 		edit.Title != nil && *edit.Title != "" || edit.Description != nil && *edit.Description != "" ||
 		edit.Keywords != nil && len(*edit.Keywords) > 0
 	keys, err := keysMeta(moov, sets)
@@ -559,7 +565,24 @@ func applyVideoEdit(moov *qtNode, edit VideoEdit) error {
 	if udta != nil && !udta.parsed() {
 		udta = nil
 	}
-	if t := edit.Created; t != nil {
+	if d := edit.capture; d != nil {
+		// SetCaptureDate: only the fields the movie has.
+		if keys != nil {
+			if old, ok := keys.text(keyCreated); ok {
+				if err := keys.set(keyCreated, formatLikeQT(old, *d)); err != nil {
+					return err
+				}
+			}
+		}
+		if udta != nil {
+			if old, ok := udtaText(udta, "\xa9day"); ok {
+				setUdtaText(udta, "\xa9day", formatLikeQT(old, *d))
+			}
+		}
+		if mvhd := moov.child(bmff.T("mvhd")); mvhd != nil && edit.captureMvhd {
+			setMvhdCreated(mvhd, d.Time)
+		}
+	} else if t := edit.Created; t != nil {
 		s := t.Format("2006-01-02T15:04:05-0700")
 		if err := keys.set(keyCreated, s); err != nil {
 			return err
@@ -1074,4 +1097,61 @@ func shiftOffsets(p []byte, wide bool, from, delta int64, inFile []bool) ([]byte
 		}
 	}
 	return out, nil
+}
+
+// text is key name's UTF-8 text value, ok false without one.
+func (k *keysNode) text(name string) (string, bool) {
+	i := k.index(name)
+	if i == 0 {
+		return "", false
+	}
+	it := k.item(i)
+	if it == nil || !it.parsed() {
+		return "", false
+	}
+	data := it.child(bmff.T("data"))
+	if data == nil {
+		return "", false
+	}
+	p := data.payload()
+	if len(p) < 8 || binary.BigEndian.Uint32(p)&0xFFFFFF != 1 {
+		return "", false
+	}
+	return string(p[8:]), true
+}
+
+// udtaText is user data entry typ's first text, ok false without one.
+func udtaText(udta *qtNode, typ string) (string, bool) {
+	n := udta.child(bmff.T(typ))
+	if n == nil {
+		return "", false
+	}
+	p := n.payload()
+	if len(p) < 4 {
+		return "", false
+	}
+	l := int(binary.BigEndian.Uint16(p))
+	if 4+l > len(p) {
+		return "", false
+	}
+	return string(p[4 : 4+l]), true
+}
+
+// formatLikeQT writes d as an ISO 8601 date and time in the form of old,
+// a movie's date text: its offset as "Z" (d in UTC), "+hh:mm", "+hhmm" or
+// none. A date whose offset isn't known is written without one.
+func formatLikeQT(old string, d Date) string {
+	const base = "2006-01-02T15:04:05"
+	if !d.OffsetKnown {
+		return d.Time.Format(base)
+	}
+	s := strings.TrimSpace(old)
+	switch {
+	case strings.HasSuffix(s, "Z"):
+		return d.Time.UTC().Format(base) + "Z"
+	case len(s) >= 6 && (s[len(s)-6] == '+' || s[len(s)-6] == '-') && s[len(s)-3] == ':':
+		return d.Time.Format(base + "-07:00")
+	default:
+		return d.Time.Format(base + "-0700")
+	}
 }
